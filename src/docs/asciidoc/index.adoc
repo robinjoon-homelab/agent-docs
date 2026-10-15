@@ -1,0 +1,208 @@
+= 템플릿 API
+:doctype: book
+:toc: left
+:toclevels: 2
+:sectnums:
+:source-highlighter: highlight.js
+
+로컬 요청에서는 예시의 `https://api.example.com`을 `http://localhost:8080`으로 바꿉니다.
+
+== Todo CRUD
+
+=== 할 일 생성
+
+include::{snippets}/todos-create/http-request.adoc[]
+include::{snippets}/todos-create/request-fields.adoc[]
+include::{snippets}/todos-create/http-response.adoc[]
+include::{snippets}/todos-create/response-headers.adoc[]
+include::{snippets}/todos-create/response-fields.adoc[]
+include::{snippets}/todos-create/curl-request.adoc[]
+
+=== 할 일 조회
+
+include::{snippets}/todos-get/http-request.adoc[]
+include::{snippets}/todos-get/path-parameters.adoc[]
+include::{snippets}/todos-get/http-response.adoc[]
+include::{snippets}/todos-get/response-fields.adoc[]
+
+=== 할 일 목록
+
+include::{snippets}/todos-list/http-request.adoc[]
+include::{snippets}/todos-list/http-response.adoc[]
+include::{snippets}/todos-list/response-fields.adoc[]
+
+=== 할 일 완료
+
+같은 할 일에 반복해서 요청해도 완료된 상태를 유지합니다.
+
+include::{snippets}/todos-complete/http-request.adoc[]
+include::{snippets}/todos-complete/path-parameters.adoc[]
+include::{snippets}/todos-complete/http-response.adoc[]
+include::{snippets}/todos-complete/response-fields.adoc[]
+
+=== 오류
+
+==== 올바르지 않은 제목
+
+include::{snippets}/todos-invalid-title/http-request.adoc[]
+include::{snippets}/todos-invalid-title/http-response.adoc[]
+include::{snippets}/todos-invalid-title/response-fields.adoc[]
+
+==== 존재하지 않는 할 일
+
+include::{snippets}/todos-not-found/http-request.adoc[]
+include::{snippets}/todos-not-found/path-parameters.adoc[]
+include::{snippets}/todos-not-found/http-response.adoc[]
+include::{snippets}/todos-not-found/response-fields.adoc[]
+
+== 판매품목
+
+* 주문 전에 SKU를 등록하고 응답의 UUID로 조회·판매 중단을 요청합니다.
+* 판매 중단 상태는 DISCONTINUED이며 반복 중단은 같은 상태를 반환합니다.
+* 판매 중단으로 기존 주문·재고가 바뀐다고 가정하지 않습니다.
+
+=== 판매품목 등록
+
+include::{snippets}/offers-register/http-request.adoc[]
+include::{snippets}/offers-register/request-fields.adoc[]
+include::{snippets}/offers-register/http-response.adoc[]
+include::{snippets}/offers-register/response-headers.adoc[]
+include::{snippets}/offers-register/response-fields.adoc[]
+include::{snippets}/offers-register/curl-request.adoc[]
+
+=== 판매품목 조회
+
+include::{snippets}/offers-get/http-request.adoc[]
+include::{snippets}/offers-get/path-parameters.adoc[]
+include::{snippets}/offers-get/http-response.adoc[]
+include::{snippets}/offers-get/response-fields.adoc[]
+
+=== 판매 중단
+
+include::{snippets}/offers-discontinue/http-request.adoc[]
+include::{snippets}/offers-discontinue/path-parameters.adoc[]
+include::{snippets}/offers-discontinue/http-response.adoc[]
+include::{snippets}/offers-discontinue/response-fields.adoc[]
+
+=== 오류
+
+==== 잘못된 판매품목 값
+
+include::{snippets}/offers-invalid/http-request.adoc[]
+include::{snippets}/offers-invalid/http-response.adoc[]
+include::{snippets}/offers-invalid/response-fields.adoc[]
+
+==== 없는 판매품목
+
+include::{snippets}/offers-not-found/http-request.adoc[]
+include::{snippets}/offers-not-found/path-parameters.adoc[]
+include::{snippets}/offers-not-found/http-response.adoc[]
+include::{snippets}/offers-not-found/response-fields.adoc[]
+
+==== 중복 SKU
+
+include::{snippets}/offers-duplicate/http-request.adoc[]
+include::{snippets}/offers-duplicate/http-response.adoc[]
+include::{snippets}/offers-duplicate/response-fields.adoc[]
+
+== 주문
+
+* 판매 중인 Offer의 SKU를 서로 다르게 1~10개 제출하고 품목별 수량은 1~100으로 지정합니다.
+* 품목(OrderLine)은 접수 후 변경하지 않습니다. 접수 상태는 PLACED, 취소 상태는 CANCELLED이며 반복 취소는 같은 상태를 반환합니다.
+* Offer 조회 직후 판매 중단이 커밋된 경우에는 이미 읽은 상태로 주문이 접수될 수 있음을 고려합니다.
+* 주문 성공으로 재고 확인·예약을 가정하지 않습니다.
+
+=== 주문 접수
+
+include::{snippets}/orders-place/http-request.adoc[]
+include::{snippets}/orders-place/request-fields.adoc[]
+include::{snippets}/orders-place/http-response.adoc[]
+include::{snippets}/orders-place/response-headers.adoc[]
+include::{snippets}/orders-place/response-fields.adoc[]
+include::{snippets}/orders-place/curl-request.adoc[]
+
+=== 주문 조회
+
+include::{snippets}/orders-get/http-request.adoc[]
+include::{snippets}/orders-get/path-parameters.adoc[]
+include::{snippets}/orders-get/http-response.adoc[]
+include::{snippets}/orders-get/response-fields.adoc[]
+
+=== 주문 취소
+
+include::{snippets}/orders-cancel/http-request.adoc[]
+include::{snippets}/orders-cancel/path-parameters.adoc[]
+include::{snippets}/orders-cancel/http-response.adoc[]
+include::{snippets}/orders-cancel/response-fields.adoc[]
+
+=== 오류
+
+==== 잘못된 주문 값
+
+include::{snippets}/orders-invalid/http-request.adoc[]
+include::{snippets}/orders-invalid/http-response.adoc[]
+include::{snippets}/orders-invalid/response-fields.adoc[]
+
+==== 없는 주문
+
+include::{snippets}/orders-not-found/http-request.adoc[]
+include::{snippets}/orders-not-found/path-parameters.adoc[]
+include::{snippets}/orders-not-found/http-response.adoc[]
+include::{snippets}/orders-not-found/response-fields.adoc[]
+
+==== 판매 중이 아닌 품목
+
+미등록 SKU와 판매 중단 SKU는 409를 반환하며 주문은 저장하지 않습니다.
+
+include::{snippets}/orders-not-on-sale/http-request.adoc[]
+include::{snippets}/orders-not-on-sale/http-response.adoc[]
+include::{snippets}/orders-not-on-sale/response-fields.adoc[]
+
+== 재고
+
+품목을 등록할 때 보유량은 0 이상으로, 입고 요청의 수량은 양수로 지정합니다.
+
+=== 재고 품목 등록
+
+include::{snippets}/inventory-items-register/http-request.adoc[]
+include::{snippets}/inventory-items-register/request-fields.adoc[]
+include::{snippets}/inventory-items-register/http-response.adoc[]
+include::{snippets}/inventory-items-register/response-headers.adoc[]
+include::{snippets}/inventory-items-register/response-fields.adoc[]
+include::{snippets}/inventory-items-register/curl-request.adoc[]
+
+=== 재고 품목 조회
+
+include::{snippets}/inventory-items-get/http-request.adoc[]
+include::{snippets}/inventory-items-get/path-parameters.adoc[]
+include::{snippets}/inventory-items-get/http-response.adoc[]
+include::{snippets}/inventory-items-get/response-fields.adoc[]
+
+=== 입고
+
+include::{snippets}/inventory-items-restock/http-request.adoc[]
+include::{snippets}/inventory-items-restock/path-parameters.adoc[]
+include::{snippets}/inventory-items-restock/request-fields.adoc[]
+include::{snippets}/inventory-items-restock/http-response.adoc[]
+include::{snippets}/inventory-items-restock/response-fields.adoc[]
+
+=== 오류
+
+==== 잘못된 재고 값
+
+include::{snippets}/inventory-items-invalid/http-request.adoc[]
+include::{snippets}/inventory-items-invalid/http-response.adoc[]
+include::{snippets}/inventory-items-invalid/response-fields.adoc[]
+
+==== 없는 재고 품목
+
+include::{snippets}/inventory-items-not-found/http-request.adoc[]
+include::{snippets}/inventory-items-not-found/path-parameters.adoc[]
+include::{snippets}/inventory-items-not-found/http-response.adoc[]
+include::{snippets}/inventory-items-not-found/response-fields.adoc[]
+
+==== 이미 등록한 재고 품목
+
+include::{snippets}/inventory-items-duplicate/http-request.adoc[]
+include::{snippets}/inventory-items-duplicate/http-response.adoc[]
+include::{snippets}/inventory-items-duplicate/response-fields.adoc[]
