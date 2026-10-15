@@ -13,7 +13,7 @@ plugins {
     id("dev.detekt") version "2.0.0-alpha.6"
 }
 
-group = "com.example"
+group = "xyz.robinjoon"
 version = "0.0.1-SNAPSHOT"
 
 repositories {

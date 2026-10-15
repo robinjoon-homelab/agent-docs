@@ -5,5 +5,5 @@ pluginManagement {
     }
 }
 
-rootProject.name = "kotlin-springboot-exposed-template"
+rootProject.name = "agent-docs"
 include(":quality-rules")

@@ -1,6 +1,6 @@
 spring:
   application:
-    name: kotlin-springboot-exposed-template
+    name: agent-docs
   threads:
     virtual:
       enabled: true
