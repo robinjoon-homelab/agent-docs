@@ -16,7 +16,7 @@ class OAuthMetadataController(
         mapOf(
             "resource" to settings.resource,
             "authorization_servers" to listOf(settings.issuer),
-            "scopes_supported" to scopes,
+            "scopes_supported" to OAuthScopes.all,
             "bearer_methods_supported" to listOf("header"),
             "resource_name" to "Agent Docs",
         )
@@ -33,13 +33,9 @@ class OAuthMetadataController(
             "grant_types_supported" to listOf("authorization_code", "refresh_token"),
             "code_challenge_methods_supported" to listOf("S256"),
             "token_endpoint_auth_methods_supported" to listOf("none"),
-            "scopes_supported" to scopes,
+            "scopes_supported" to OAuthScopes.all,
             "client_id_metadata_document_supported" to true,
             "authorization_response_iss_parameter_supported" to true,
         )
-    }
-
-    private companion object {
-        val scopes = listOf("read", "comment", "edit")
     }
 }

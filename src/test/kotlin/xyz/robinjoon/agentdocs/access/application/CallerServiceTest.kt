@@ -26,7 +26,7 @@ class CallerServiceTest {
     private val user = User.restore(UserId(ownerId), GitHubAccount(42, "robinjoon"), UserProfile(null, null), now)
 
     @Test
-    fun `a valid token resolves to the agent with exactly its granted spaces and scope`() {
+    fun `a valid token resolves to the agent, named with its client host, with exactly its granted spaces and scope`() {
         val active = connection("adt_a_token", null)
         every { connections.findByAccessHash(TokenHash.of("adt_a_token")) } returns active
         every { users.findById(UserId(ownerId)) } returns user
@@ -35,6 +35,7 @@ class CallerServiceTest {
         val caller = requireNotNull(service.callerFor("adt_a_token"))
 
         assertThat(caller.agent?.connectionId).isEqualTo(active.id.value)
+        assertThat(caller.agent?.clientName).isEqualTo("Claude Code (claude.ai)")
         assertThat(caller.spaces).containsExactly(space)
         assertThat(caller.scope).isEqualTo(CallerScope.EDIT)
         assertThat(caller.owner).isFalse()

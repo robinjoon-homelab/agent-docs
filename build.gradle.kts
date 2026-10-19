@@ -31,6 +31,9 @@ kotlin {
 }
 
 val exposedVersion = "1.5.0"
+
+// Spring AI 2.0.1's WebMVC transport is built against the 2.0 line of the MCP Java SDK; 2.1 renamed a class it uses.
+val mcpSdkVersion = "2.0.1"
 val snippetsDir = layout.buildDirectory.dir("generated-snippets")
 val frontendDir = layout.projectDirectory.dir("frontend")
 
@@ -47,6 +50,9 @@ dependencies {
     implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.exposed:exposed-spring-boot4-starter:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-java-time:$exposedVersion")
+    implementation("io.modelcontextprotocol.sdk:mcp-core:$mcpSdkVersion")
+    implementation("io.modelcontextprotocol.sdk:mcp-json-jackson3:$mcpSdkVersion")
+    implementation("org.springframework.ai:mcp-spring-webmvc:2.0.1")
 
     runtimeOnly("com.h2database:h2")
     runtimeOnly("org.postgresql:postgresql")

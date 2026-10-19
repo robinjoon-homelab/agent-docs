@@ -68,7 +68,7 @@ class SecurityAdaptersTest {
     }
 
     @Test
-    fun `an unauthenticated request learns where the protected resource metadata is`() {
+    fun `an unauthenticated request learns where the protected resource metadata is and which scopes to ask for`() {
         val response = MockHttpServletResponse()
 
         ApiAuthenticationEntryPoint(
@@ -78,7 +78,9 @@ class SecurityAdaptersTest {
         assertThat(response.status).isEqualTo(401)
         assertThat(
             response.getHeader("WWW-Authenticate"),
-        ).isEqualTo("Bearer resource_metadata=\"https://docs.example.com/.well-known/oauth-protected-resource/mcp\"")
+        ).isEqualTo(
+            "Bearer resource_metadata=\"https://docs.example.com/.well-known/oauth-protected-resource/mcp\", scope=\"read comment edit\"",
+        )
     }
 
     @Test

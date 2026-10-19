@@ -7,7 +7,7 @@ import org.springframework.security.web.AuthenticationEntryPoint
 import xyz.robinjoon.agentdocs.access.application.model.AccessSettings
 
 // An unauthenticated API or MCP request gets 401. The WWW-Authenticate header points MCP clients at the protected
-// resource metadata, which is how they find the authorization server (RFC 9728).
+// resource metadata, which is how they find the authorization server (RFC 9728), and names the scopes to request.
 class ApiAuthenticationEntryPoint(
     private val settings: AccessSettings,
 ) : AuthenticationEntryPoint {
@@ -18,7 +18,7 @@ class ApiAuthenticationEntryPoint(
     ) {
         val metadata = settings.issuer.trimEnd('/') + "/.well-known/oauth-protected-resource/mcp"
         response.status = HttpServletResponse.SC_UNAUTHORIZED
-        response.setHeader("WWW-Authenticate", "Bearer resource_metadata=\"$metadata\"")
+        response.setHeader("WWW-Authenticate", "Bearer resource_metadata=\"$metadata\", scope=\"${OAuthScopes.all.joinToString(" ")}\"")
         response.contentType = "application/problem+json"
         response.writer.write(
             """{"title":"Unauthorized","status":401,"code":"unauthenticated","fix":"sign in or connect through MCP OAuth"}""",

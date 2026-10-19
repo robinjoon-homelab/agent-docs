@@ -1,6 +1,6 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp
 
-// Sent with initialize and server/discover. Clients may show only the first part, so it starts with the essentials and
+// Sent with initialize. Clients may show only the first part, so it starts with the essentials and
 // stays well under 4,096 characters.
 internal object McpInstructions {
     const val TEXT =

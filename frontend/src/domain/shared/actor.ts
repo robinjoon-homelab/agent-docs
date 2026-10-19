@@ -28,8 +28,8 @@ export function githubAvatarUrl(login: string): string {
 }
 
 /**
- * `clientName` is the OAuth client_id host when the client has one (e.g. "claude.ai", "chatgpt.com"),
- * otherwise the name the client gave itself.
+ * `clientName` is "Name (host)" when the client has a client_id host, e.g. "Claude Code (claude.ai)", otherwise the
+ * name the client gave itself. Older records hold the bare host, e.g. "claude.ai".
  */
 export function agentClientOf(clientName: string): AgentClient {
   const name = clientName.toLowerCase();
@@ -44,10 +44,16 @@ function isHost(clientName: string): boolean {
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(clientName);
 }
 
-/** "Claude" for claude.ai, "Codex" for chatgpt.com/openai.com, otherwise the host or client name as is. */
-function agentLabel(clientName: string): string {
+type AgentName = { readonly label: string; readonly host: string | null };
+
+/** "Claude Code (claude.ai)" → Claude Code at claude.ai; a bare known host gets a friendly label. */
+function agentName(clientName: string): AgentName {
+  const named = /^(.+) \(([^()]+)\)$/.exec(clientName);
+  if (named?.[1] !== undefined && named[2] !== undefined && isHost(named[2]))
+    return { label: named[1], host: named[2] };
   const client = agentClientOf(clientName);
-  return isHost(clientName) && client !== 'other' ? CLIENT_LABEL[client] : clientName;
+  if (isHost(clientName) && client !== 'other') return { label: CLIENT_LABEL[client], host: clientName };
+  return { label: clientName, host: null };
 }
 
 export function isAgent(actor: Actor): boolean {
@@ -58,9 +64,9 @@ export function isAgent(actor: Actor): boolean {
 export function actorDisplay(actor: Actor): ActorDisplay {
   if (actor.kind === 'agent') {
     const clientName = actor.agent?.clientName ?? '에이전트';
-    const label = agentLabel(clientName);
-    // The host stays visible next to a friendly label so the record still says who connected.
-    const via = label === clientName ? '' : `${clientName} · `;
+    const { label, host } = agentName(clientName);
+    // The host stays visible next to the name, since only the host is verified.
+    const via = host === null ? '' : `${host} · `;
     return {
       name: label,
       avatar: { shape: 'square', client: agentClientOf(clientName) },
@@ -74,7 +80,7 @@ export function actorDisplay(actor: Actor): ActorDisplay {
   };
 }
 
-/** Short name used inside sentences, e.g. hover labels: "Claude" or "@octocat". */
+/** Short name used inside sentences, e.g. hover labels: "Claude Code" or "@octocat". */
 export function actorShortName(actor: Actor): string {
-  return actor.kind === 'agent' ? agentLabel(actor.agent?.clientName ?? '에이전트') : `@${actor.login}`;
+  return actor.kind === 'agent' ? agentName(actor.agent?.clientName ?? '에이전트').label : `@${actor.login}`;
 }

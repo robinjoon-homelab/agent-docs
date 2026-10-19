@@ -6,6 +6,7 @@ import org.junit.jupiter.api.TestInfo
 import org.springframework.restdocs.ManualRestDocumentation
 import org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document
 import org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.documentationConfiguration
+import org.springframework.restdocs.mockmvc.MockMvcRestDocumentationConfigurer
 import org.springframework.restdocs.mockmvc.RestDocumentationResultHandler
 import org.springframework.restdocs.operation.preprocess.Preprocessors.preprocessRequest
 import org.springframework.restdocs.operation.preprocess.Preprocessors.preprocessResponse
@@ -16,7 +17,9 @@ import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
 import org.springframework.restdocs.snippet.Snippet
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.test.web.servlet.setup.RouterFunctionMockMvcBuilder
 import org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder
+import org.springframework.web.servlet.function.RouterFunction
 
 // Runs one real controller with its real advice on the Spring MVC defaults, which include Jackson with the Kotlin
 // module and Bean Validation. No application context, service, or database takes part, so these tests check only
@@ -35,7 +38,6 @@ abstract class RestDocsWebTest {
         restDocumentation.afterTest()
     }
 
-    // The URI settings keep the published host in the generated snippets.
     protected fun restDocsMockMvc(
         controller: Any,
         advice: Any,
@@ -43,13 +45,21 @@ abstract class RestDocsWebTest {
         MockMvcBuilders
             .standaloneSetup(controller)
             .setControllerAdvice(advice)
-            .apply<StandaloneMockMvcBuilder>(
-                documentationConfiguration(restDocumentation)
-                    .uris()
-                    .withScheme("https")
-                    .withHost("api.example.com")
-                    .withPort(443),
-            ).build()
+            .apply<StandaloneMockMvcBuilder>(documentation())
+            .build()
+
+    // For an endpoint served by a functional route rather than a controller, such as the MCP SDK transport.
+    protected fun restDocsMockMvc(routes: RouterFunction<*>): MockMvc =
+        MockMvcBuilders.routerFunctions(routes).apply<RouterFunctionMockMvcBuilder>(documentation()).build()
+
+    // The URI settings keep the published host in the generated snippets.
+    private fun documentation(): MockMvcRestDocumentationConfigurer =
+        documentationConfiguration(restDocumentation)
+            .uris()
+            .withScheme("https")
+            .withHost("api.example.com")
+            .withPort(443)
+            .and()
 }
 
 fun documented(

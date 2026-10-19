@@ -14,7 +14,7 @@
 * *웹 앱*: GitHub 로그인 세션 쿠키로 부릅니다. GET이 아닌 요청은 `XSRF-TOKEN` 쿠키 값을 `X-XSRF-TOKEN` 헤더로 보냅니다.
 * *에이전트·스크립트*: `Authorization: Bearer <토큰>`으로 부릅니다. MCP OAuth로 받은 `adt_a_` 액세스 토큰이나 설정 화면에서 발급한 `adt_s_` 스크립트 토큰을 씁니다. Bearer 요청에는 CSRF 헤더가 필요 없습니다.
 * 토큰은 승인할 때 고른 스페이스와 범위(`read`, `comment`, `edit`)만 다룹니다. 허용되지 않은 스페이스의 자료는 없는 것처럼 404로 답합니다.
-* 로그인하지 않은 `/api/**`, `/mcp` 요청은 401이고, `WWW-Authenticate: Bearer resource_metadata="…"` 헤더가 보호 리소스 메타데이터를 가리킵니다.
+* 로그인하지 않은 `/api/**`, `/mcp` 요청은 401이고, `WWW-Authenticate: Bearer resource_metadata="…", scope="read comment edit"` 헤더가 보호 리소스 메타데이터와 요청할 권한 범위를 알려 줍니다.
 * 연결 하나당 1분에 600번까지 부를 수 있습니다. 넘으면 429와 `Retry-After`(초)를 돌려줍니다.
 
 === 오류 형식
@@ -440,7 +440,7 @@ include::{snippets}/metrics-usage/response-fields.adoc[]
 
 == MCP
 
-`POST /mcp` 하나로 JSON-RPC를 받습니다. 2026-07-28 무상태 프로토콜(`params._meta`에 `io.modelcontextprotocol/protocolVersion`)과, 아직 그 버전을 쓰지 않는 클라이언트를 위한 2025년 `initialize` 수명주기를 함께 받습니다. 도구 목록은 `tools/list`로 알립니다. 스트림(`GET /mcp`)은 열지 않고 405로 답하며, 허용하지 않은 `Origin`은 403입니다.
+`POST /mcp` 하나로 JSON-RPC를 받는 무상태 Streamable HTTP 서버입니다. 공식 MCP Java SDK가 프로토콜을 처리하며, 프로토콜 버전 2025-11-25·2025-06-18·2025-03-26의 `initialize` 수명주기를 따릅니다. 세션 ID는 쓰지 않고 요청마다 JSON 응답 하나로 답합니다. 요청의 `Accept`에는 `application/json`과 `text/event-stream`이 모두 있어야 합니다. 스트림(`GET /mcp`)은 열지 않고 405로 답하며, 허용하지 않은 `Origin`은 403입니다.
 
 === initialize
 
@@ -448,12 +448,6 @@ include::{snippets}/mcp-initialize/http-request.adoc[]
 include::{snippets}/mcp-initialize/request-fields.adoc[]
 include::{snippets}/mcp-initialize/http-response.adoc[]
 include::{snippets}/mcp-initialize/response-fields.adoc[]
-
-=== server/discover
-
-include::{snippets}/mcp-discover/http-request.adoc[]
-include::{snippets}/mcp-discover/http-response.adoc[]
-include::{snippets}/mcp-discover/response-fields.adoc[]
 
 === tools/list
 
@@ -463,18 +457,20 @@ include::{snippets}/mcp-tools-list/response-fields.adoc[]
 
 === tools/call
 
+도구는 출력 스키마를 선언하지 않으므로 결과는 텍스트 블록 하나입니다. `docs_read`와 `docs_history` diff는 마크다운이고, 나머지 도구는 결과 데이터를 JSON으로 직렬화한 문자열입니다. `structuredContent`는 보내지 않습니다.
+
 include::{snippets}/mcp-tools-call/http-request.adoc[]
 include::{snippets}/mcp-tools-call/http-response.adoc[]
 include::{snippets}/mcp-tools-call/response-fields.adoc[]
 
 === 도구 오류
 
-업무 오류는 JSON-RPC 오류가 아니라 `isError: true`인 도구 결과로 돌아옵니다. `structuredContent`에 REST와 같은 `code`와 `fix`가 들어 있습니다.
+업무 오류는 JSON-RPC 오류가 아니라 `isError: true`인 도구 결과로 돌아옵니다. 텍스트는 REST와 같은 `code`와 `fix`를 담은 JSON입니다. 없는 도구 이름은 JSON-RPC 오류 `-32602`입니다.
 
 include::{snippets}/mcp-tool-error/http-request.adoc[]
 include::{snippets}/mcp-tool-error/http-response.adoc[]
 
-도구 인자의 JSON 타입이 다르거나 문자열 배열에 문자열이 아닌 원소가 있으면 `invalid`로 거절합니다. 선택 인자의 누락과 `null`은 기존 기본값을 사용합니다. `comments_query.status`는 `["resolved"]`처럼 배열로 전달해야 하며, 누락하거나 `null`이면 `["open"]`으로 조회합니다.
+인자는 도구 실행 전에 그 도구의 `inputSchema`로 검증합니다. 타입이 다르거나, 선언하지 않은 인자가 있거나, 필수 인자가 없으면 `isError: true`와 검증 메시지를 돌려줍니다. 선택 인자는 생략하고 `null`로 보내지 않습니다. `comments_query.status`는 `["resolved"]`처럼 배열로 전달하며, 생략하면 `["open"]`으로 조회합니다.
 
 include::{snippets}/mcp-invalid-argument/http-request.adoc[]
 include::{snippets}/mcp-invalid-argument/request-fields.adoc[]

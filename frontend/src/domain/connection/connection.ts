@@ -123,12 +123,15 @@ export function allowsSpace(connection: Connection, spaceId: string): boolean {
 
 export type McpSetup = { readonly add: readonly string[]; readonly login: readonly string[] };
 
-/** Commands shown on the agent connections screen, built from the origin the app is served from. */
+/**
+ * Commands shown on the agent connections screen, built from the origin the app is served from. Both register the
+ * server for every directory: Claude Code with user scope, Codex in its global config.
+ */
 export function mcpSetupCommands(origin: string): McpSetup {
   const endpoint = `${origin.replace(/\/+$/, '')}/mcp`;
   return {
     add: [
-      `claude mcp add --transport http agent-docs ${endpoint}`,
+      `claude mcp add --scope user --transport http agent-docs ${endpoint}`,
       `codex mcp add agent-docs --url ${endpoint}`,
     ],
     login: ['claude mcp login agent-docs', 'codex mcp login agent-docs'],

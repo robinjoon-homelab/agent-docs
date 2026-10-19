@@ -112,7 +112,7 @@ class DocsReadTool(
                     "format" to Schemas.choice("Output format", listOf("markdown", "plain", "outline")),
                     "section" to Schemas.string("Heading block id: read that section only"),
                     "blocks" to Schemas.strings("Block ids: read only these blocks"),
-                    "cursor" to Schemas.integer("nextCursor from the previous chunk"),
+                    "cursor" to Schemas.integer("cursor named at the end of the previous chunk"),
                 ),
             required = listOf("document"),
             readOnly = true,
@@ -130,14 +130,11 @@ class DocsReadTool(
                 arguments.optionalInt("cursor") ?: 0,
             )
         val chunk = queries.markdown(context.access, DocumentId(arguments.uuid("document")), request)
-        val structured =
-            mapOf(
-                "documentId" to chunk.document.id.value,
-                "revision" to chunk.document.revision,
-                "nextCursor" to chunk.nextCursor,
-                "totalBlocks" to chunk.totalBlocks,
-            )
-        val more = chunk.nextCursor?.let { "\n<!-- more blocks follow: call docs_read again with cursor $it -->\n" }.orEmpty()
-        return McpToolResult.markdown(chunk.text + more, structured)
+        // The front matter carries the document id and revision; a cut-off page says where to continue.
+        val more =
+            chunk.nextCursor
+                ?.let { "\n<!-- more blocks follow (${chunk.totalBlocks} in total): call docs_read again with cursor $it -->\n" }
+                .orEmpty()
+        return McpToolResult.markdown(chunk.text + more)
     }
 }

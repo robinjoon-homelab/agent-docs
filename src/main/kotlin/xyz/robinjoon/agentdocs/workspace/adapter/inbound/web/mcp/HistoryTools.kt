@@ -106,14 +106,8 @@ class DocsHistoryTool(
     ): McpToolResult {
         val from = arguments.optionalInt("from") ?: throw InvalidRequestException("diff needs from")
         val diff = queries.diff(context.access, document, from, arguments.optionalInt("to"))
-        return McpToolResult.markdown(
-            diff.unified,
-            mapOf(
-                "from" to diff.from,
-                "to" to diff.to,
-                "changedBlockIds" to diff.changedBlocks.map { it.value },
-            ),
-        )
+        // The header names both revisions and every hunk names its block, so the text alone is the whole result.
+        return McpToolResult.markdown(diff.unified)
     }
 }
 

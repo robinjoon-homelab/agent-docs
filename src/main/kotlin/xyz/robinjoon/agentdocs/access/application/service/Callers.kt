@@ -35,9 +35,14 @@ internal object Callers {
                 ConnectionScope.COMMENT -> CallerScope.COMMENT
                 ConnectionScope.EDIT -> CallerScope.EDIT
             }
-        // Records show the client_id host when there is one: a client's own name is self-declared and anyone can claim it.
+        // A client's own name is self-declared and anyone can claim it, so records show it with the client_id host when
+        // there is one: "Claude Code (claude.ai)".
         val client = connection.owner.client
-        val agent = CallerAgent(connection.id.value, client.host ?: client.name)
+        val label = client.host?.let { "${client.name} ($it)" } ?: client.name
+        val agent = CallerAgent(connection.id.value, label.take(MAX_LABEL_LENGTH))
         return Caller(connection.owner.userId.value, login, false, agent, connection.grant.spaces, scope)
     }
+
+    // The width of the actor client name columns.
+    private const val MAX_LABEL_LENGTH = 200
 }

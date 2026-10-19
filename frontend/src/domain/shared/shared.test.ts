@@ -21,6 +21,16 @@ describe('actorDisplay', () => {
     expect(actorDisplay(agent('Cursor')).avatar).toEqual({ shape: 'square', client: 'other' });
   });
 
+  it('splits "Name (host)" into the name and a delegation line that keeps the host', () => {
+    expect(actorDisplay(agent('Claude Code (claude.ai)', 'octocat'))).toEqual({
+      name: 'Claude Code',
+      avatar: { shape: 'square', client: 'claude' },
+      delegation: 'claude.ai · @octocat 위임',
+    });
+    expect(actorDisplay(agent('Codex (chatgpt.com)')).avatar).toEqual({ shape: 'square', client: 'codex' });
+    expect(actorDisplay(agent('Build (nightly)')).name).toBe('Build (nightly)');
+  });
+
   it('labels known OAuth client hosts and keeps the host in the delegation line', () => {
     expect(actorDisplay(agent('claude.ai', 'octocat'))).toEqual({
       name: 'Claude',
