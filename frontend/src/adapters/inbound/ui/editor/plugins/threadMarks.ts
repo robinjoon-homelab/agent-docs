@@ -1,7 +1,8 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import type { Anchor } from '../../../../../domain/thread/thread';
+import type { Anchor, Thread } from '../../../../../domain/thread/thread';
+import { textRange } from '../../../../../domain/thread/thread';
 import { findBlock, offsetToPos } from '../positions';
 
 export type ThreadMark = {
@@ -12,6 +13,15 @@ export type ThreadMark = {
 };
 
 export type ThreadMarksInput = { readonly marks: readonly ThreadMark[]; readonly activeId: string | null };
+
+export function threadMarksInput(threads: readonly Thread[], activeId: string | null): ThreadMarksInput {
+  return {
+    marks: threads
+      .filter((thread) => thread.status !== 'resolved' || thread.id === activeId)
+      .map((thread) => ({ threadId: thread.id, anchor: thread.anchor, range: textRange(thread) })),
+    activeId,
+  };
+}
 
 export const threadMarksKey = new PluginKey<DecorationSet>('threadMarks');
 

@@ -146,6 +146,7 @@ class DocsUploadTool(
     ): McpToolResult {
         val space = SpaceSlug(arguments.string("space"))
         val url = arguments.optionalString("url")
+        val alt = arguments.optionalString("alt").orEmpty().replace("]", "\\]")
         val asset =
             if (url != null) {
                 assets.import(context, space, url)
@@ -153,7 +154,6 @@ class DocsUploadTool(
                 val bytes = Base64.getMimeDecoder().decode(arguments.string("contentBase64"))
                 assets.upload(context, space, UploadedFile(arguments.optionalString("fileName").orEmpty(), null, bytes))
             }
-        val alt = arguments.optionalString("alt").orEmpty().replace("]", "\\]")
         return McpToolResult.data(
             mapOf(
                 "assetId" to asset.id.value,

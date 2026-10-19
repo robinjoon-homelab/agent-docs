@@ -98,7 +98,7 @@ export function NewSpaceDialog({ onClose }: { onClose: () => void }) {
           />
         </div>
         <p className="field-hint">
-          접근이 달라야 하면 스페이스를 나눈다. 에이전트 연결은 스페이스 단위로 허용합니다.
+          에이전트 연결은 스페이스 단위로 허용합니다. 접근 범위가 다른 문서는 다른 스페이스에 두세요.
         </p>
         {errors.map((error) => (
           <p key={error} className="field-error">

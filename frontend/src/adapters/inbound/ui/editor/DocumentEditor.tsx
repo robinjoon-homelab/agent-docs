@@ -18,11 +18,11 @@ import { toSavableBlocks } from '../../../../domain/document/draft';
 import { mergeAfterConflict } from '../../../../domain/document/merge';
 import { isAnchorError } from '../../../../domain/thread/anchor';
 import type { Anchor, Thread } from '../../../../domain/thread/thread';
-import { textRange } from '../../../../domain/thread/thread';
 import type { Services } from '../../../../config/ServicesContext';
 import { useServices } from '../../../../config/ServicesContext';
 import { docLinkHref } from '../common/InlineText';
 import { errorMessage } from '../common/States';
+import { filterMentionLogins } from '../common/mentions';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { hasMod } from '../hooks/useHotkey';
 import { BlockBehavior } from './behavior';
@@ -33,8 +33,7 @@ import { CodeBlockWithView, ImageWithView } from './nodeViews';
 import { BlockHandle, SelectionToolbar, TableToolbar } from './overlays';
 import { blockDecorationsKey } from './plugins/blockDecorations';
 import { clearDuplicateIds } from './plugins/blockIds';
-import type { ThreadMarksInput } from './plugins/threadMarks';
-import { threadMarksKey } from './plugins/threadMarks';
+import { threadMarksInput, threadMarksKey } from './plugins/threadMarks';
 import { anchorForSelection, blockAtPos } from './positions';
 import {
   BlockDocument,
@@ -54,6 +53,7 @@ import {
 import { slashItems } from './slashItems';
 import type { SuggestionItem } from './suggestions';
 import { SuggestionPopup, SuggestionStore, suggestionExtension } from './suggestions';
+import { threadAnchorElement } from './threadAnchors';
 import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
 import Strike from '@tiptap/extension-strike';
@@ -70,7 +70,7 @@ export type DocumentEditorHandle = {
   readonly flushSave: () => Promise<SaveOutcome>;
   /** Brings the content to `blocks`, e.g. the merge result after a save conflict. */
   readonly setBlocks: (blocks: readonly Block[]) => void;
-  /** Viewport top of a thread's highlighted anchor, or null when it is not in the document. */
+  /** Viewport top of a thread's anchor, or null when it is not in the document. */
   readonly anchorTop: (threadId: string) => number | null;
   readonly blockTop: (blockId: string) => number | null;
   readonly scrollToThread: (threadId: string) => void;
@@ -162,16 +162,13 @@ function buildExtensions(services: Services, store: SuggestionStore, bridge: Edi
     }));
   };
   const mentions = (query: string): SuggestionItem[] =>
-    bridge.mentionLogins
-      .filter((login) => login.toLowerCase().startsWith(query.toLowerCase()))
-      .slice(0, 8)
-      .map((login) => ({
-        key: login,
-        label: `@${login}`,
-        run: (editor, range) => {
-          editor.chain().focus().deleteRange(range).insertContent(`@${login} `).run();
-        },
-      }));
+    filterMentionLogins(bridge.mentionLogins, query).map((login) => ({
+      key: login,
+      label: `@${login}`,
+      run: (editor, range) => {
+        editor.chain().focus().deleteRange(range).insertContent(`@${login} `).run();
+      },
+    }));
   return [
     TableRoles,
     BlockDocument,
@@ -405,14 +402,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
   );
 
   useEffect(() => {
-    const input: ThreadMarksInput = {
-      marks: threads.map((thread) => ({
-        threadId: thread.id,
-        anchor: thread.anchor,
-        range: textRange(thread),
-      })),
-      activeId: activeThreadId,
-    };
+    const input = threadMarksInput(threads, activeThreadId);
     editor.view.dispatch(editor.state.tr.setMeta(threadMarksKey, input));
     latest.current.onContentChange();
   }, [editor, threads, activeThreadId]);
@@ -436,6 +426,8 @@ export function DocumentEditor(props: DocumentEditorProps) {
   useImperativeHandle(ref, (): DocumentEditorHandle => {
     const find = (selector: string): HTMLElement | null =>
       editor.view.dom.querySelector<HTMLElement>(selector);
+    const findThread = (threadId: string): HTMLElement | null =>
+      threadAnchorElement(editor.view.dom, latest.current.threads, threadId);
     const topOf = (element: HTMLElement | null): number | null =>
       element === null ? null : element.getBoundingClientRect().top;
     return {
@@ -444,10 +436,10 @@ export function DocumentEditor(props: DocumentEditorProps) {
         return session.saveContent(savableBlocks(editor, session));
       },
       setBlocks: (blocks) => applyBlocks(editor, savableBlocks(editor, session), blocks, randomBlockId),
-      anchorTop: (threadId) => topOf(find(`[data-thread-id="${CSS.escape(threadId)}"]`)),
+      anchorTop: (threadId) => topOf(findThread(threadId)),
       blockTop: (blockId) => topOf(find(`[data-block-id="${CSS.escape(blockId)}"]`)),
       scrollToThread: (threadId) =>
-        find(`[data-thread-id="${CSS.escape(threadId)}"]`)?.scrollIntoView({
+        findThread(threadId)?.scrollIntoView({
           block: 'center',
           behavior: 'smooth',
         }),

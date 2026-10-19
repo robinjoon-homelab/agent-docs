@@ -371,6 +371,15 @@
   font-size: 14px;
 }
 
+.comment-mentions {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+}
+
 .comment-editor-actions {
   display: flex;
   justify-content: flex-end;

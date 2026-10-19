@@ -12,25 +12,36 @@ class Arguments(
 ) {
     fun string(name: String): String = optionalString(name) ?: throw InvalidRequestException("argument $name is required")
 
-    fun optionalString(name: String): String? =
-        node
-            .get(name)
-            ?.takeIf(JsonNode::isString)
-            ?.stringValue()
-            ?.takeIf(String::isNotEmpty)
+    fun optionalString(name: String): String? {
+        val value = node.get(name)?.takeUnless(JsonNode::isNull) ?: return null
+        if (!value.isString) throw InvalidRequestException("argument $name must be a string")
+        return value.stringValue().takeIf(String::isNotEmpty)
+    }
 
     fun uuid(name: String): UUID = uuidOf(name, string(name))
 
     fun optionalUuid(name: String): UUID? = optionalString(name)?.let { uuidOf(name, it) }
 
-    fun optionalInt(name: String): Int? = node.get(name)?.takeIf(JsonNode::isInt)?.intValue()
+    fun optionalInt(name: String): Int? {
+        val value = node.get(name)?.takeUnless(JsonNode::isNull) ?: return null
+        if (!value.isInt) throw InvalidRequestException("argument $name must be an integer")
+        return value.intValue()
+    }
 
-    fun boolean(name: String): Boolean = node.path(name).asBoolean(false)
+    fun boolean(name: String): Boolean {
+        val value = node.get(name)?.takeUnless(JsonNode::isNull) ?: return false
+        if (!value.isBoolean) throw InvalidRequestException("argument $name must be a boolean")
+        return value.booleanValue()
+    }
 
-    fun strings(name: String): List<String>? =
-        node.get(name)?.takeIf(JsonNode::isArray)?.values()?.mapNotNull {
-            it.takeIf(JsonNode::isString)?.stringValue()
+    fun strings(name: String): List<String>? {
+        val value = node.get(name)?.takeUnless(JsonNode::isNull) ?: return null
+        if (!value.isArray) throw InvalidRequestException("argument $name must be an array of strings")
+        return value.values().map {
+            if (!it.isString) throw InvalidRequestException("argument $name must be an array of strings")
+            it.stringValue()
         }
+    }
 
     fun optionalInstant(name: String): Instant? =
         optionalString(name)?.let { value ->

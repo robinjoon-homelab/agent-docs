@@ -6,7 +6,7 @@ import type { AgentDocument } from '../../../../../domain/document/document';
 import { documentHref } from '../../../../../domain/document/document';
 import type { ConflictChoice } from '../../../../../domain/document/merge';
 import type { Anchor, Comment, Thread, ThreadFilter } from '../../../../../domain/thread/thread';
-import { isDetached } from '../../../../../domain/thread/thread';
+import { filterThreads, isDetached } from '../../../../../domain/thread/thread';
 import { useServices } from '../../../../../config/ServicesContext';
 import { useSession } from '../../app/SessionContext';
 import { useShell } from '../../app/ShellContext';
@@ -286,6 +286,10 @@ function DocumentWorkspace({
   };
 
   const openCount = threads.filter((thread) => thread.status !== 'resolved').length;
+  const mentionLogins = mentionCandidates(me.login, document, threads);
+  const highlightedThreadId = filterThreads(threads, filter).some((thread) => thread.id === activeThreadId)
+    ? activeThreadId
+    : null;
   const rail = (
     <CommentRail
       threads={threads}
@@ -294,6 +298,7 @@ function DocumentWorkspace({
       pending={pending}
       activeThreadId={activeThreadId}
       login={me.login}
+      mentionLogins={mentionLogins}
       spaceSlug={document.space.slug}
       actions={actions((thread) => {
         setReanchorThread(thread);
@@ -363,9 +368,9 @@ function DocumentWorkspace({
             session={session}
             editable={editable}
             threads={threads}
-            activeThreadId={activeThreadId}
+            activeThreadId={highlightedThreadId}
             reanchoring={reanchorThread !== null}
-            mentionLogins={mentionCandidates(me.login, document, threads)}
+            mentionLogins={mentionLogins}
             onActivateThread={(threadId) => {
               setActiveThreadId(threadId);
               if (!wide) setRailOpen(true);

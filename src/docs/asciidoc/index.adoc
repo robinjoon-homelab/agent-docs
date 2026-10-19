@@ -474,6 +474,13 @@ include::{snippets}/mcp-tools-call/response-fields.adoc[]
 include::{snippets}/mcp-tool-error/http-request.adoc[]
 include::{snippets}/mcp-tool-error/http-response.adoc[]
 
+도구 인자의 JSON 타입이 다르거나 문자열 배열에 문자열이 아닌 원소가 있으면 `invalid`로 거절합니다. 선택 인자의 누락과 `null`은 기존 기본값을 사용합니다. `comments_query.status`는 `["resolved"]`처럼 배열로 전달해야 하며, 누락하거나 `null`이면 `["open"]`으로 조회합니다.
+
+include::{snippets}/mcp-invalid-argument/http-request.adoc[]
+include::{snippets}/mcp-invalid-argument/request-fields.adoc[]
+include::{snippets}/mcp-invalid-argument/http-response.adoc[]
+include::{snippets}/mcp-invalid-argument/response-fields.adoc[]
+
 == 인증과 연결
 
 === 로그인한 사용자

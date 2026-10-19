@@ -4,7 +4,8 @@ import { THREAD_FILTER_LABEL, anchorQuote, filterThreads } from '../../../../../
 import { layoutRail } from '../../../../../domain/thread/railLayout';
 import { Icon } from '../../common/Icon';
 import type { ThreadActions } from './ThreadCard';
-import { CommentEditor, ThreadCard } from './ThreadCard';
+import { ThreadCard } from './ThreadCard';
+import { CommentEditor } from './CommentEditor';
 
 const FILTERS: readonly ThreadFilter[] = ['open', 'all', 'detached'];
 const CARD_GAP = 10;
@@ -27,6 +28,7 @@ export function CommentRail({
   pending,
   activeThreadId,
   login,
+  mentionLogins,
   spaceSlug,
   actions,
   aligned,
@@ -44,6 +46,7 @@ export function CommentRail({
   pending: Anchor | null;
   activeThreadId: string | null;
   login: string;
+  mentionLogins: readonly string[];
   spaceSlug: string;
   actions: ThreadActions;
   aligned: boolean;
@@ -157,6 +160,7 @@ export function CommentRail({
                 </span>
               </header>
               <CommentEditor
+                mentionLogins={mentionLogins}
                 initial=""
                 placeholder="댓글을 남기세요. @로 멘션 (⌘Enter)"
                 submitLabel="댓글"
@@ -169,9 +173,11 @@ export function CommentRail({
         )}
         {visible.length === 0 && pending === null ? (
           <p className="rail-empty faint small">
-            {filter === 'detached'
-              ? '분리된 댓글이 없습니다.'
-              : '댓글이 없습니다. 텍스트를 선택하고 댓글을 남기세요.'}
+            {threads.length === 0
+              ? '댓글이 없습니다. 텍스트를 선택하고 댓글을 남기세요.'
+              : filter === 'detached'
+                ? '분리된 댓글이 없습니다.'
+                : '열린 댓글이 없습니다.'}
           </p>
         ) : null}
         {visible.map((thread) => (
@@ -180,6 +186,7 @@ export function CommentRail({
               thread={thread}
               active={thread.id === activeThreadId}
               login={login}
+              mentionLogins={mentionLogins}
               spaceSlug={spaceSlug}
               actions={actions}
               onActivate={() => onActivate(thread)}

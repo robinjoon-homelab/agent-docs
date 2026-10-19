@@ -106,7 +106,7 @@ export function HomePage() {
       {spaces.state === 'ready' && spaces.data.length === 0 ? (
         <EmptyState title="아직 스페이스가 없습니다" actions={newSpaceButton}>
           <p className="muted" style={{ margin: 0 }}>
-            접근이 달라야 하면 스페이스를 나눈다
+            스페이스를 만들어 문서를 모으세요. 접근 범위가 다른 문서는 다른 스페이스에 두세요.
           </p>
         </EmptyState>
       ) : null}

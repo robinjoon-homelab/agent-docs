@@ -45,7 +45,7 @@ export function ConflictPanel({
       {conflicts.map((conflict) => {
         const myVersion = blockMarkdown(mineById.get(conflict.blockId));
         const current =
-          conflict.currentMarkdown ?? (conflict.current === null ? null : blockMarkdown(conflict.current));
+          conflict.current === null ? conflict.currentMarkdown : blockMarkdown(conflict.current);
         const choice = choices.get(conflict.blockId);
         return (
           <div key={conflict.blockId} className="conflict-row">

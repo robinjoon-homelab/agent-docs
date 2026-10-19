@@ -12,7 +12,7 @@ import {
 import { ActorChip } from '../../common/ActorChip';
 import { CommentBody } from '../../common/InlineText';
 import { RelativeTime } from '../../common/RelativeTime';
-import { hasMod } from '../../hooks/useHotkey';
+import { CommentEditor } from './CommentEditor';
 
 export type ThreadActions = {
   readonly reply: (thread: Thread, body: string) => Promise<boolean>;
@@ -35,76 +35,17 @@ function anchorLabel(thread: Thread): string {
   }
 }
 
-export function CommentEditor({
-  initial,
-  placeholder,
-  submitLabel,
-  onSubmit,
-  onCancel,
-  autoFocus = false,
-}: {
-  initial: string;
-  placeholder: string;
-  submitLabel: string;
-  onSubmit: (body: string) => Promise<boolean>;
-  onCancel?: () => void;
-  autoFocus?: boolean;
-}) {
-  const [body, setBody] = useState(initial);
-  const [busy, setBusy] = useState(false);
-  const submit = async (): Promise<void> => {
-    if (body.trim() === '' || busy) return;
-    setBusy(true);
-    const done = await onSubmit(body);
-    setBusy(false);
-    if (done) setBody('');
-  };
-  return (
-    <form
-      className="comment-editor"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-    >
-      <textarea
-        className="textarea"
-        value={body}
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        rows={2}
-        onChange={(event) => setBody(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && hasMod(event)) {
-            event.preventDefault();
-            void submit();
-          }
-          if (event.key === 'Escape') onCancel?.();
-        }}
-      />
-      <div className="comment-editor-actions">
-        {onCancel === undefined ? null : (
-          <button type="button" className="btn btn-small btn-ghost" onClick={onCancel}>
-            취소
-          </button>
-        )}
-        <button type="submit" className="btn btn-small btn-primary" disabled={busy || body.trim() === ''}>
-          {submitLabel}
-        </button>
-      </div>
-    </form>
-  );
-}
-
 function CommentItem({
   thread,
   comment,
   login,
+  mentionLogins,
   actions,
 }: {
   thread: Thread;
   comment: Comment;
   login: string;
+  mentionLogins: readonly string[];
   actions: ThreadActions;
 }) {
   const [editing, setEditing] = useState(false);
@@ -122,6 +63,7 @@ function CommentItem({
         <p className="comment-deleted">삭제된 댓글</p>
       ) : editing ? (
         <CommentEditor
+          mentionLogins={mentionLogins}
           initial={comment.body}
           placeholder="댓글 수정"
           submitLabel="저장"
@@ -161,6 +103,7 @@ export function ThreadCard({
   active,
   login,
   spaceSlug,
+  mentionLogins,
   actions,
   onActivate,
 }: {
@@ -168,6 +111,7 @@ export function ThreadCard({
   active: boolean;
   login: string;
   spaceSlug: string;
+  mentionLogins: readonly string[];
   actions: ThreadActions;
   onActivate: () => void;
 }) {
@@ -209,7 +153,14 @@ export function ThreadCard({
       ) : null}
       <ul className="comments">
         {thread.comments.map((comment) => (
-          <CommentItem key={comment.id} thread={thread} comment={comment} login={login} actions={actions} />
+          <CommentItem
+            key={comment.id}
+            thread={thread}
+            comment={comment}
+            login={login}
+            mentionLogins={mentionLogins}
+            actions={actions}
+          />
         ))}
       </ul>
       {thread.linkedRevisions.length === 0 ? null : (
@@ -223,6 +174,7 @@ export function ThreadCard({
       )}
       {active ? (
         <CommentEditor
+          mentionLogins={mentionLogins}
           placeholder="답글 (⌘Enter)"
           submitLabel="답글"
           initial=""
