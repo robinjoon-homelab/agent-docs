@@ -1,0 +1,248 @@
+.history-page {
+  max-width: 1200px;
+}
+
+.history-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.history-sidebar {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.history-period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.history-period .input {
+  width: auto;
+  min-width: 0;
+  flex: 1;
+  min-height: 30px;
+  padding: 3px 6px;
+  font-size: 13px;
+}
+
+.history-revisions {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.history-revision {
+  border-bottom: 1px solid var(--border);
+}
+
+.history-revision:last-child {
+  border-bottom: none;
+}
+
+.history-revision.selected {
+  background: var(--bg-active);
+}
+
+.history-revision-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-revision-main:hover {
+  background: var(--bg-hover);
+}
+
+.history-revision-main input {
+  margin-top: 4px;
+}
+
+.history-revision-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.history-revision-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.history-revision-summary {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.history-threads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 12px 10px;
+}
+
+.history-threads .chip {
+  font-size: 12px;
+}
+
+.history-main-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-main-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.history-counts {
+  display: inline-flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+}
+
+.history-count-added {
+  color: var(--diff-added);
+}
+
+.history-count-modified {
+  color: var(--diff-modified);
+}
+
+.history-count-removed {
+  color: var(--diff-removed);
+}
+
+.history-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  padding: 4px 8px 4px 0;
+  border-radius: var(--radius-small);
+}
+
+.history-marker {
+  padding-top: 2px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-align: center;
+}
+
+.history-row-added {
+  background: var(--diff-added-bg);
+}
+
+.history-row-added .history-marker {
+  color: var(--diff-added);
+}
+
+.history-row-modified {
+  background: var(--diff-modified-bg);
+}
+
+.history-row-modified .history-marker {
+  color: var(--diff-modified);
+}
+
+.history-row-removed {
+  background: var(--diff-removed-bg);
+}
+
+.history-row-removed .history-marker {
+  color: var(--diff-removed);
+}
+
+.history-row-removed .history-row-body {
+  opacity: 0.65;
+  text-decoration: line-through;
+}
+
+.history-before {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--diff-modified);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.history-before summary {
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.history-unified {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border-radius: var(--radius-small);
+  background: var(--bg-sunken);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.history-unified-add {
+  color: var(--diff-added);
+}
+
+.history-unified-del {
+  color: var(--diff-removed);
+}
+
+.history-unified-meta {
+  color: var(--text-faint);
+}
+
+@media (max-width: 900px) {
+  .history-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .history-sidebar {
+    position: static;
+    max-height: 320px;
+  }
+}

@@ -1,3 +1,5 @@
+import com.github.gradle.node.pnpm.task.PnpmInstallTask
+import com.github.gradle.node.pnpm.task.PnpmTask
 import dev.detekt.gradle.Detekt
 import dev.detekt.gradle.extensions.FailOnSeverity
 import org.asciidoctor.gradle.jvm.AsciidoctorTask
@@ -11,6 +13,7 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
     id("org.asciidoctor.jvm.convert") version "4.0.5"
     id("dev.detekt") version "2.0.0-alpha.6"
+    id("com.github.node-gradle.node") version "7.1.0"
 }
 
 group = "xyz.robinjoon"
@@ -29,6 +32,7 @@ kotlin {
 
 val exposedVersion = "1.5.0"
 val snippetsDir = layout.buildDirectory.dir("generated-snippets")
+val frontendDir = layout.projectDirectory.dir("frontend")
 
 dependencies {
     implementation(platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES))
@@ -36,6 +40,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-security-oauth2-client")
+    implementation("software.amazon.awssdk:s3:2.56.0")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.exposed:exposed-spring-boot4-starter:$exposedVersion")
@@ -91,8 +98,33 @@ tasks.named<Detekt>("detekt") {
 }
 
 tasks.check {
-    dependsOn("detektMain", "detektTest", ":quality-rules:test")
+    dependsOn("detektMain", "detektTest", ":quality-rules:test", "frontendCheck")
 }
+
+// The web app is built with a pinned Node and pnpm that Gradle downloads, so CI and local builds need no Node install.
+node {
+    version.set("24.21.0")
+    pnpmVersion.set("12.14.0")
+    download.set(true)
+    nodeProjectDir.set(frontendDir)
+}
+
+tasks.named<PnpmInstallTask>("pnpmInstall") {
+    args.set(listOf("--frozen-lockfile"))
+}
+
+// pnpm check runs lint, the layer rules, the tests, and the production build into frontend/dist.
+val frontendCheck =
+    tasks.register<PnpmTask>("frontendCheck") {
+        dependsOn(tasks.named("pnpmInstall"))
+        args.set(listOf("check"))
+        inputs.files(
+            fileTree(frontendDir) {
+                exclude("node_modules/**", "dist/**", "*.tsbuildinfo")
+            },
+        )
+        outputs.dir(frontendDir.dir("dist"))
+    }
 
 asciidoctorj {
     setVersion("3.0.1")
@@ -153,6 +185,9 @@ tasks.bootJar {
     archiveFileName.set("application.jar")
     from(tasks.named("asciidoctor")) {
         into("BOOT-INF/classes/static/docs")
+    }
+    from(frontendCheck) {
+        into("BOOT-INF/classes/static")
     }
 }
 

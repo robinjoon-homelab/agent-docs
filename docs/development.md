@@ -7,6 +7,11 @@
 - 로컬 API는 `http://localhost:8080`으로 호출한다. H2 개발 DB를 초기화할 때는 앱을 종료하고 필요한 데이터를 백업한 뒤 `data/`를 삭제한다.
 - 기본 프로필의 DB 연결은 `DB_URL`·`DB_USERNAME`·`DB_PASSWORD` 또는 표준 `SPRING_DATASOURCE_URL`·`SPRING_DATASOURCE_USERNAME`·`SPRING_DATASOURCE_PASSWORD`로 지정한다. H2 외의 DB에는 `DB_DRIVER`도 설정한다.
 - 운영 PostgreSQL에는 [배포 계약](deployment.md#컨테이너와-db-계약)의 `prod` 프로필을 사용한다. DB 파일·자격 증명을 커밋하지 않는다.
+- `AGENT_DOCS_OWNER`에 소유자 GitHub 로그인을 지정한다. 비어 있으면 앱이 시작하지 않는다. 함께 들어올 로그인은 `AGENT_DOCS_MEMBERS`에 쉼표로 적는다.
+- GitHub 로그인에는 GitHub OAuth App의 `GITHUB_CLIENT_ID`·`GITHUB_CLIENT_SECRET`이 필요하다. 콜백 주소는 `<공개 주소>/login/oauth2/code/github`다.
+- `AGENT_DOCS_PUBLIC_URL`에 브라우저와 MCP 클라이언트가 쓰는 주소를 지정한다. 기본값은 `http://localhost:8080`이며 OAuth 메타데이터·토큰 대상이 이 주소를 따른다.
+- 첨부 파일은 기본으로 `AGENT_DOCS_ASSET_DIR`(기본 `./data/assets`)에 저장한다. S3 호환 저장소는 `AGENT_DOCS_ASSET_STORE=s3`와 `AGENT_DOCS_S3_BUCKET`·`AGENT_DOCS_S3_ENDPOINT`·`AGENT_DOCS_S3_REGION`·`AGENT_DOCS_S3_PREFIX`로 지정하고, 자격 증명은 AWS SDK 기본 경로(`AWS_ACCESS_KEY_ID`·`AWS_SECRET_ACCESS_KEY` 등)로 넘긴다.
+- 웹 화면은 `frontend/`에서 [프런트엔드 명령](frontend-architecture.md#명령)으로 실행한다. 개발 서버는 API를 `http://localhost:8080`으로 프록시한다.
 
 ## 기능 변경
 
@@ -45,7 +50,7 @@
 
 - `*ApiDocumentationTest`에서 입력 포트를 MockK로 대체하고 MockMvc로 실제 컨트롤러·요청 검증·직렬화·예외 변환의 요청·응답·상태 코드와 필요한 검증 오류·없는 리소스 응답을 검증한다. DB와 서비스 구현을 연결하지 않는다.
 - API 변경과 함께 REST Docs 필드 설명을 수정하고 `src/docs/asciidoc/index.adoc`에 생성 스니펫을 연결한다.
-- HTTP 상세를 README·개발 가이드에 재작성하지 않는다. 업무 규칙은 [아키텍처 문서](ddd-architecture.md#예제의-업무-규칙)에서 관리한다.
+- HTTP 상세를 README·개발 가이드에 재작성하지 않는다. 업무 규칙은 [아키텍처 문서](ddd-architecture.md#업무-규칙)에서 관리한다.
 - `build/generated-snippets`와 `build/docs/asciidoc/index.html`을 직접 편집하지 않는다.
 - 생성 문서는 전체 빌드가 만든 `build/docs/asciidoc/index.html`과 `application.jar`의 `BOOT-INF/classes/static/docs/index.html`로 확인한다. 화면으로 볼 때는 `java -jar build/libs/application.jar`로 실행해 `http://localhost:8080/docs/index.html`만 열고 `bootRun`을 사용하지 않는다. 이 확인은 HTTP 업무 시나리오 검증이 아니다.
 
@@ -54,8 +59,6 @@
 - `src/main/resources/db/migration`의 마지막 버전 다음 번호로 `V<번호>__describe_change.sql`을 추가한다. 배포된 마이그레이션은 수정하지 않는다.
 - Flyway로만 DDL을 적용하고 `spring.exposed.generate-ddl=false`를 유지한다.
 - 기존 데이터 변환·새 제약의 테스트 작성 여부와 방식은 [테스트 범위](#테스트-범위)를 따른다. 여러 저장 작업에는 [트랜잭션 계약](ddd-architecture.md#트랜잭션)을 적용한다.
-- V1~V3에서 V4로 업그레이드할 때 기존 주문의 SKU·수량과 조회·취소 동작을 보존한다. 과거 주문에서 Offer를 자동 생성하지 않는다.
-- 배포하지 않은 과거 이벤트 초안 V2~V5를 적용한 개인 개발 DB에서 체크섬·스키마 충돌이 나면 필요한 데이터를 백업한 뒤 해당 DB만 다시 만든다. 자동 초기화하지 않는다.
 
 ## 실행과 검증
 
@@ -68,12 +71,13 @@ java -version
 
 변경에 해당하는 검증을 먼저 실행한다. 애플리케이션 테스트를 선별할 때는 `:test` 태스크를 지정한다.
 
-- 도메인·유스케이스: `./gradlew :test --tests '*OrderServiceTest'`처럼 대상 테스트를 지정한다.
-- RDB 어댑터: `./gradlew :test --tests '*ExposedOrderRepositoryTest'`처럼 대상 어댑터 테스트를 지정한다.
+- 도메인·유스케이스: `./gradlew :test --tests '*DocumentServiceTest'`처럼 대상 테스트를 지정한다.
+- RDB 어댑터: `./gradlew :test --tests '*ExposedDocumentRepositoryTest'`처럼 대상 어댑터 테스트를 지정한다.
 - HTTP·문서: `./gradlew :test --tests '*ApiDocumentationTest'`.
 - 형식: 수정은 `./gradlew ktlintFormat`, 확인은 `./gradlew ktlintCheck`.
 - 검사 규칙: `./gradlew detektMain detektTest`, `./gradlew :quality-rules:test`. [검사기 지침](quality-maintenance.md)의 회귀 범위도 확인한다.
 - 배포 스크립트: [배포 없이 검증](deployment.md#배포-없이-검증)의 Python 테스트도 실행한다.
+- 웹 화면: `./gradlew frontendCheck`. 전체 빌드도 이 검사를 포함한다.
 
 마지막에 전체 빌드와 diff를 확인한다.
 

@@ -5,6 +5,8 @@
 - 모든 앱에서 [.github/workflows/ci.yml](../.github/workflows/ci.yml), [scripts/deploy.py](../scripts/deploy.py), `scripts/tests`, [Dockerfile](../Dockerfile), `.dockerignore`, Gradle 빌드 구성을 공통으로 유지한다.
 - 앱별 값은 아래 변수로 지정한다. 기능 추가를 위해 공용 배포 파일을 개별 수정하지 않는다.
 - 기본 구성을 사용할 때는 `.github/deployment.json`을 만들지 않는다.
+- 이 앱의 Gradle 빌드는 공용 구성에 웹 화면 빌드(`frontendCheck`)와 `bootJar`의 `static/` 포함을 더한다. 공용 구성을 갱신할 때 이 연결을 유지한다. CI·Dockerfile은 바꾸지 않는다.
+- 이 앱의 최초 생성 설정은 `.github/deployment.json`이다. GitHub 로그인 값은 `agent-docs` namespace의 `agent-docs-runtime` Secret(`GITHUB_CLIENT_ID`·`GITHUB_CLIENT_SECRET`)에서 읽는다. 공용 오브젝트 스토리지가 생기기 전까지 첨부는 컨테이너 디스크에 저장되어 Pod가 바뀌면 사라진다.
 - CI 변경 시 PR 소스 커밋 검사를 유지한다. 신뢰하지 않는 PR에 배포 자격 증명을 제공하거나 `pull_request_target`으로 실행하지 않는다.
 
 ## 배포 전 설정

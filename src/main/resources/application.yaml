@@ -21,6 +21,26 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  # The jar stamps every entry with the same date, so Last-Modified would let a browser keep an old index.html that
+  # points at assets a release removed. Unhashed static files are fetched again on every load instead.
+  web:
+    resources:
+      cache:
+        use-last-modified: false
+        cachecontrol:
+          no-cache: true
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: ${GITHUB_CLIENT_ID:unset}
+            client-secret: ${GITHUB_CLIENT_SECRET:unset}
+            scope: read:user
   lifecycle:
     timeout-per-shutdown-phase: 30s
 
@@ -43,3 +63,18 @@ management:
       enabled: true
     readinessstate:
       enabled: true
+
+# The owner is the GitHub login allowed to sign in with full rights; the application refuses to start without one.
+# members may sign in but see nothing until invitations exist. public-url is the address MCP clients and browsers use.
+agent-docs:
+  public-url: ${AGENT_DOCS_PUBLIC_URL:http://localhost:8080}
+  owner: ${AGENT_DOCS_OWNER:}
+  members: ${AGENT_DOCS_MEMBERS:}
+  assets:
+    store: ${AGENT_DOCS_ASSET_STORE:filesystem}
+    directory: ${AGENT_DOCS_ASSET_DIR:./data/assets}
+    s3:
+      bucket: ${AGENT_DOCS_S3_BUCKET:}
+      prefix: ${AGENT_DOCS_S3_PREFIX:agent-docs}
+      endpoint: ${AGENT_DOCS_S3_ENDPOINT:}
+      region: ${AGENT_DOCS_S3_REGION:us-east-1}

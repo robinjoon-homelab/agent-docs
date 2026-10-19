@@ -1,208 +1,567 @@
-= 템플릿 API
+= Agent Docs API
 :doctype: book
 :toc: left
 :toclevels: 2
 :sectnums:
 :source-highlighter: highlight.js
 
-로컬 요청에서는 예시의 `https://api.example.com`을 `http://localhost:8080`으로 바꿉니다.
+로컬 요청에서는 예시의 `https://docs.example.com`과 `http://localhost:8080`을 서버 주소로 바꿉니다.
 
-== Todo CRUD
+== 개요
 
-=== 할 일 생성
+=== 호출 방법
 
-include::{snippets}/todos-create/http-request.adoc[]
-include::{snippets}/todos-create/request-fields.adoc[]
-include::{snippets}/todos-create/http-response.adoc[]
-include::{snippets}/todos-create/response-headers.adoc[]
-include::{snippets}/todos-create/response-fields.adoc[]
-include::{snippets}/todos-create/curl-request.adoc[]
+* *웹 앱*: GitHub 로그인 세션 쿠키로 부릅니다. GET이 아닌 요청은 `XSRF-TOKEN` 쿠키 값을 `X-XSRF-TOKEN` 헤더로 보냅니다.
+* *에이전트·스크립트*: `Authorization: Bearer <토큰>`으로 부릅니다. MCP OAuth로 받은 `adt_a_` 액세스 토큰이나 설정 화면에서 발급한 `adt_s_` 스크립트 토큰을 씁니다. Bearer 요청에는 CSRF 헤더가 필요 없습니다.
+* 토큰은 승인할 때 고른 스페이스와 범위(`read`, `comment`, `edit`)만 다룹니다. 허용되지 않은 스페이스의 자료는 없는 것처럼 404로 답합니다.
+* 로그인하지 않은 `/api/**`, `/mcp` 요청은 401이고, `WWW-Authenticate: Bearer resource_metadata="…"` 헤더가 보호 리소스 메타데이터를 가리킵니다.
+* 연결 하나당 1분에 600번까지 부를 수 있습니다. 넘으면 429와 `Retry-After`(초)를 돌려줍니다.
 
-=== 할 일 조회
+=== 오류 형식
 
-include::{snippets}/todos-get/http-request.adoc[]
-include::{snippets}/todos-get/path-parameters.adoc[]
-include::{snippets}/todos-get/http-response.adoc[]
-include::{snippets}/todos-get/response-fields.adoc[]
+오류는 `application/problem+json`입니다. `code`는 기계가 읽는 값이고, `fix`는 에이전트가 스스로 고칠 수 있게 다음 행동을 알려 줍니다.
 
-=== 할 일 목록
+[cols="1,1,3"]
+|===
+|HTTP |code |뜻
 
-include::{snippets}/todos-list/http-request.adoc[]
-include::{snippets}/todos-list/http-response.adoc[]
-include::{snippets}/todos-list/response-fields.adoc[]
+|400 |invalid |요청 값이 규칙에 맞지 않음
+|401 |unauthenticated |로그인이나 토큰이 없음
+|403 |forbidden |연결 범위가 모자라거나 허용되지 않은 동작
+|404 |not_found |없거나 볼 수 없는 자료
+|404 |not_resolved |저장소·디렉터리에 맞는 스페이스를 찾지 못함. `candidates`를 함께 보냄
+|409 |conflict |다른 쪽이 먼저 고침. 블록 충돌이면 `conflicts`에 현재 블록을 보냄
+|409 |taken |이미 쓰는 주소나 경로
+|429 |rate_limited |요청이 너무 많음
+|===
 
-=== 할 일 완료
+=== 멱등 키
 
-같은 할 일에 반복해서 요청해도 완료된 상태를 유지합니다.
+쓰기 요청 본문에 `opId`를 넣으면 같은 `opId`로 다시 보낸 요청은 처음 결과를 그대로 돌려주고 두 번 쓰지 않습니다. 네트워크가 끊겨 다시 보낼 때 씁니다.
 
-include::{snippets}/todos-complete/http-request.adoc[]
-include::{snippets}/todos-complete/path-parameters.adoc[]
-include::{snippets}/todos-complete/http-response.adoc[]
-include::{snippets}/todos-complete/response-fields.adoc[]
+=== 블록 형식
 
-=== 오류
+문서 본문은 블록 배열입니다. 모든 블록은 `id`(서버가 준 ID, 새 블록은 10자 `[a-z0-9]`), `type`, `hash`(본문 마크다운의 해시. 보낼 때는 빼도 됨)를 가집니다. 글 안의 서식은 마크다운으로 적습니다: `**굵게**`, `*기울임*`, `~~취소선~~`, `` `코드` ``, `[글](https://…)`, 문서 링크 `[제목](doc:<문서 ID>)`, 줄바꿈 `<br>`, 멘션 `@login`.
 
-==== 올바르지 않은 제목
+[cols="1,3"]
+|===
+|type |필드
 
-include::{snippets}/todos-invalid-title/http-request.adoc[]
-include::{snippets}/todos-invalid-title/http-response.adoc[]
-include::{snippets}/todos-invalid-title/response-fields.adoc[]
+|heading |`level` 1~3, `text`
+|paragraph |`text`
+|listItem |`style`(bullet, numbered, task), `depth` 0~, `checked`(task), `text`
+|quote |`text`
+|callout |`kind`(note, tip, important, warning, caution), `text`
+|code |`language`, `code`
+|table |`columns[]`(`id`, `align`: none, left, center, right), `rows[]`(`id`, `cells[]`). 첫 행이 머리글
+|image |`assetId`, `alt`, `caption`
+|divider |없음
+|===
 
-==== 존재하지 않는 할 일
+에이전트는 같은 본문을 *주석 마크다운*으로 읽고 씁니다. 블록마다 `<!-- b:<id> h:<hash> -->` 주석이 붙어 블록 ID와 해시를 알려 줍니다.
 
-include::{snippets}/todos-not-found/http-request.adoc[]
-include::{snippets}/todos-not-found/path-parameters.adoc[]
-include::{snippets}/todos-not-found/http-response.adoc[]
-include::{snippets}/todos-not-found/response-fields.adoc[]
+=== 편집 연산
 
-== 판매품목
+`POST /api/documents/{id}/edits`와 MCP `docs_edit`은 블록 단위 연산 목록을 한 번에 적용합니다. 하나라도 실패하면 아무것도 바꾸지 않습니다. `ifHash`는 읽을 때 받은 블록 해시이고, 그 뒤 블록이 바뀌었으면 409 `conflict`로 현재 블록을 돌려줍니다.
 
-* 주문 전에 SKU를 등록하고 응답의 UUID로 조회·판매 중단을 요청합니다.
-* 판매 중단 상태는 DISCONTINUED이며 반복 중단은 같은 상태를 반환합니다.
-* 판매 중단으로 기존 주문·재고가 바뀐다고 가정하지 않습니다.
+[cols="1,3"]
+|===
+|op |필드
 
-=== 판매품목 등록
+|replace |`blockId`, `ifHash`, `markdown`(블록 하나 이상)
+|insert |`markdown`, 위치(`after`: 블록 ID, `before`: 블록 ID, `at`: start 또는 end. 기본 end)
+|delete |`blockId`, `ifHash`
+|move |`blockId`, `ifHash`, 위치
+|replaceText |`blockId`, `find`, `replace`. `find`는 그 블록 마크다운에 정확히 한 번 나와야 하고, 바꾼 결과도 블록 하나여야 함
+|===
 
-include::{snippets}/offers-register/http-request.adoc[]
-include::{snippets}/offers-register/request-fields.adoc[]
-include::{snippets}/offers-register/http-response.adoc[]
-include::{snippets}/offers-register/response-headers.adoc[]
-include::{snippets}/offers-register/response-fields.adoc[]
-include::{snippets}/offers-register/curl-request.adoc[]
+== 스페이스
 
-=== 판매품목 조회
+=== 스페이스 목록
 
-include::{snippets}/offers-get/http-request.adoc[]
-include::{snippets}/offers-get/path-parameters.adoc[]
-include::{snippets}/offers-get/http-response.adoc[]
-include::{snippets}/offers-get/response-fields.adoc[]
+include::{snippets}/spaces-list/http-request.adoc[]
+include::{snippets}/spaces-list/http-response.adoc[]
+include::{snippets}/spaces-list/response-fields.adoc[]
 
-=== 판매 중단
+=== 스페이스 만들기
 
-include::{snippets}/offers-discontinue/http-request.adoc[]
-include::{snippets}/offers-discontinue/path-parameters.adoc[]
-include::{snippets}/offers-discontinue/http-response.adoc[]
-include::{snippets}/offers-discontinue/response-fields.adoc[]
+include::{snippets}/spaces-create/http-request.adoc[]
+include::{snippets}/spaces-create/request-fields.adoc[]
+include::{snippets}/spaces-create/http-response.adoc[]
+include::{snippets}/spaces-create/response-headers.adoc[]
+include::{snippets}/spaces-create/response-fields.adoc[]
 
-=== 오류
+=== 스페이스 조회
 
-==== 잘못된 판매품목 값
+예전 주소로 조회해도 현재 주소의 스페이스를 돌려줍니다.
 
-include::{snippets}/offers-invalid/http-request.adoc[]
-include::{snippets}/offers-invalid/http-response.adoc[]
-include::{snippets}/offers-invalid/response-fields.adoc[]
+include::{snippets}/spaces-get/http-request.adoc[]
+include::{snippets}/spaces-get/path-parameters.adoc[]
+include::{snippets}/spaces-get/http-response.adoc[]
+include::{snippets}/spaces-get/response-fields.adoc[]
 
-==== 없는 판매품목
+=== 스페이스 바꾸기
 
-include::{snippets}/offers-not-found/http-request.adoc[]
-include::{snippets}/offers-not-found/path-parameters.adoc[]
-include::{snippets}/offers-not-found/http-response.adoc[]
-include::{snippets}/offers-not-found/response-fields.adoc[]
+include::{snippets}/spaces-change/http-request.adoc[]
+include::{snippets}/spaces-change/path-parameters.adoc[]
+include::{snippets}/spaces-change/request-fields.adoc[]
+include::{snippets}/spaces-change/http-response.adoc[]
+include::{snippets}/spaces-change/response-fields.adoc[]
 
-==== 중복 SKU
+=== 저장소·디렉터리로 스페이스 찾기
 
-include::{snippets}/offers-duplicate/http-request.adoc[]
-include::{snippets}/offers-duplicate/http-response.adoc[]
-include::{snippets}/offers-duplicate/response-fields.adoc[]
+에이전트가 작업 중인 저장소나 디렉터리에 연결된 스페이스를 찾습니다.
 
-== 주문
-
-* 판매 중인 Offer의 SKU를 서로 다르게 1~10개 제출하고 품목별 수량은 1~100으로 지정합니다.
-* 품목(OrderLine)은 접수 후 변경하지 않습니다. 접수 상태는 PLACED, 취소 상태는 CANCELLED이며 반복 취소는 같은 상태를 반환합니다.
-* Offer 조회 직후 판매 중단이 커밋된 경우에는 이미 읽은 상태로 주문이 접수될 수 있음을 고려합니다.
-* 주문 성공으로 재고 확인·예약을 가정하지 않습니다.
-
-=== 주문 접수
-
-include::{snippets}/orders-place/http-request.adoc[]
-include::{snippets}/orders-place/request-fields.adoc[]
-include::{snippets}/orders-place/http-response.adoc[]
-include::{snippets}/orders-place/response-headers.adoc[]
-include::{snippets}/orders-place/response-fields.adoc[]
-include::{snippets}/orders-place/curl-request.adoc[]
-
-=== 주문 조회
-
-include::{snippets}/orders-get/http-request.adoc[]
-include::{snippets}/orders-get/path-parameters.adoc[]
-include::{snippets}/orders-get/http-response.adoc[]
-include::{snippets}/orders-get/response-fields.adoc[]
-
-=== 주문 취소
-
-include::{snippets}/orders-cancel/http-request.adoc[]
-include::{snippets}/orders-cancel/path-parameters.adoc[]
-include::{snippets}/orders-cancel/http-response.adoc[]
-include::{snippets}/orders-cancel/response-fields.adoc[]
+include::{snippets}/spaces-resolve/http-request.adoc[]
+include::{snippets}/spaces-resolve/request-fields.adoc[]
+include::{snippets}/spaces-resolve/http-response.adoc[]
+include::{snippets}/spaces-resolve/response-fields.adoc[]
 
 === 오류
 
-==== 잘못된 주문 값
+==== 스페이스를 찾지 못함
 
-include::{snippets}/orders-invalid/http-request.adoc[]
-include::{snippets}/orders-invalid/http-response.adoc[]
-include::{snippets}/orders-invalid/response-fields.adoc[]
+include::{snippets}/spaces-not-resolved/http-request.adoc[]
+include::{snippets}/spaces-not-resolved/http-response.adoc[]
+include::{snippets}/spaces-not-resolved/response-fields.adoc[]
 
-==== 없는 주문
+==== 이미 쓰는 주소
 
-include::{snippets}/orders-not-found/http-request.adoc[]
-include::{snippets}/orders-not-found/path-parameters.adoc[]
-include::{snippets}/orders-not-found/http-response.adoc[]
-include::{snippets}/orders-not-found/response-fields.adoc[]
+include::{snippets}/spaces-slug-taken/http-request.adoc[]
+include::{snippets}/spaces-slug-taken/http-response.adoc[]
+include::{snippets}/spaces-slug-taken/response-fields.adoc[]
 
-==== 판매 중이 아닌 품목
+==== 없는 스페이스
 
-미등록 SKU와 판매 중단 SKU는 409를 반환하며 주문은 저장하지 않습니다.
+include::{snippets}/spaces-not-found/http-request.adoc[]
+include::{snippets}/spaces-not-found/http-response.adoc[]
+include::{snippets}/spaces-not-found/response-fields.adoc[]
 
-include::{snippets}/orders-not-on-sale/http-request.adoc[]
-include::{snippets}/orders-not-on-sale/http-response.adoc[]
-include::{snippets}/orders-not-on-sale/response-fields.adoc[]
+== 문서
 
-== 재고
+=== 문서 목록
 
-품목을 등록할 때 보유량은 0 이상으로, 입고 요청의 수량은 양수로 지정합니다.
+include::{snippets}/documents-list/http-request.adoc[]
+include::{snippets}/documents-list/path-parameters.adoc[]
+include::{snippets}/documents-list/query-parameters.adoc[]
+include::{snippets}/documents-list/http-response.adoc[]
+include::{snippets}/documents-list/response-fields.adoc[]
 
-=== 재고 품목 등록
+=== 문서 만들기
 
-include::{snippets}/inventory-items-register/http-request.adoc[]
-include::{snippets}/inventory-items-register/request-fields.adoc[]
-include::{snippets}/inventory-items-register/http-response.adoc[]
-include::{snippets}/inventory-items-register/response-headers.adoc[]
-include::{snippets}/inventory-items-register/response-fields.adoc[]
-include::{snippets}/inventory-items-register/curl-request.adoc[]
+include::{snippets}/documents-create/http-request.adoc[]
+include::{snippets}/documents-create/request-fields.adoc[]
+include::{snippets}/documents-create/http-response.adoc[]
+include::{snippets}/documents-create/response-headers.adoc[]
+include::{snippets}/documents-create/response-fields.adoc[]
 
-=== 재고 품목 조회
+=== 문서 열기
 
-include::{snippets}/inventory-items-get/http-request.adoc[]
-include::{snippets}/inventory-items-get/path-parameters.adoc[]
-include::{snippets}/inventory-items-get/http-response.adoc[]
-include::{snippets}/inventory-items-get/response-fields.adoc[]
+휴지통의 문서도 `trashedAt`을 채워 돌려줍니다.
 
-=== 입고
+include::{snippets}/documents-open/http-request.adoc[]
+include::{snippets}/documents-open/path-parameters.adoc[]
+include::{snippets}/documents-open/http-response.adoc[]
+include::{snippets}/documents-open/response-fields.adoc[]
 
-include::{snippets}/inventory-items-restock/http-request.adoc[]
-include::{snippets}/inventory-items-restock/path-parameters.adoc[]
-include::{snippets}/inventory-items-restock/request-fields.adoc[]
-include::{snippets}/inventory-items-restock/http-response.adoc[]
-include::{snippets}/inventory-items-restock/response-fields.adoc[]
+=== 마크다운으로 읽기
+
+MCP `docs_read`와 같은 마크다운입니다. 큰 문서는 나눠 주고 `nextCursor`로 이어 읽습니다.
+
+include::{snippets}/documents-markdown/http-request.adoc[]
+include::{snippets}/documents-markdown/query-parameters.adoc[]
+include::{snippets}/documents-markdown/http-response.adoc[]
+include::{snippets}/documents-markdown/response-fields.adoc[]
+
+=== 본문 저장
+
+웹 편집기가 쓰는 전체 저장입니다. 같은 사람이 30초 안에 다시 저장하면 새 리비전을 만들지 않고 마지막 리비전에 이어 씁니다(`amended`). 오래된 `baseRevision`에 다른 쪽의 변경을 합쳤으면 `merged`가 true이고, 화면은 응답의 `blocks`로 맞춥니다.
+
+include::{snippets}/documents-save/http-request.adoc[]
+include::{snippets}/documents-save/path-parameters.adoc[]
+include::{snippets}/documents-save/request-fields.adoc[]
+include::{snippets}/documents-save/http-response.adoc[]
+include::{snippets}/documents-save/response-fields.adoc[]
+
+=== 블록 편집
+
+include::{snippets}/documents-edit/http-request.adoc[]
+include::{snippets}/documents-edit/request-fields.adoc[]
+include::{snippets}/documents-edit/http-response.adoc[]
+include::{snippets}/documents-edit/response-fields.adoc[]
+
+=== 제목·경로·상태 바꾸기
+
+본문과 머리 정보는 같은 리비전 번호를 씁니다. `baseRevision`이 오래됐어도 그 뒤 다른 쪽이 바꾼 필드를 바꾸려 할 때만 409입니다.
+
+include::{snippets}/documents-change-header/http-request.adoc[]
+include::{snippets}/documents-change-header/request-fields.adoc[]
+include::{snippets}/documents-change-header/http-response.adoc[]
+include::{snippets}/documents-change-header/response-fields.adoc[]
+
+=== 휴지통으로 옮기기
+
+include::{snippets}/documents-trash/http-request.adoc[]
+include::{snippets}/documents-trash/http-response.adoc[]
+
+=== 휴지통에서 꺼내기
+
+include::{snippets}/documents-untrash/http-request.adoc[]
+include::{snippets}/documents-untrash/http-response.adoc[]
+
+=== 영구 삭제
+
+휴지통에 30일 있던 문서는 저절로 지워집니다.
+
+include::{snippets}/documents-purge/http-request.adoc[]
+include::{snippets}/documents-purge/http-response.adoc[]
+
+=== 휴지통 목록
+
+include::{snippets}/documents-trash-list/http-request.adoc[]
+include::{snippets}/documents-trash-list/http-response.adoc[]
+include::{snippets}/documents-trash-list/response-fields.adoc[]
+
+=== 최근 문서
+
+include::{snippets}/documents-recent/http-request.adoc[]
+include::{snippets}/documents-recent/query-parameters.adoc[]
+include::{snippets}/documents-recent/http-response.adoc[]
+include::{snippets}/documents-recent/response-fields.adoc[]
 
 === 오류
 
-==== 잘못된 재고 값
+==== 블록 충돌
 
-include::{snippets}/inventory-items-invalid/http-request.adoc[]
-include::{snippets}/inventory-items-invalid/http-response.adoc[]
-include::{snippets}/inventory-items-invalid/response-fields.adoc[]
+include::{snippets}/documents-conflict/http-request.adoc[]
+include::{snippets}/documents-conflict/http-response.adoc[]
+include::{snippets}/documents-conflict/response-fields.adoc[]
 
-==== 없는 재고 품목
+==== 오래된 리비전
 
-include::{snippets}/inventory-items-not-found/http-request.adoc[]
-include::{snippets}/inventory-items-not-found/path-parameters.adoc[]
-include::{snippets}/inventory-items-not-found/http-response.adoc[]
-include::{snippets}/inventory-items-not-found/response-fields.adoc[]
+include::{snippets}/documents-stale-revision/http-request.adoc[]
+include::{snippets}/documents-stale-revision/http-response.adoc[]
+include::{snippets}/documents-stale-revision/response-fields.adoc[]
 
-==== 이미 등록한 재고 품목
+==== 범위가 모자람
 
-include::{snippets}/inventory-items-duplicate/http-request.adoc[]
-include::{snippets}/inventory-items-duplicate/http-response.adoc[]
-include::{snippets}/inventory-items-duplicate/response-fields.adoc[]
+include::{snippets}/documents-forbidden/http-request.adoc[]
+include::{snippets}/documents-forbidden/http-response.adoc[]
+include::{snippets}/documents-forbidden/response-fields.adoc[]
+
+== 이력
+
+=== 리비전 목록
+
+include::{snippets}/history-revisions/http-request.adoc[]
+include::{snippets}/history-revisions/path-parameters.adoc[]
+include::{snippets}/history-revisions/query-parameters.adoc[]
+include::{snippets}/history-revisions/http-response.adoc[]
+include::{snippets}/history-revisions/response-fields.adoc[]
+
+=== 리비전 내용
+
+include::{snippets}/history-revision/http-request.adoc[]
+include::{snippets}/history-revision/path-parameters.adoc[]
+include::{snippets}/history-revision/http-response.adoc[]
+include::{snippets}/history-revision/response-fields.adoc[]
+
+=== 비교
+
+include::{snippets}/history-diff/http-request.adoc[]
+include::{snippets}/history-diff/query-parameters.adoc[]
+include::{snippets}/history-diff/http-response.adoc[]
+include::{snippets}/history-diff/response-fields.adoc[]
+
+=== 되돌리기
+
+include::{snippets}/history-restore/http-request.adoc[]
+include::{snippets}/history-restore/request-fields.adoc[]
+include::{snippets}/history-restore/http-response.adoc[]
+include::{snippets}/history-restore/response-fields.adoc[]
+
+== 댓글 스레드
+
+=== 문서의 스레드
+
+include::{snippets}/threads-for-document/http-request.adoc[]
+include::{snippets}/threads-for-document/http-response.adoc[]
+include::{snippets}/threads-for-document/response-fields.adoc[]
+
+=== 스레드 열기
+
+include::{snippets}/threads-open/http-request.adoc[]
+include::{snippets}/threads-open/request-fields.adoc[]
+include::{snippets}/threads-open/http-response.adoc[]
+include::{snippets}/threads-open/response-fields.adoc[]
+
+=== 답글
+
+include::{snippets}/threads-reply/http-request.adoc[]
+include::{snippets}/threads-reply/request-fields.adoc[]
+include::{snippets}/threads-reply/http-response.adoc[]
+include::{snippets}/threads-reply/response-fields.adoc[]
+
+=== 상태 바꾸기
+
+include::{snippets}/threads-change/http-request.adoc[]
+include::{snippets}/threads-change/request-fields.adoc[]
+include::{snippets}/threads-change/http-response.adoc[]
+include::{snippets}/threads-change/response-fields.adoc[]
+
+=== 댓글 고치기
+
+include::{snippets}/comments-edit/http-request.adoc[]
+include::{snippets}/comments-edit/request-fields.adoc[]
+include::{snippets}/comments-edit/http-response.adoc[]
+include::{snippets}/comments-edit/response-fields.adoc[]
+
+=== 댓글 지우기
+
+스레드는 남고 댓글은 '삭제된 댓글'로 보입니다.
+
+include::{snippets}/comments-delete/http-request.adoc[]
+include::{snippets}/comments-delete/http-response.adoc[]
+
+=== 스레드 찾기
+
+에이전트가 할 일을 찾는 방법입니다. 앵커 블록과 앞뒤 블록을 함께 돌려줍니다.
+
+include::{snippets}/threads-query/http-request.adoc[]
+include::{snippets}/threads-query/query-parameters.adoc[]
+include::{snippets}/threads-query/http-response.adoc[]
+include::{snippets}/threads-query/response-fields.adoc[]
+
+=== 오류
+
+==== 에이전트는 사람이 연 스레드를 해결할 수 없음
+
+include::{snippets}/threads-resolve-forbidden/http-request.adoc[]
+include::{snippets}/threads-resolve-forbidden/http-response.adoc[]
+include::{snippets}/threads-resolve-forbidden/response-fields.adoc[]
+
+== 첨부
+
+=== 업로드
+
+include::{snippets}/assets-upload/http-request.adoc[]
+include::{snippets}/assets-upload/request-parts.adoc[]
+include::{snippets}/assets-upload/http-response.adoc[]
+include::{snippets}/assets-upload/response-headers.adoc[]
+include::{snippets}/assets-upload/response-fields.adoc[]
+
+=== 주소로 가져오기
+
+include::{snippets}/assets-import/http-request.adoc[]
+include::{snippets}/assets-import/request-fields.adoc[]
+include::{snippets}/assets-import/http-response.adoc[]
+include::{snippets}/assets-import/response-fields.adoc[]
+
+=== 내용
+
+include::{snippets}/assets-content/http-request.adoc[]
+include::{snippets}/assets-content/http-response.adoc[]
+include::{snippets}/assets-content/response-headers.adoc[]
+
+=== 오류
+
+==== 지원하지 않는 파일
+
+include::{snippets}/assets-invalid/http-request.adoc[]
+include::{snippets}/assets-invalid/http-response.adoc[]
+include::{snippets}/assets-invalid/response-fields.adoc[]
+
+== 검색
+
+=== 본문 검색
+
+include::{snippets}/search/http-request.adoc[]
+include::{snippets}/search/query-parameters.adoc[]
+include::{snippets}/search/http-response.adoc[]
+include::{snippets}/search/response-fields.adoc[]
+
+=== 제목 검색
+
+include::{snippets}/search-titles/http-request.adoc[]
+include::{snippets}/search-titles/query-parameters.adoc[]
+include::{snippets}/search-titles/http-response.adoc[]
+include::{snippets}/search-titles/response-fields.adoc[]
+
+== 받은편지함
+
+=== 목록
+
+include::{snippets}/inbox-list/http-request.adoc[]
+include::{snippets}/inbox-list/query-parameters.adoc[]
+include::{snippets}/inbox-list/http-response.adoc[]
+include::{snippets}/inbox-list/response-fields.adoc[]
+
+=== 읽지 않은 수
+
+include::{snippets}/inbox-count/http-request.adoc[]
+include::{snippets}/inbox-count/http-response.adoc[]
+include::{snippets}/inbox-count/response-fields.adoc[]
+
+=== 읽음 표시
+
+include::{snippets}/inbox-read/http-request.adoc[]
+include::{snippets}/inbox-read/http-response.adoc[]
+
+=== 모두 읽음
+
+include::{snippets}/inbox-read-all/http-request.adoc[]
+include::{snippets}/inbox-read-all/http-response.adoc[]
+
+== 활동과 지표
+
+=== 활동
+
+include::{snippets}/activity-list/http-request.adoc[]
+include::{snippets}/activity-list/query-parameters.adoc[]
+include::{snippets}/activity-list/http-response.adoc[]
+include::{snippets}/activity-list/response-fields.adoc[]
+
+=== 변경 피드
+
+에이전트가 마지막으로 본 뒤 바뀐 것을 가져옵니다. 응답의 `nextSince`를 다음 `since`로 넘깁니다.
+
+include::{snippets}/activity-changes/http-request.adoc[]
+include::{snippets}/activity-changes/query-parameters.adoc[]
+include::{snippets}/activity-changes/http-response.adoc[]
+include::{snippets}/activity-changes/response-fields.adoc[]
+
+=== 사용 지표
+
+소유자만 볼 수 있습니다.
+
+include::{snippets}/metrics-usage/http-request.adoc[]
+include::{snippets}/metrics-usage/http-response.adoc[]
+include::{snippets}/metrics-usage/response-fields.adoc[]
+
+== MCP
+
+`POST /mcp` 하나로 JSON-RPC를 받습니다. 2026-07-28 무상태 프로토콜(`params._meta`에 `io.modelcontextprotocol/protocolVersion`)과, 아직 그 버전을 쓰지 않는 클라이언트를 위한 2025년 `initialize` 수명주기를 함께 받습니다. 도구 목록은 `tools/list`로 알립니다. 스트림(`GET /mcp`)은 열지 않고 405로 답하며, 허용하지 않은 `Origin`은 403입니다.
+
+=== initialize
+
+include::{snippets}/mcp-initialize/http-request.adoc[]
+include::{snippets}/mcp-initialize/request-fields.adoc[]
+include::{snippets}/mcp-initialize/http-response.adoc[]
+include::{snippets}/mcp-initialize/response-fields.adoc[]
+
+=== server/discover
+
+include::{snippets}/mcp-discover/http-request.adoc[]
+include::{snippets}/mcp-discover/http-response.adoc[]
+include::{snippets}/mcp-discover/response-fields.adoc[]
+
+=== tools/list
+
+include::{snippets}/mcp-tools-list/http-request.adoc[]
+include::{snippets}/mcp-tools-list/http-response.adoc[]
+include::{snippets}/mcp-tools-list/response-fields.adoc[]
+
+=== tools/call
+
+include::{snippets}/mcp-tools-call/http-request.adoc[]
+include::{snippets}/mcp-tools-call/http-response.adoc[]
+include::{snippets}/mcp-tools-call/response-fields.adoc[]
+
+=== 도구 오류
+
+업무 오류는 JSON-RPC 오류가 아니라 `isError: true`인 도구 결과로 돌아옵니다. `structuredContent`에 REST와 같은 `code`와 `fix`가 들어 있습니다.
+
+include::{snippets}/mcp-tool-error/http-request.adoc[]
+include::{snippets}/mcp-tool-error/http-response.adoc[]
+
+== 인증과 연결
+
+=== 로그인한 사용자
+
+include::{snippets}/me/http-request.adoc[]
+include::{snippets}/me/http-response.adoc[]
+include::{snippets}/me/response-fields.adoc[]
+
+=== 보호 리소스 메타데이터
+
+include::{snippets}/oauth-protected-resource/http-request.adoc[]
+include::{snippets}/oauth-protected-resource/http-response.adoc[]
+include::{snippets}/oauth-protected-resource/response-fields.adoc[]
+
+=== 인가 서버 메타데이터
+
+include::{snippets}/oauth-authorization-server/http-request.adoc[]
+include::{snippets}/oauth-authorization-server/http-response.adoc[]
+include::{snippets}/oauth-authorization-server/response-fields.adoc[]
+
+=== 인가 요청
+
+올바른 요청이면 승인 화면으로 보냅니다. `client_id`나 `redirect_uri`가 틀리면 클라이언트로 돌려보내지 않고 400 텍스트로 답합니다. 그 밖의 오류는 `redirect_uri`에 `error`를 붙여 돌려보냅니다.
+
+include::{snippets}/oauth-authorize/http-request.adoc[]
+include::{snippets}/oauth-authorize/query-parameters.adoc[]
+include::{snippets}/oauth-authorize/http-response.adoc[]
+include::{snippets}/oauth-authorize/response-headers.adoc[]
+
+=== 승인 화면 정보
+
+include::{snippets}/oauth-request/http-request.adoc[]
+include::{snippets}/oauth-request/http-response.adoc[]
+include::{snippets}/oauth-request/response-fields.adoc[]
+
+=== 승인
+
+거절은 `POST /api/oauth/requests/{id}/deny`이고 본문 없이 같은 `redirectTo`를 돌려줍니다.
+
+include::{snippets}/oauth-approve/http-request.adoc[]
+include::{snippets}/oauth-approve/request-fields.adoc[]
+include::{snippets}/oauth-approve/http-response.adoc[]
+include::{snippets}/oauth-approve/response-fields.adoc[]
+
+=== 토큰
+
+`application/x-www-form-urlencoded`로 보냅니다. `grant_type`은 `authorization_code` 또는 `refresh_token`입니다.
+
+include::{snippets}/oauth-token/http-request.adoc[]
+include::{snippets}/oauth-token/http-response.adoc[]
+include::{snippets}/oauth-token/response-fields.adoc[]
+
+=== 토큰 오류
+
+include::{snippets}/oauth-token-error/http-request.adoc[]
+include::{snippets}/oauth-token-error/http-response.adoc[]
+include::{snippets}/oauth-token-error/response-fields.adoc[]
+
+=== 동적 클라이언트 등록
+
+include::{snippets}/oauth-register/http-request.adoc[]
+include::{snippets}/oauth-register/request-fields.adoc[]
+include::{snippets}/oauth-register/http-response.adoc[]
+include::{snippets}/oauth-register/response-fields.adoc[]
+
+=== 연결 목록
+
+include::{snippets}/connections-list/http-request.adoc[]
+include::{snippets}/connections-list/http-response.adoc[]
+include::{snippets}/connections-list/response-fields.adoc[]
+
+=== 스크립트 토큰 발급
+
+include::{snippets}/connections-issue/http-request.adoc[]
+include::{snippets}/connections-issue/request-fields.adoc[]
+include::{snippets}/connections-issue/http-response.adoc[]
+include::{snippets}/connections-issue/response-fields.adoc[]
+
+=== 연결 범위 바꾸기
+
+include::{snippets}/connections-regrant/http-request.adoc[]
+include::{snippets}/connections-regrant/request-fields.adoc[]
+include::{snippets}/connections-regrant/http-response.adoc[]
+include::{snippets}/connections-regrant/response-fields.adoc[]
+
+=== 연결 끊기
+
+끊은 연결의 토큰은 다음 요청부터 401입니다.
+
+include::{snippets}/connections-revoke/http-request.adoc[]
+include::{snippets}/connections-revoke/http-response.adoc[]

@@ -1,0 +1,3 @@
+# Frontend files use the 2-space indent that Prettier enforces; everything else inherits the repo root.
+[*.{ts,tsx,js,cjs,mjs,css,html,json,md}]
+indent_size = 2

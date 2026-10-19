@@ -63,9 +63,9 @@ class HexagonalArchitectureTest {
         private const val APPLICATION_CLASS = "AgentDocsApplication"
         private val contextAggregates =
             mapOf(
-                "todo" to setOf("todo.Todo"),
-                "ordering" to setOf("order.Order", "offer.Offer"),
-                "inventory" to setOf("stock.StockItem"),
+                "workspace" to
+                    setOf("space.Space", "document.Document", "thread.CommentThread", "inbox.InboxItem", "asset.Asset"),
+                "access" to setOf("user.User", "connection.Connection", "client.OAuthClient", "authorization.AuthorizationRequest"),
             )
         private val aggregateRoots =
             contextAggregates.flatMap { (context, roots) -> roots.map { "$ROOT.$context.domain.$it" } }

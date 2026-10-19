@@ -16,6 +16,7 @@
 - 강제 규칙·허용 예외를 바꾸면 [`ForbiddenSuppress`](../config/detekt/detekt.yml) 목록과 [억제 정책](code-quality.md#예외와-억제)을 함께 확인한다. 별도 소스 검사기를 추가하지 않는다.
 - `test`·`check`는 `detektMain`·`detektTest`와 규칙 fixture 테스트를 실행하고, 공개 `detekt`도 두 타입 분석을 포함한다. 타입 분석 없는 기본 태스크로 되돌리지 않는다.
 - 컴파일을 `detektMain`에 의존시키지 않는다.
+- `check`는 `frontendCheck`(`pnpm check`)를 포함하고 `bootJar`는 그 결과 `frontend/dist`를 `static/`에 넣는다. Node·pnpm 버전은 `build.gradle.kts`의 `node {}`와 `frontend/package.json`의 `engines`·`packageManager`를 함께 바꾸고, CI의 `git diff --exit-code`가 깨지지 않게 `pnpmInstall`의 `--frozen-lockfile`을 유지한다.
 - `detektTest`는 공통·테스트 설정을 함께 읽고 비활성 plain JAR가 아닌 실제 main/test 클래스 출력 경로를 쓴다. `detekt.use.worker.api=true`를 유지한다.
 - `KtLintCheckTask`는 `ktlintFormat` 뒤, 컴파일·테스트 전에 전체 소스에 실행하고 CI의 `git diff --exit-code`를 유지한다.
 - `architecture.productionClasses`로 전체 운영 클래스 출력 경로를 전달한다. 속성 누락·빈 스캔·테스트 fixture 혼입은 실패해야 한다.

@@ -1,4 +1,6 @@
-# Kotlin · Spring Boot · Exposed 템플릿
+# Agent Docs
+
+사람과 AI 에이전트가 같은 문서를 읽고 고치고 댓글로 주고받는 홈랩 문서 서비스. Kotlin · Spring Boot · Exposed 템플릿에서 시작했다.
 
 ## 작업 시작
 

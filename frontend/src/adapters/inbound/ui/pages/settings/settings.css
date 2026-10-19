@@ -1,0 +1,164 @@
+.setup-guide .section-title {
+  margin-bottom: 4px;
+}
+
+.setup-steps {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.setup-steps li + li {
+  margin-top: 12px;
+}
+
+.setup-steps p {
+  margin: 4px 0 8px;
+}
+
+.command-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 6px 6px 6px 12px;
+  border-radius: var(--radius-small);
+  background: var(--bg-sunken);
+}
+
+.command-line code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.notice-box {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-small);
+  background: var(--bg-sunken);
+  font-size: 14px;
+}
+
+.connections-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.connections-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.connections-table th,
+.connections-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.connections-table th {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.connections-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.connection-inactive td {
+  color: var(--text-faint);
+}
+
+.connection-actions {
+  text-align: right;
+}
+
+.expiry-cell {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.plain-fieldset {
+  margin: 0 0 14px;
+  padding: 0;
+  border: none;
+}
+
+.space-checkboxes {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+}
+
+.token-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 8px;
+}
+
+@media (max-width: 760px) {
+  .connections-table thead {
+    display: none;
+  }
+
+  .connections-table,
+  .connections-table tbody,
+  .connections-table tr,
+  .connections-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .connections-table tr {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .connections-table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .connections-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 12px;
+    border-bottom: none;
+  }
+
+  .connections-table td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--text-faint);
+    font-size: 12px;
+  }
+
+  .connections-table td:first-child {
+    display: block;
+  }
+
+  .connections-table td:first-child::before {
+    content: none;
+  }
+
+  .connections-table td.connection-actions {
+    justify-content: flex-end;
+  }
+}
+
+#issue-token .field .segmented {
+  align-self: flex-start;
+}
