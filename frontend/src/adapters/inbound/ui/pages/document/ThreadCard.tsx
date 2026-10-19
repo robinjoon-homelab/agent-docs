@@ -28,7 +28,8 @@ function anchorLabel(thread: Thread): string {
     case 'document':
       return '문서 전체';
     case 'block':
-      return '블록';
+      // The start of the block's text when the thread was placed; its first line is enough to recognize it.
+      return anchorQuote(thread.anchor)?.split('\n')[0] ?? '블록';
     case 'cell':
     case 'text':
       return anchorQuote(thread.anchor) ?? '';

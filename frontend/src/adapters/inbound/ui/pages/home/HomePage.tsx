@@ -116,13 +116,19 @@ export function HomePage() {
             <h2 className="section-title" id="home-spaces">
               내 스페이스
             </h2>
-            <div className="grid-cards">
-              {spaces.data
-                .filter((space) => !isArchived(space))
-                .map((space) => (
-                  <SpaceCard key={space.id} space={space} />
-                ))}
-            </div>
+            {spaces.data.some((space) => !isArchived(space)) ? (
+              <div className="grid-cards">
+                {spaces.data
+                  .filter((space) => !isArchived(space))
+                  .map((space) => (
+                    <SpaceCard key={space.id} space={space} />
+                  ))}
+              </div>
+            ) : (
+              <p className="faint small">
+                모든 스페이스를 보관했습니다. 아래에서 열거나 새 스페이스를 만드세요.
+              </p>
+            )}
           </section>
           <section className="section" aria-labelledby="home-recent">
             <h2 className="section-title" id="home-recent">
