@@ -13,6 +13,7 @@ import {
   SPACE_LINK_KINDS,
   SPACE_LINK_LABEL,
   draftOf,
+  isArchived,
 } from '../../../../../domain/space/space';
 import { useServices } from '../../../../../config/ServicesContext';
 import { useShell } from '../../app/ShellContext';
@@ -318,6 +319,45 @@ function ConnectionsSection({ space }: { space: Space }) {
   );
 }
 
+/** Archiving keeps every document; the space only leaves lists, search across spaces and an agent's space lookup. */
+function ArchiveSection({ space, onSaved }: { space: Space; onSaved: (space: Space) => void }) {
+  const services = useServices();
+  const shell = useShell();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const archived = isArchived(space);
+
+  const toggle = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await services.spaces.setArchived(space, !archived);
+      shell.refreshSpaces();
+      toast(archived ? '스페이스를 보관 해제했습니다' : '스페이스를 보관했습니다');
+      onSaved(updated);
+    } catch (cause) {
+      setError(cause);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p className="small muted">
+        {archived
+          ? '보관한 스페이스입니다. 목록과 검색, 에이전트의 스페이스 찾기에 다시 나오게 하려면 보관을 해제하세요.'
+          : '보관하면 스페이스 목록과 전체 검색, 에이전트의 스페이스 찾기에서 빠집니다. 문서는 그대로 남고 주소로는 계속 열립니다.'}
+      </p>
+      <button type="button" className="btn" disabled={busy} onClick={() => void toggle()}>
+        {archived ? '보관 해제' : '스페이스 보관'}
+      </button>
+      {error === null ? null : <p className="field-error">{errorMessage(error)}</p>}
+    </>
+  );
+}
+
 function SpaceSettings({ space, onSaved }: { space: Space; onSaved: (space: Space) => void }) {
   usePageTitle(`${space.name} 설정`);
   return (
@@ -346,11 +386,17 @@ function SpaceSettings({ space, onSaved }: { space: Space; onSaved: (space: Spac
         </h2>
         <TrashSection spaceSlug={space.slug} />
       </section>
+      <section className="section" aria-labelledby="settings-archive">
+        <h2 className="section-title" id="settings-archive">
+          보관
+        </h2>
+        <ArchiveSection space={space} onSaved={onSaved} />
+      </section>
     </div>
   );
 }
 
-/** S8: space name, slug, description, external links, trash and the connections allowed here. */
+/** S8: space name, slug, description, external links, trash, archiving and the connections allowed here. */
 export function SpaceSettingsPage() {
   const { space: slug = '' } = useParams();
   const space = useSpace(slug);

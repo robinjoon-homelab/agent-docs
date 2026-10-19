@@ -167,12 +167,13 @@ internal object ThreadRows {
                 is Anchor.Whole -> BLOCK
                 Anchor.Document -> DOCUMENT
             }
-        statement[ThreadsTable.anchorBlock] = (text?.blockId ?: cell?.blockId ?: (anchor as? Anchor.Whole)?.blockId)?.value
+        val whole = anchor as? Anchor.Whole
+        statement[ThreadsTable.anchorBlock] = (text?.blockId ?: cell?.blockId ?: whole?.blockId)?.value
         statement[ThreadsTable.anchorRow] = cell?.rowId?.value
         statement[ThreadsTable.anchorColumn] = cell?.columnId?.value
         statement[ThreadsTable.anchorStart] = text?.start
         statement[ThreadsTable.anchorEnd] = text?.end
-        statement[ThreadsTable.anchorQuote] = text?.quote ?: cell?.quote
+        statement[ThreadsTable.anchorQuote] = text?.quote ?: cell?.quote ?: whole?.quote
     }
 
     private fun anchor(row: ResultRow): Anchor {
@@ -197,7 +198,7 @@ internal object ThreadRows {
             }
 
             BLOCK -> {
-                Anchor.Whole(requireNotNull(block))
+                Anchor.Whole(requireNotNull(block), quoteOf(row))
             }
 
             else -> {

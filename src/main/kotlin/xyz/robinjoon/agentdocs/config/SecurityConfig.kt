@@ -86,6 +86,8 @@ class SecurityConfig {
             .addFilterAfter(components.rateLimit, BearerTokenFilter::class.java)
             .authorizeHttpRequests {
                 it
+                    .requestMatchers("/actuator/metrics", "/actuator/metrics/**")
+                    .hasRole("OWNER")
                     .requestMatchers("/api/**")
                     .authenticated()
                     .anyRequest()

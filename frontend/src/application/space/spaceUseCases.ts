@@ -1,5 +1,10 @@
 import type { Space, SpaceDraft, SpaceDraftError } from '../../domain/space/space';
-import { normalizeSpaceDraft, sortSpacesByActivity, validateSpaceDraft } from '../../domain/space/space';
+import {
+  isArchived,
+  normalizeSpaceDraft,
+  sortSpacesByActivity,
+  validateSpaceDraft,
+} from '../../domain/space/space';
 import type { Result } from '../shared/result';
 import { failure, ok } from '../shared/result';
 import type { SpaceGateway, SpacePatch } from './ports/SpaceGateway';
@@ -10,6 +15,8 @@ export interface SpaceUseCases {
   get(slug: string): Promise<Space>;
   create(draft: SpaceDraft): Promise<Result<Space, SpaceDraftError[]>>;
   update(current: Space, draft: SpaceDraft): Promise<Result<Space, SpaceDraftError[]>>;
+  /** Archives the space or brings it back; a space already in that state is answered as is. */
+  setArchived(current: Space, archived: boolean): Promise<Space>;
 }
 
 function changedFields(current: Space, draft: SpaceDraft): SpacePatch {
@@ -40,6 +47,10 @@ export function createSpaceUseCases(gateway: SpaceGateway): SpaceUseCases {
       const patch = changedFields(current, draft);
       if (Object.keys(patch).length === 0) return ok(current);
       return ok(await gateway.update(current.slug, patch));
+    },
+    async setArchived(current, archived) {
+      if (isArchived(current) === archived) return current;
+      return gateway.update(current.slug, { archived });
     },
   };
 }

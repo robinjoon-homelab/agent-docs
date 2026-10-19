@@ -28,8 +28,11 @@ class SpaceService(
     private val statistics: SpaceStatisticsCatalog,
     private val journal: WriteJournal,
 ) : SpaceUseCase {
-    override fun list(access: Access): List<SpaceOverview> {
-        val visible = spaces.findAll().filter { access.sees(it.id) }
+    override fun list(
+        access: Access,
+        includeArchived: Boolean,
+    ): List<SpaceOverview> {
+        val visible = spaces.findAll().filter { access.sees(it.id) && (includeArchived || !it.isArchived) }
         val stats = statistics.forSpaces(visible.map { it.id }.toSet())
         return visible
             .map { SpaceOverview(it, stats[it.id]?.documentCount ?: 0, stats[it.id]?.lastActivityAt) }
@@ -69,10 +72,22 @@ class SpaceService(
                 change.description ?: space.profile.description,
                 change.links ?: space.profile.links,
             )
-        val changed = (change.slug?.let(space::moveTo) ?: space).describe(profile)
+        val described = (change.slug?.let(space::moveTo) ?: space).describe(profile)
+        val changed =
+            when (change.archived) {
+                true -> described.archive(journal.now())
+                false -> described.unarchive()
+                null -> described
+            }
         if (changed == space) return space
         val saved = spaces.update(changed)
-        journal.record(context, "space.changed", subjectOf(saved), "스페이스 설정 변경: ${saved.profile.name}")
+        val summary =
+            when {
+                saved.isArchived != space.isArchived && saved.isArchived -> "스페이스 보관"
+                saved.isArchived != space.isArchived -> "스페이스 보관 해제"
+                else -> "스페이스 설정 변경"
+            }
+        journal.record(context, "space.changed", subjectOf(saved), "$summary: ${saved.profile.name}")
         return saved
     }
 
@@ -80,7 +95,7 @@ class SpaceService(
         access: Access,
         locator: SpaceLocator,
     ): Space {
-        val visible = spaces.findAll().filter { access.sees(it.id) }
+        val visible = spaces.findAll().filter { access.sees(it.id) && !it.isArchived }
         val repository = locator.remote?.let(ExternalLink::repositoryOf)
         val byRepository = repository?.let { repositoryMatches(visible, it) }.orEmpty()
         val candidates = byRepository.ifEmpty { locator.path?.let { pathMatches(visible, it.trimEnd('/')) }.orEmpty() }

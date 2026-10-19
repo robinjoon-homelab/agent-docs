@@ -41,6 +41,17 @@ class ExposedSpaceRepositoryTest {
     }
 
     @Test
+    fun `an archived space keeps when it was archived until it is brought back`() {
+        val created = database.inTransaction { repository.add(space("agent-docs")) }
+
+        val archived = database.inTransaction { repository.update(created.archive(at.plusSeconds(60))) }
+        val restored = database.inTransaction { repository.update(archived.unarchive()) }
+
+        assertThat(archived.lifecycle.archivedAt).isEqualTo(at.plusSeconds(60))
+        assertThat(restored.isArchived).isFalse()
+    }
+
+    @Test
     fun `a former slug still finds the space`() {
         val created = database.inTransaction { repository.add(space("agent-docs")) }
         database.inTransaction { repository.update(created.moveTo(SpaceSlug("docs"))) }

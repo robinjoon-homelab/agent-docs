@@ -19,7 +19,7 @@ internal object AnchorPlacement {
         when (request) {
             is AnchorRequest.Text -> text(request, document.block(request.blockId) ?: missing(request.blockId))
             is AnchorRequest.Cell -> cell(request, document.block(request.blockId) ?: missing(request.blockId))
-            is AnchorRequest.Whole -> Anchor.Whole((document.block(request.blockId) ?: missing(request.blockId)).id)
+            is AnchorRequest.Whole -> whole(document.block(request.blockId) ?: missing(request.blockId))
             AnchorRequest.Document -> Anchor.Document
         }
 
@@ -70,6 +70,11 @@ internal object AnchorPlacement {
         return Anchor.Cell(table.id, row.id, request.columnId, row.cells[column].plainText())
     }
 
+    // The start of the block is enough to recognize it; the whole of a long code block is not kept.
+    private fun whole(block: Block): Anchor.Whole = Anchor.Whole(block.id, block.plainText().take(WHOLE_QUOTE_LENGTH))
+
     private fun missing(id: BlockId): Nothing =
         throw InvalidRequestException("block $id is not in the document", "read the document again for current block ids")
+
+    private const val WHOLE_QUOTE_LENGTH = 200
 }

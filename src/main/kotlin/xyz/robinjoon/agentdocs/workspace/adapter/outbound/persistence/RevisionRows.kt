@@ -62,12 +62,13 @@ internal object RevisionRows {
     }
 
     fun change(row: ResultRow): RevisionChange =
-        RevisionChange.restore(
-            ChangeOrigin(DocumentRevisionsTable.actor.read(row), row[DocumentRevisionsTable.changeSource]),
-            row[DocumentRevisionsTable.summary],
-            row[DocumentRevisionsTable.changedBlocks].split(' ').filter(String::isNotEmpty).map(::BlockId),
-            ChangePeriod(row[DocumentRevisionsTable.createdAt].toInstant(), row[DocumentRevisionsTable.updatedAt].toInstant()),
-        )
+        RevisionChange
+            .restore(
+                ChangeOrigin(DocumentRevisionsTable.actor.read(row), row[DocumentRevisionsTable.changeSource]),
+                row[DocumentRevisionsTable.summary],
+                row[DocumentRevisionsTable.changedBlocks].split(' ').filter(String::isNotEmpty).map(::BlockId),
+                ChangePeriod(row[DocumentRevisionsTable.createdAt].toInstant(), row[DocumentRevisionsTable.updatedAt].toInstant()),
+            ).withKind(row[DocumentRevisionsTable.kind])
 
     private fun write(
         statement: UpdateBuilder<*>,
@@ -85,6 +86,7 @@ internal object RevisionRows {
         DocumentRevisionsTable.actor.write(statement, revision.change.origin.actor)
         statement[DocumentRevisionsTable.changeSource] = revision.change.origin.source
         statement[DocumentRevisionsTable.summary] = revision.change.summary
+        statement[DocumentRevisionsTable.kind] = revision.change.kind
         statement[DocumentRevisionsTable.changedBlocks] = revision.change.changedBlocks.joinToString(" ") { it.value }
         statement[DocumentRevisionsTable.updatedAt] =
             revision.change.period.updatedAt

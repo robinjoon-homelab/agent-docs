@@ -52,7 +52,8 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # metrics is for the owner only; see SecurityConfig.
+        include: health,info,metrics
   endpoint:
     health:
       show-details: never

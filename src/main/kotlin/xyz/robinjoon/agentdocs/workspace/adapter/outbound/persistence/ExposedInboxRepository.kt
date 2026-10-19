@@ -15,18 +15,21 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.Delivery
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItem
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItemId
+import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxRecipient
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.Notice
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.NoticeTarget
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 import java.time.Instant
+import java.util.UUID
 
 class ExposedInboxRepository : InboxRepository {
     override fun addAll(items: List<InboxItem>) {
         InboxItemsTable.batchInsert(items, shouldReturnGeneratedValues = false) { item ->
             val target = item.notice.target
             this[InboxItemsTable.id] = item.id.value
-            this[InboxItemsTable.recipient] = item.recipient
+            this[InboxItemsTable.recipient] = item.recipient.login
+            this[InboxItemsTable.recipientUserId] = item.recipient.userId
             this[InboxItemsTable.kind] = item.notice.kind
             this[InboxItemsTable.spaceId] = target.spaceId.value
             this[InboxItemsTable.documentId] = target.documentId.value
@@ -54,28 +57,36 @@ class ExposedInboxRepository : InboxRepository {
             }.singleOrNull()
             ?.toItem()
 
+    override fun claim(
+        login: String,
+        userId: UUID,
+    ): Int =
+        InboxItemsTable.update({ (InboxItemsTable.recipient eq login) and InboxItemsTable.recipientUserId.isNull() }) {
+            it[recipientUserId] = userId
+        }
+
     override fun list(
-        recipient: String,
+        userId: UUID,
         unreadOnly: Boolean,
         limit: Int,
     ): List<InboxItem> {
-        val query = InboxItemsTable.selectAll().where { InboxItemsTable.recipient eq recipient }
+        val query = InboxItemsTable.selectAll().where { InboxItemsTable.recipientUserId eq userId }
         if (unreadOnly) query.andWhere { InboxItemsTable.readAt.isNull() }
         return query.orderBy(InboxItemsTable.deliveredAt to SortOrder.DESC).limit(limit).map { it.toItem() }
     }
 
-    override fun countUnread(recipient: String): Int =
+    override fun countUnread(userId: UUID): Int =
         InboxItemsTable
             .selectAll()
-            .where { (InboxItemsTable.recipient eq recipient) and InboxItemsTable.readAt.isNull() }
+            .where { (InboxItemsTable.recipientUserId eq userId) and InboxItemsTable.readAt.isNull() }
             .count()
             .toInt()
 
     override fun markAllRead(
-        recipient: String,
+        userId: UUID,
         at: Instant,
     ): Int =
-        InboxItemsTable.update({ (InboxItemsTable.recipient eq recipient) and InboxItemsTable.readAt.isNull() }) {
+        InboxItemsTable.update({ (InboxItemsTable.recipientUserId eq userId) and InboxItemsTable.readAt.isNull() }) {
             it[readAt] =
                 at.utc()
         }
@@ -90,6 +101,7 @@ class ExposedInboxRepository : InboxRepository {
             )
         val notice = Notice.restore(this[InboxItemsTable.kind], target, InboxItemsTable.actor.read(this), this[InboxItemsTable.excerpt])
         val delivery = Delivery(this[InboxItemsTable.deliveredAt].toInstant(), this[InboxItemsTable.readAt]?.toInstant())
-        return InboxItem.restore(InboxItemId(this[InboxItemsTable.id]), this[InboxItemsTable.recipient], notice, delivery)
+        val recipient = InboxRecipient(this[InboxItemsTable.recipient], this[InboxItemsTable.recipientUserId])
+        return InboxItem.restore(InboxItemId(this[InboxItemsTable.id]), recipient, notice, delivery)
     }
 }

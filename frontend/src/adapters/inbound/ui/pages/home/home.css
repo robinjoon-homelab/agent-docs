@@ -132,3 +132,7 @@
     display: none;
   }
 }
+
+.space-cards-archived .space-card {
+  opacity: 0.7;
+}

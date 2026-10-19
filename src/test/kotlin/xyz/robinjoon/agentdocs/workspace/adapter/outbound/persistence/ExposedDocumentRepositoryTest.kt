@@ -19,6 +19,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.SampleBlocks
 
 class ExposedDocumentRepositoryTest {
@@ -59,6 +60,19 @@ class ExposedDocumentRepositoryTest {
                     revisions.list(created.id, RevisionFilter(ActorKind.AGENT, null, null))
                 }.map { it.number },
         ).containsExactly(2)
+    }
+
+    @Test
+    fun `a revision keeps what made it`() {
+        val created = document(space.id, "restored", listOf(paragraph("para01", "one")))
+        database.inTransaction { documents.add(created, revisionOf(created)) }
+        val restored = created.revise(created.header, listOf(paragraph("para01", "zero")), at.plusSeconds(5))
+        val restore = revisionOf(restored).let { it.copy(change = it.change.withKind(RevisionKind.RESTORE)) }
+
+        database.inTransaction { documents.update(restored, restore, amended = false) }
+
+        assertThat(database.inTransaction { revisions.find(created.id, 1) }?.change?.kind).isEqualTo(RevisionKind.EDIT)
+        assertThat(database.inTransaction { revisions.find(created.id, 2) }?.change?.kind).isEqualTo(RevisionKind.RESTORE)
     }
 
     @Test

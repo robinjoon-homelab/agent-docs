@@ -62,7 +62,7 @@ object ThreadJson {
             }
 
             is Anchor.Whole -> {
-                mapOf("kind" to "block", "blockId" to anchor.blockId.value)
+                mapOf("kind" to "block", "blockId" to anchor.blockId.value, "quote" to anchor.quote)
             }
 
             Anchor.Document -> {

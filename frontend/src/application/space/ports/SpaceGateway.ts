@@ -1,6 +1,7 @@
 import type { Space, SpaceDraft } from '../../../domain/space/space';
 
-export type SpacePatch = Partial<SpaceDraft>;
+/** archived: true archives the space and false brings it back; the owner only. */
+export type SpacePatch = Partial<SpaceDraft> & { readonly archived?: boolean };
 
 export interface SpaceGateway {
   list(): Promise<Space[]>;

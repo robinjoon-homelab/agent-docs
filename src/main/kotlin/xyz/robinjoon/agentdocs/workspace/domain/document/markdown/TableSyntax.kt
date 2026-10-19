@@ -8,6 +8,7 @@ internal object TableSyntax {
     private val unescapedPipe = Regex("(?<!\\\\)\\|")
     private const val ROW_MARKER_PREFIX = "<!--r:"
     private const val ROW_MARKER_SUFFIX = "-->"
+    private const val ESCAPED_PIPE = "\\|"
 
     fun delimiter(alignment: ColumnAlignment): String =
         when (alignment) {
@@ -30,11 +31,15 @@ internal object TableSyntax {
     fun isDelimiterRow(line: String): Boolean =
         isRow(line) && cells(line).let { cells -> cells.isNotEmpty() && cells.all(delimiterCell::matches) }
 
-    // Splits on unescaped pipes. The outer pipes are optional in GFM; the platform always writes them.
+    // Splits on unescaped pipes. The outer pipes are optional in GFM; the platform always writes them. As in GFM, an
+    // escaped pipe stands for a pipe in the cell's text, inside code spans too.
     fun cells(line: String): List<String> {
         val inner = line.trim().removePrefix("|").let { if (it.endsWith("|") && !it.endsWith("\\|")) it.dropLast(1) else it }
-        return inner.split(unescapedPipe).map(String::trim)
+        return inner.split(unescapedPipe).map { it.trim().replace(ESCAPED_PIPE, "|") }
     }
+
+    // The inverse of cells: every pipe in a cell's text is written escaped, so the row stays one cell per pipe.
+    fun escape(cell: String): String = cell.replace("|", ESCAPED_PIPE)
 
     // "<!--r:abc123-->rest" at the start of a row's first cell carries the row id.
     fun rowMarker(cell: String): Pair<String?, String> {

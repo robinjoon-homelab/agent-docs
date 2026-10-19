@@ -1,5 +1,6 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.mockk
 import org.hamcrest.Matchers.containsString
@@ -60,11 +61,16 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
             SpacesResolveTool(mockk()),
         )
     private val json = JsonMapper.builder().build()
+    private val meters = SimpleMeterRegistry()
     private val config = McpConfig()
-    private val settings = McpSettings(setOf("https://docs.example.com"), "0.1.0")
+    private val mapper = config.mcpJsonMapper(json)
+    private val settings = McpSettings(setOf("https://docs.example.com"))
 
     // Building the server installs it as the transport's handler.
-    private val transport = config.mcpTransport(json, settings).also { config.mcpServer(it, tools, json, settings) }
+    private val transport =
+        config.mcpTransport(mapper, settings).also {
+            config.mcpServer(it, tools, config.mcpToolSpecifications(json, meters), mapper)
+        }
     private val mockMvc = restDocsMockMvc(config.mcpRoutes(transport))
     private val thread =
         CommentThread.open(

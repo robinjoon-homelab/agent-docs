@@ -53,6 +53,16 @@ class SecurityAdaptersTest {
     }
 
     @Test
+    fun `only the owner holds the owner role, and an agent never does`() {
+        val owner = Caller(UUID.randomUUID(), "robinjoon", true, null, null, CallerScope.OWNER)
+        val member = owner.copy(owner = false, scope = CallerScope.READ)
+
+        assertThat(CallerAuthentication(owner).authorities.map { it.authority }).containsExactly("ROLE_PERSON", "ROLE_OWNER")
+        assertThat(CallerAuthentication(member).authorities.map { it.authority }).containsExactly("ROLE_PERSON")
+        assertThat(CallerAuthentication(agent).authorities.map { it.authority }).containsExactly("ROLE_AGENT")
+    }
+
+    @Test
     fun `a connection over its per-minute limit gets 429 with the seconds until the next minute`() {
         val filter = RateLimitFilter(Clock.fixed(Instant.parse("2026-10-18T09:00:45Z"), ZoneOffset.UTC), limit = 2)
         SecurityContextHolder.getContext().authentication = CallerAuthentication(agent)

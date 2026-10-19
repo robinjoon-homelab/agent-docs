@@ -341,29 +341,31 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
-    fun `trash, untrash, and permanent delete answer 204`() {
-        every { documents.trash(webContext, documentId) } returns
+    fun `trash, untrash, and permanent delete answer 204 and take an opId for retries`() {
+        every { documents.trash(webContext.copy(operationId = "op-trash"), documentId) } returns
             DocumentWrite(document(), 4, emptyList(), amended = false, unchanged = false)
-        every { documents.untrash(webContext, documentId) } returns
+        every { documents.untrash(webContext.copy(operationId = "op-untrash"), documentId) } returns
             DocumentWrite(document(), 5, emptyList(), amended = false, unchanged = false)
-        every { documents.purge(webContext, documentId) } just runs
+        every { documents.purge(webContext.copy(operationId = "op-purge"), documentId) } just runs
 
         mockMvc
             .perform(
-                post("/api/documents/{id}/trash", documentId).principal(owner),
+                post("/api/documents/{id}/trash", documentId).param("opId", "op-trash").principal(owner),
             ).andExpect(status().isNoContent)
-            .andDo(documented("documents-trash"))
+            .andDo(documented("documents-trash", queryParameters(opIdParameter())))
         mockMvc
             .perform(
-                post("/api/documents/{id}/untrash", documentId).principal(owner),
+                post("/api/documents/{id}/untrash", documentId).param("opId", "op-untrash").principal(owner),
             ).andExpect(status().isNoContent)
-            .andDo(documented("documents-untrash"))
+            .andDo(documented("documents-untrash", queryParameters(opIdParameter())))
         mockMvc
             .perform(
-                delete("/api/documents/{id}", documentId).principal(owner),
+                delete("/api/documents/{id}", documentId).param("opId", "op-purge").principal(owner),
             ).andExpect(status().isNoContent)
-            .andDo(documented("documents-purge"))
+            .andDo(documented("documents-purge", queryParameters(opIdParameter())))
     }
+
+    private fun opIdParameter() = parameterWithName("opId").optional().description("재시도해도 한 번만 적용할 작업 ID")
 
     @Test
     fun `trash and recent lists use the list shape`() {

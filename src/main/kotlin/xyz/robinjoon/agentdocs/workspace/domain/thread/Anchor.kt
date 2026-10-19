@@ -26,9 +26,20 @@ sealed interface Anchor {
         val quote: String,
     ) : Anchor
 
+    // A whole block, such as an image or a diagram. The quote is the start of the block's plain text when the thread
+    // was placed, so a thread whose block is gone still says what it was about.
     data class Whole(
         val blockId: BlockId,
-    ) : Anchor
+        val quote: String,
+    ) : Anchor {
+        init {
+            if (quote.length >
+                MAX_QUOTE_LENGTH
+            ) {
+                throw InvalidThreadException("a block anchor quote is at most $MAX_QUOTE_LENGTH characters")
+            }
+        }
+    }
 
     data object Document : Anchor
 

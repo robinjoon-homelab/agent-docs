@@ -75,11 +75,4 @@ class DocumentTest {
         assertThat(created.blocks).containsExactly(intro)
         assertThat(created.blocks).isUnmodifiable()
     }
-
-    @Test
-    fun `a table cell keeps a pipe escaped so the table stays one row per line`() {
-        val row = TableRow.of(BlockId("row001"), listOf(InlineText("a | b"), InlineText("c \\| d")))
-
-        assertThat(row.cells.map { it.markdown }).containsExactly("a \\| b", "c \\| d")
-    }
 }

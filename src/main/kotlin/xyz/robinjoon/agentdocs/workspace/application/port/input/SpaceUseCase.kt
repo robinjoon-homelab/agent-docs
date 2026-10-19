@@ -10,8 +10,11 @@ import xyz.robinjoon.agentdocs.workspace.domain.space.Space
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 
 interface SpaceUseCase {
-    // Only the spaces the caller may see, most recently active first.
-    fun list(access: Access): List<SpaceOverview>
+    // Only the spaces the caller may see, most recently active first. Archived spaces only when asked for.
+    fun list(
+        access: Access,
+        includeArchived: Boolean,
+    ): List<SpaceOverview>
 
     // A former slug finds the space too; the result carries the current slug.
     fun get(

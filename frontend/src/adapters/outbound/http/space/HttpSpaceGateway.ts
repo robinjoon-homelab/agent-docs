@@ -19,6 +19,7 @@ export function toSpace(value: unknown): Space {
     description: strOr(source, 'description', ''),
     links: source.links === undefined || source.links === null ? [] : list(source.links, toLink),
     createdAt: str(source, 'createdAt'),
+    archivedAt: optStr(source, 'archivedAt'),
     lastActivityAt: optStr(source, 'lastActivityAt'),
     documentCount: typeof source.documentCount === 'number' ? num(source, 'documentCount') : 0,
   };

@@ -40,7 +40,8 @@ class InboxServiceTest {
     @Test
     fun `items about deleted documents are left out`() {
         val kept = item(spaceId, documentId)
-        every { inbox.list("robin", true, 200) } returns listOf(kept, item(spaceId, deletedDocument))
+        every { inbox.claim("robin", WorkspaceFixtures.ownerId) } returns 0
+        every { inbox.list(WorkspaceFixtures.ownerId, true, 200) } returns listOf(kept, item(spaceId, deletedDocument))
         every { documents.findByIds(listOf(documentId, deletedDocument)) } returns listOf(document(emptyList(), revision = 1))
         every { spaces.findByIds(setOf(spaceId)) } returns listOf(space)
 
@@ -59,6 +60,7 @@ class InboxServiceTest {
     @Test
     fun `nobody marks another person's item read`() {
         val someoneElses = InboxItem.deliver(InboxItemId(UUID.randomUUID()), "octocat", notice(spaceId, documentId), now)
+        every { inbox.claim("robin", WorkspaceFixtures.ownerId) } returns 0
         every { inbox.findById(someoneElses.id) } returns someoneElses
 
         assertThatThrownBy { service.markRead(ownerAccess, someoneElses.id) }.isInstanceOf(InboxItemNotFoundException::class.java)

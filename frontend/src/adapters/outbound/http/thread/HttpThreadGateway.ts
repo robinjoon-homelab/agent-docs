@@ -28,7 +28,7 @@ export function toAnchor(value: unknown): Anchor {
         quote: str(source, 'quote'),
       };
     case 'block':
-      return { kind, blockId: str(source, 'blockId') };
+      return { kind, blockId: str(source, 'blockId'), quote: optStr(source, 'quote') ?? '' };
     case 'document':
       return { kind };
   }

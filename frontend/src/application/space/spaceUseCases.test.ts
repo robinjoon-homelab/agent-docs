@@ -11,6 +11,7 @@ function space(overrides: Partial<Space>): Space {
     description: '',
     links: [],
     createdAt: '2026-10-01T00:00:00Z',
+    archivedAt: null,
     lastActivityAt: null,
     documentCount: 0,
     ...overrides,
@@ -29,7 +30,10 @@ function fakeServer(initial: Space[] = []): SpaceGateway & { spaces: Space[] } {
     },
     get: (slug: string) => Promise.resolve(server.spaces.find((s) => s.slug === slug) ?? space({ slug })),
     update: (slug: string, patch: SpacePatch) => {
-      const updated = { ...(server.spaces.find((s) => s.slug === slug) ?? space({})), ...patch };
+      const { archived, ...settings } = patch;
+      const found = server.spaces.find((s) => s.slug === slug) ?? space({});
+      const archivedAt = archived === undefined ? found.archivedAt : archived ? '2026-10-20T00:00:00Z' : null;
+      const updated = { ...found, ...settings, archivedAt };
       server.spaces = server.spaces.map((s) => (s.slug === slug ? updated : s));
       return Promise.resolve(updated);
     },
@@ -78,5 +82,16 @@ describe('space use cases', () => {
     });
     expect(renamed.ok && renamed.value.slug).toBe('crew');
     expect(server.spaces.map((s) => s.slug)).toEqual(['crew']);
+  });
+
+  it('archives a space, brings it back, and leaves one already in that state alone', async () => {
+    const current = space({ slug: 'team' });
+    const server = fakeServer([current]);
+    const useCases = createSpaceUseCases(server);
+
+    const archived = await useCases.setArchived(current, true);
+    expect(archived.archivedAt).toBe('2026-10-20T00:00:00Z');
+    expect(await useCases.setArchived(archived, true)).toBe(archived);
+    expect((await useCases.setArchived(archived, false)).archivedAt).toBeNull();
   });
 });

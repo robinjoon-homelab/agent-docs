@@ -6,7 +6,8 @@ import { grantedSpaceNames, validateApproval, validateScriptToken } from './conn
 import { weeklyTotals } from './metrics/usage';
 import { highlightSnippet } from './search/search';
 import { loginHref } from './session/me';
-import { normalizeSpaceDraft, suggestSlug, validateSpaceDraft } from './space/space';
+import type { Space } from './space/space';
+import { normalizeSpaceDraft, pickableSpaces, suggestSlug, validateSpaceDraft } from './space/space';
 
 describe('space drafts', () => {
   it('suggests a slug from a latin name within 50 chars and without a trailing hyphen', () => {
@@ -44,6 +45,29 @@ describe('space drafts', () => {
         links: [{ kind: 'github_repository', value: 'robinjoon/agent-docs' }],
       }),
     ).toEqual([]);
+  });
+});
+
+describe('pickableSpaces', () => {
+  it('offers active spaces and keeps an archived one only while it is chosen', () => {
+    const space = (id: string, archivedAt: string | null): Space => ({
+      id,
+      slug: id,
+      name: id,
+      description: '',
+      links: [],
+      createdAt: '2026-10-01T00:00:00Z',
+      archivedAt,
+      lastActivityAt: null,
+      documentCount: 0,
+    });
+    const spaces = [
+      space('active', null),
+      space('old', '2026-10-10T00:00:00Z'),
+      space('kept', '2026-10-11T00:00:00Z'),
+    ];
+    expect(pickableSpaces(spaces).map((s) => s.id)).toEqual(['active']);
+    expect(pickableSpaces(spaces, ['kept']).map((s) => s.id)).toEqual(['active', 'kept']);
   });
 });
 

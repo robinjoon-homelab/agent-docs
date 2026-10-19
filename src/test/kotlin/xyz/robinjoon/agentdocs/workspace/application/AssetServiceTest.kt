@@ -57,7 +57,6 @@ class AssetServiceTest {
     @Test
     fun `an upload keeps the file under its content hash with the uploader and name`() {
         every { verifier.verify(png) } returns VerifiedImage(AssetMediaType.PNG, png)
-        every { assets.findByContent(spaceId, content.sha256) } returns null
         every { store.put(content.sha256, "image/png", png) } just runs
         every { assets.add(any()) } answers { firstArg() }
 
@@ -68,18 +67,19 @@ class AssetServiceTest {
     }
 
     @Test
-    fun `the same bytes in the same space return the asset already there`() {
-        val existing =
-            Asset.upload(
-                AssetId(UUID.randomUUID()),
-                spaceId,
-                content,
-                AssetOrigin("first.png", null, owner, now.minusSeconds(60)),
-            )
+    fun `the same bytes imported from another address are a new asset that keeps that address`() {
+        val url = "https://mirror.example.com/flow.png"
+        every { remote.fetch(url) } returns RemoteImage(url, "image/png", png)
         every { verifier.verify(png) } returns VerifiedImage(AssetMediaType.PNG, png)
-        every { assets.findByContent(spaceId, content.sha256) } returns existing
+        every { store.put(content.sha256, "image/png", png) } just runs
+        every { assets.add(any()) } answers { firstArg() }
 
-        assertThat(service.upload(context(ownerAccess), space.slug, UploadedFile("again.png", null, png))).isEqualTo(existing)
+        val first = service.upload(context(ownerAccess), space.slug, UploadedFile("flow.png", "image/png", png))
+        val again = service.import(context(ownerAccess), space.slug, url)
+
+        assertThat(again.id).isNotEqualTo(first.id)
+        assertThat(again.content).isEqualTo(first.content)
+        assertThat(again.origin.sourceUrl).isEqualTo(url)
     }
 
     @Test
@@ -96,7 +96,6 @@ class AssetServiceTest {
         val url = "https://example.com/diagrams/flow.png?size=large"
         every { remote.fetch(url) } returns RemoteImage(url, "image/png", png)
         every { verifier.verify(png) } returns VerifiedImage(AssetMediaType.PNG, png)
-        every { assets.findByContent(spaceId, content.sha256) } returns null
         every { store.put(content.sha256, "image/png", png) } just runs
         every { assets.add(any()) } answers { firstArg() }
 

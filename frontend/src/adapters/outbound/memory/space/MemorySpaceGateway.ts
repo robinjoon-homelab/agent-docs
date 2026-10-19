@@ -26,6 +26,7 @@ export class MemorySpaceGateway implements SpaceGateway {
         ...draft,
         id: this.store.nextId('space'),
         createdAt: this.store.now(),
+        archivedAt: null,
         lastActivityAt: null,
         documentCount: 0,
       };
@@ -41,7 +42,14 @@ export class MemorySpaceGateway implements SpaceGateway {
   update(slug: string, patch: SpacePatch): Promise<Space> {
     return respond(() => {
       const current = this.store.space(slug);
-      const updated = { ...current, ...patch };
+      const { archived, ...settings } = patch;
+      const archivedAt =
+        archived === undefined
+          ? current.archivedAt
+          : archived
+            ? (current.archivedAt ?? this.store.now())
+            : null;
+      const updated: Space = { ...current, ...settings, archivedAt };
       if (patch.slug !== undefined && patch.slug !== current.slug)
         this.store.slugAliases.set(current.slug, patch.slug);
       this.store.spaces = this.store.spaces.map((space) => (space.id === current.id ? updated : space));

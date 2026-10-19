@@ -26,7 +26,8 @@ class SpaceController(
     private val spaces: SpaceUseCase,
 ) {
     @GetMapping
-    fun list(principal: Principal?): List<Map<String, Any?>> = spaces.list(CallerAccess.of(principal)).map(WorkspaceJson::overview)
+    fun list(principal: Principal?): List<Map<String, Any?>> =
+        spaces.list(CallerAccess.of(principal), includeArchived = true).map(WorkspaceJson::overview)
 
     @PostMapping
     fun create(
@@ -51,7 +52,14 @@ class SpaceController(
         @RequestBody request: SpaceChangeRequest,
         principal: Principal?,
     ): Map<String, Any?> {
-        val change = SpaceChange(request.slug?.trim()?.let(::SpaceSlug), request.name, request.description, request.links?.let(::linksOf))
+        val change =
+            SpaceChange(
+                request.slug?.trim()?.let(::SpaceSlug),
+                request.name,
+                request.description,
+                request.links?.let(::linksOf),
+                request.archived,
+            )
         return WorkspaceJson.space(spaces.change(CallerAccess.write(principal, null, null), SpaceSlug(slug), change))
     }
 
@@ -82,6 +90,7 @@ data class SpaceChangeRequest(
     val name: String?,
     val description: String?,
     val links: List<LinkRequest>?,
+    val archived: Boolean? = null,
 )
 
 data class LinkRequest(

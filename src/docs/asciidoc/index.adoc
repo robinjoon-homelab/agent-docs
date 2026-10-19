@@ -37,7 +37,7 @@
 
 === 멱등 키
 
-쓰기 요청 본문에 `opId`를 넣으면 같은 `opId`로 다시 보낸 요청은 처음 결과를 그대로 돌려주고 두 번 쓰지 않습니다. 네트워크가 끊겨 다시 보낼 때 씁니다.
+쓰기 요청 본문에 `opId`를 넣으면 같은 `opId`로 다시 보낸 요청은 처음 결과를 그대로 돌려주고 두 번 쓰지 않습니다. 본문이 없는 쓰기(휴지통 이동·복원, 영구 삭제, 댓글 삭제)는 `opId`를 쿼리 파라미터로 받습니다. 네트워크가 끊겨 다시 보낼 때 씁니다.
 
 === 블록 형식
 
@@ -202,11 +202,13 @@ include::{snippets}/documents-change-header/response-fields.adoc[]
 === 휴지통으로 옮기기
 
 include::{snippets}/documents-trash/http-request.adoc[]
+include::{snippets}/documents-trash/query-parameters.adoc[]
 include::{snippets}/documents-trash/http-response.adoc[]
 
 === 휴지통에서 꺼내기
 
 include::{snippets}/documents-untrash/http-request.adoc[]
+include::{snippets}/documents-untrash/query-parameters.adoc[]
 include::{snippets}/documents-untrash/http-response.adoc[]
 
 === 영구 삭제
@@ -214,6 +216,7 @@ include::{snippets}/documents-untrash/http-response.adoc[]
 휴지통에 30일 있던 문서는 저절로 지워집니다.
 
 include::{snippets}/documents-purge/http-request.adoc[]
+include::{snippets}/documents-purge/query-parameters.adoc[]
 include::{snippets}/documents-purge/http-response.adoc[]
 
 === 휴지통 목록
@@ -321,6 +324,7 @@ include::{snippets}/comments-edit/response-fields.adoc[]
 스레드는 남고 댓글은 '삭제된 댓글'로 보입니다.
 
 include::{snippets}/comments-delete/http-request.adoc[]
+include::{snippets}/comments-delete/query-parameters.adoc[]
 include::{snippets}/comments-delete/http-response.adoc[]
 
 === 스레드 찾기

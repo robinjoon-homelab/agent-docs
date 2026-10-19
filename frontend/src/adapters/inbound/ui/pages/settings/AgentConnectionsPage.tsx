@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router';
 import type { Connection, ConnectionScope, IssuedToken } from '../../../../../domain/connection/connection';
 import {
   CONNECTION_KIND_LABEL,
-  CONNECTION_SCOPES,
   DEFAULT_EXPIRY_DAYS,
   expiryState,
   GRANT_ERROR_TEXT,
@@ -23,6 +22,8 @@ import { useToast } from '../../common/Toast';
 import { useLoad } from '../../hooks/useLoad';
 import { useNow } from '../../hooks/useNow';
 import { usePageTitle } from '../../hooks/usePageTitle';
+import { ScopePicker, SpaceCheckboxes } from './ConnectionGrantFields';
+import { RegrantDialog } from './ConnectionRegrantDialog';
 import './settings.css';
 
 function CommandLine({ command }: { command: string }) {
@@ -78,12 +79,14 @@ function ConnectionRow({
   connection,
   spaces,
   now,
+  onRegrant,
   onRevoke,
 }: {
   connection: Connection;
   /** All spaces, for turning the granted space ids into names; null while loading. */
   spaces: readonly Space[] | null;
   now: Date;
+  onRegrant: () => void;
   onRevoke: () => void;
 }) {
   const names = spaces === null ? null : grantedSpaceNames(connection, spaces);
@@ -113,6 +116,9 @@ function ConnectionRow({
         <ExpiryCell connection={connection} now={now} />
       </td>
       <td className="connection-actions">
+        <button type="button" className="btn btn-small" disabled={inactive} onClick={onRegrant}>
+          범위 변경
+        </button>
         <button
           type="button"
           className="btn btn-small btn-danger"
@@ -170,37 +176,6 @@ function RevokeDialog({
       </p>
       {error === null ? null : <p className="field-error">{errorMessage(error)}</p>}
     </Dialog>
-  );
-}
-
-function SpaceCheckboxes({
-  spaces,
-  selected,
-  onChange,
-}: {
-  spaces: readonly Space[];
-  selected: readonly string[];
-  onChange: (next: string[]) => void;
-}) {
-  if (spaces.length === 0) return <p className="faint small">스페이스가 없습니다.</p>;
-  return (
-    <div className="space-checkboxes">
-      {spaces.map((space) => (
-        <label key={space.id} className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={selected.includes(space.id)}
-            onChange={(event) =>
-              onChange(
-                event.target.checked ? [...selected, space.id] : selected.filter((id) => id !== space.id),
-              )
-            }
-          />
-          {space.name}
-          <span className="faint small">/{space.slug}</span>
-        </label>
-      ))}
-    </div>
   );
 }
 
@@ -315,18 +290,7 @@ function IssueTokenDialog({ onClose, onIssued }: { onClose: () => void; onIssued
         </fieldset>
         <div className="field">
           <span className="field-label">권한</span>
-          <div className="segmented" role="group" aria-label="권한">
-            {CONNECTION_SCOPES.map((value) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={scope === value}
-                onClick={() => setScope(value)}
-              >
-                {SCOPE_LABEL[value]}
-              </button>
-            ))}
-          </div>
+          <ScopePicker value={scope} onChange={setScope} />
         </div>
         <div className="field">
           <label htmlFor="token-days">만료 (일)</label>
@@ -359,6 +323,7 @@ export function AgentConnectionsPage() {
   const connections = useLoad('connections', () => services.connections.list());
   // Connections carry space ids only; names come from the space list.
   const spaces = useLoad('connections:spaces', () => services.spaces.list());
+  const [regranting, setRegranting] = useState<Connection | null>(null);
   const [revoking, setRevoking] = useState<Connection | null>(null);
   const [issuing, setIssuing] = useState(false);
   usePageTitle('에이전트 연결');
@@ -413,6 +378,7 @@ export function AgentConnectionsPage() {
                     connection={connection}
                     spaces={spaces.state === 'ready' ? spaces.data : null}
                     now={now}
+                    onRegrant={() => setRegranting(connection)}
                     onRevoke={() => setRevoking(connection)}
                   />
                 ))}
@@ -422,6 +388,17 @@ export function AgentConnectionsPage() {
         ) : null}
       </section>
 
+      {regranting === null ? null : (
+        <RegrantDialog
+          connection={regranting}
+          onClose={() => setRegranting(null)}
+          onSaved={() => {
+            setRegranting(null);
+            toast('허용 범위를 바꿨습니다');
+            connections.reload();
+          }}
+        />
+      )}
       {revoking === null ? null : (
         <RevokeDialog
           connection={revoking}

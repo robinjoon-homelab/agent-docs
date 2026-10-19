@@ -3,7 +3,9 @@ package xyz.robinjoon.agentdocs.workspace.application.port.output
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItem
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItemId
 import java.time.Instant
+import java.util.UUID
 
+// A person's items are found by user id once they are claimed; see InboxRecipient.
 interface InboxRepository {
     fun addAll(items: List<InboxItem>)
 
@@ -11,17 +13,23 @@ interface InboxRepository {
 
     fun findById(id: InboxItemId): InboxItem?
 
+    // Makes every item delivered to the login and not yet claimed the person's. Answers how many it claimed.
+    fun claim(
+        login: String,
+        userId: UUID,
+    ): Int
+
     // Newest first.
     fun list(
-        recipient: String,
+        userId: UUID,
         unreadOnly: Boolean,
         limit: Int,
     ): List<InboxItem>
 
-    fun countUnread(recipient: String): Int
+    fun countUnread(userId: UUID): Int
 
     fun markAllRead(
-        recipient: String,
+        userId: UUID,
         at: Instant,
     ): Int
 }

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.ColumnAlignment
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
 import xyz.robinjoon.agentdocs.workspace.domain.document.InvalidDocumentException
 import xyz.robinjoon.agentdocs.workspace.domain.document.ListItem
@@ -13,6 +14,8 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.ListStyle
 import xyz.robinjoon.agentdocs.workspace.domain.document.Paragraph
 import xyz.robinjoon.agentdocs.workspace.domain.document.Quote
 import xyz.robinjoon.agentdocs.workspace.domain.document.TableBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.TableColumn
+import xyz.robinjoon.agentdocs.workspace.domain.document.TableRow
 
 class MarkdownRoundTripTest {
     @Test
@@ -132,6 +135,35 @@ class MarkdownRoundTripTest {
             listOf("4", "", ""),
         )
         assertThat((table.columns.map { it.id } + table.rows.map { it.id }).toSet()).hasSize(6)
+    }
+
+    @Test
+    fun `a pipe in a table cell is escaped only in the markdown, so code in the cell keeps its pipe`() {
+        val cell = InlineText("`a|b` or c | d")
+        val table =
+            TableBlock.of(
+                BlockId("tabl01"),
+                listOf(TableColumn(BlockId("colm01"), ColumnAlignment.NONE)),
+                listOf(TableRow.of(BlockId("row001"), listOf(cell))),
+            )
+
+        val written = BlockMarkdown.of(table)
+        val read = MarkdownReader.readBlocks(written).single().block as TableBlock
+
+        assertThat(written).contains("`a\\|b` or c \\| d")
+        assertThat(
+            read.rows
+                .single()
+                .cells
+                .single(),
+        ).isEqualTo(cell)
+        assertThat(
+            read.rows
+                .single()
+                .cells
+                .single()
+                .plainText(),
+        ).isEqualTo("a|b or c | d")
     }
 
     @Test

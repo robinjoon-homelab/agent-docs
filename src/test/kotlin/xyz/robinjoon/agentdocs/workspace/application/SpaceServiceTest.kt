@@ -119,10 +119,35 @@ class SpaceServiceTest {
         every { spaces.findAll() } returns listOf(homelab, docs, projects)
         every { statistics.forSpaces(setOf(homelab.id, docs.id)) } returns mapOf(docs.id to SpaceStatistics(3, now))
 
-        val listed = service.list(agentAccess(Permission.READ, setOf(homelab.id, docs.id)))
+        val listed = service.list(agentAccess(Permission.READ, setOf(homelab.id, docs.id)), includeArchived = false)
 
         assertThat(listed.map { it.space }).containsExactly(docs, homelab)
         assertThat(listed.first().documentCount).isEqualTo(3)
+    }
+
+    @Test
+    fun `an archived space leaves lists and lookups unless archived ones are asked for`() {
+        val archived = docs.archive(now)
+        every { spaces.findAll() } returns listOf(homelab, archived)
+        every { statistics.forSpaces(setOf(homelab.id)) } returns emptyMap()
+        every { statistics.forSpaces(setOf(homelab.id, archived.id)) } returns emptyMap()
+
+        assertThat(service.list(ownerAccess, includeArchived = false).map { it.space }).containsExactly(homelab)
+        assertThat(service.list(ownerAccess, includeArchived = true).map { it.space }).containsExactlyInAnyOrder(homelab, archived)
+        assertThat(service.resolve(ownerAccess, SpaceLocator("git@github.com:homelab/agent-docs.git", null))).isEqualTo(homelab)
+    }
+
+    @Test
+    fun `the owner archives a space and brings it back`() {
+        every { spaces.findBySlugForUpdate(SpaceSlug("agent-docs")) } returns docs
+        every { spaces.update(any()) } answers { firstArg() }
+
+        val archived = service.change(context(ownerAccess), SpaceSlug("agent-docs"), SpaceChange(null, null, null, null, archived = true))
+        every { spaces.findBySlugForUpdate(SpaceSlug("agent-docs")) } returns archived
+        val restored = service.change(context(ownerAccess), SpaceSlug("agent-docs"), SpaceChange(null, null, null, null, archived = false))
+
+        assertThat(archived.lifecycle.archivedAt).isEqualTo(now)
+        assertThat(restored.isArchived).isFalse()
     }
 
     private fun space(

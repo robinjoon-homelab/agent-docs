@@ -50,8 +50,8 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
     private val mockMvc = restDocsMockMvc(SpaceController(spaces), WorkspaceExceptionHandler())
 
     @Test
-    fun `list returns the visible spaces with their activity`() {
-        every { spaces.list(ownerAccess) } returns listOf(SpaceOverview(space, 12, at))
+    fun `list returns the visible spaces, archived ones included, with their activity`() {
+        every { spaces.list(ownerAccess, true) } returns listOf(SpaceOverview(space, 12, at))
 
         mockMvc
             .perform(get("/api/spaces").principal(owner))
@@ -146,6 +146,7 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("name").optional().type(JsonFieldType.STRING).description("새 이름"),
                         fieldWithPath("description").optional().description("새 설명"),
                         fieldWithPath("links").optional().type(JsonFieldType.ARRAY).description("외부 연결 전체를 이 목록으로 바꾼다"),
+                        fieldWithPath("archived").optional().type(JsonFieldType.BOOLEAN).description("true면 보관, false면 보관 해제. 소유자만"),
                     ),
                     responseFields(*spaceFields("")),
                 ),

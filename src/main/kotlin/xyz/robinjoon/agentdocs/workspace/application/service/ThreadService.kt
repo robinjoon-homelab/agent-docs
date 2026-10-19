@@ -99,9 +99,11 @@ class ThreadService(
         comment: CommentId,
         body: String,
     ): ThreadView {
+        journal.replayed(context, EDIT_COMMENT)?.let { return replay(context.access, it) }
         val (current, document) = lockByComment(context.access, comment)
         val saved = threads.update(current.editComment(comment, context.access.actor, body, journal.now()))
         journal.record(context, "comment.edited", subjectOf(saved), "${document.header.title}: 댓글 수정")
+        journal.remember(context, OperationRecord(EDIT_COMMENT, comment.value, null))
         return viewOf(saved, document)
     }
 
@@ -110,9 +112,11 @@ class ThreadService(
         context: WriteContext,
         comment: CommentId,
     ): ThreadView {
+        journal.replayed(context, DELETE_COMMENT)?.let { return replay(context.access, it) }
         val (current, document) = lockByComment(context.access, comment)
         val saved = threads.update(current.deleteComment(comment, context.access.actor, journal.now()))
         journal.record(context, "comment.deleted", subjectOf(saved), "${document.header.title}: 댓글 삭제")
+        journal.remember(context, OperationRecord(DELETE_COMMENT, comment.value, null))
         return viewOf(saved, document)
     }
 
@@ -124,6 +128,7 @@ class ThreadService(
         change: ThreadChange,
     ): ThreadView {
         if (change.isEmpty) throw InvalidRequestException("pass status, anchor, or linkRevision")
+        journal.replayed(context, CHANGE)?.let { return replay(context.access, it) }
         val (current, document) = lockThread(context.access, thread)
         val now = journal.now()
         val moved = change.anchor?.let { current.moveTo(AnchorPlacement.place(it, document), document.revision, now) } ?: current
@@ -138,6 +143,7 @@ class ThreadService(
                 Entry("thread.linked", "rev ${change.linkRevision} 연결", change.linkRevision).takeIf { linked != updated },
             )
         entries.forEach { journal.record(context, it.kind, subjectOf(saved, it.revision), "${document.header.title}: ${it.summary}") }
+        journal.remember(context, OperationRecord(CHANGE, thread.value, null))
         return viewOf(saved, document)
     }
 
@@ -244,16 +250,22 @@ class ThreadService(
         if (items.isNotEmpty()) inbox.addAll(items)
     }
 
-    // A retried comment is not written again: the answer is the thread as it is now with the comment the first attempt
-    // wrote, after the same visibility and permission checks a first attempt gets.
+    // A retried write is not applied again: the answer is the thread as it is now, with the comment the first attempt
+    // wrote or changed, after the same visibility and permission checks a first attempt gets. Thread operations
+    // remember the thread and comment operations the comment.
     private fun replay(
         access: Access,
         record: OperationRecord,
     ): ThreadView {
-        val opened = record.kind == OPEN
-        val found = if (opened) threads.findById(ThreadId(record.target)) else threads.findByCommentForUpdate(CommentId(record.target))
+        val byThread = record.kind == OPEN || record.kind == CHANGE
+        val found = if (byThread) threads.findById(ThreadId(record.target)) else threads.findByCommentForUpdate(CommentId(record.target))
         val thread = found?.takeIf { access.sees(it.location.spaceId) } ?: throw ThreadNotFoundException(record.target)
-        val written = if (opened) thread.comments.first().id else CommentId(record.target)
+        val written =
+            when (record.kind) {
+                OPEN -> thread.comments.first().id
+                CHANGE -> null
+                else -> CommentId(record.target)
+            }
         return viewOf(thread, commentable(access, thread)).copy(written = written)
     }
 
@@ -330,6 +342,9 @@ class ThreadService(
     private companion object {
         const val OPEN = "thread.open"
         const val REPLY = "thread.reply"
+        const val CHANGE = "thread.change"
+        const val EDIT_COMMENT = "comment.edit"
+        const val DELETE_COMMENT = "comment.delete"
         const val EXCERPT = 80
     }
 }

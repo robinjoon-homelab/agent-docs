@@ -1,6 +1,8 @@
 package xyz.robinjoon.agentdocs.config
 
+import io.micrometer.core.instrument.MeterRegistry
 import io.modelcontextprotocol.common.McpTransportContext
+import io.modelcontextprotocol.json.McpJsonMapper
 import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapper
 import io.modelcontextprotocol.server.McpServer
 import io.modelcontextprotocol.server.McpStatelessSyncServer
@@ -47,24 +49,34 @@ class McpConfig {
     @Bean
     fun mcpSettings(properties: AgentDocsProperties): McpSettings {
         val origin = URI.create(properties.publicUrl).let { "${it.scheme}://${it.authority}" }
-        return McpSettings(setOf(origin), "0.1.0")
+        return McpSettings(setOf(origin))
     }
+
+    // The transport and the server read and write JSON-RPC with the application's own JSON settings.
+    @Bean
+    fun mcpJsonMapper(json: JsonMapper): McpJsonMapper = JacksonMcpJsonMapper(json)
 
     // Authentication happens before the transport; it passes the authenticated principal on to the tool calls. A
     // browser request from another origin is refused with 403, and requests without an Origin, as CLI clients send, pass.
     @Bean
     fun mcpTransport(
-        json: JsonMapper,
+        mapper: McpJsonMapper,
         settings: McpSettings,
     ): WebMvcStatelessServerTransport =
         WebMvcStatelessServerTransport
             .builder()
-            .jsonMapper(JacksonMcpJsonMapper(json))
+            .jsonMapper(mapper)
             .messageEndpoint(MCP_ENDPOINT)
             .contextExtractor { request ->
                 McpTransportContext.create(request.principal().map { mapOf(McpToolSpecifications.PRINCIPAL to it) }.orElse(emptyMap()))
             }.securityValidator(DefaultServerTransportSecurityValidator.builder().allowedOrigins(settings.allowedOrigins.toList()).build())
             .build()
+
+    @Bean
+    fun mcpToolSpecifications(
+        json: JsonMapper,
+        meters: MeterRegistry,
+    ): McpToolSpecifications = McpToolSpecifications(json, meters)
 
     // Spring hands over every tool bean in the order they are declared below, which is the order tools/list shows.
     // Calls run on the request thread, and an upload from a slow URL may take up to the timeout.
@@ -72,13 +84,12 @@ class McpConfig {
     fun mcpServer(
         transport: WebMvcStatelessServerTransport,
         tools: List<McpTool>,
-        json: JsonMapper,
-        settings: McpSettings,
-    ): McpStatelessSyncServer {
-        val specifications = McpToolSpecifications(json)
-        return McpServer
+        specifications: McpToolSpecifications,
+        mapper: McpJsonMapper,
+    ): McpStatelessSyncServer =
+        McpServer
             .sync(transport)
-            .serverInfo(McpSchema.Implementation("agent-docs", "Agent Docs", settings.serverVersion))
+            .serverInfo(McpSchema.Implementation("agent-docs", "Agent Docs", SERVER_VERSION))
             .instructions(McpInstructions.TEXT)
             .capabilities(
                 McpSchema.ServerCapabilities
@@ -86,11 +97,10 @@ class McpConfig {
                     .tools(false)
                     .build(),
             ).tools(tools.map(specifications::of))
-            .jsonMapper(JacksonMcpJsonMapper(json))
+            .jsonMapper(mapper)
             .immediateExecution(true)
             .requestTimeout(toolTimeout)
             .build()
-    }
 
     // The server installs itself as the transport's handler when it is built, so the route waits for it.
     @Bean
@@ -144,6 +154,7 @@ class McpConfig {
 
     private companion object {
         const val MCP_ENDPOINT = "/mcp"
+        const val SERVER_VERSION = "0.1.0"
         val toolTimeout: Duration = Duration.ofMinutes(1)
     }
 }

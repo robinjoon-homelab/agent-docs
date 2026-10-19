@@ -25,19 +25,18 @@ class ExposedAssetRepositoryTest {
     fun closeDatabase() = database.close()
 
     @Test
-    fun `an asset round trips and the same bytes in a space resolve to the first asset`() {
+    fun `an asset round trips and several assets may share the same bytes`() {
         val docs = database.inTransaction { spaces.add(space("docs")) }
-        val notes = database.inTransaction { spaces.add(space("notes")) }
         val first = asset(docs.id, "https://example.com/a.webp")
-        database.inTransaction { repository.add(first) }
+        val again = asset(docs.id, "https://mirror.example.com/a.webp")
 
-        val again = database.inTransaction { repository.add(asset(docs.id, null)) }
-        val elsewhere = database.inTransaction { repository.add(asset(notes.id, null)) }
+        database.inTransaction { repository.add(first) }
+        database.inTransaction { repository.add(again) }
 
         assertThat(database.inTransaction { repository.findById(first.id) }).isEqualTo(first)
-        assertThat(again).isEqualTo(first)
-        assertThat(elsewhere.id).isNotEqualTo(first.id)
-        assertThat(database.inTransaction { repository.findByContent(notes.id, content.sha256) }).isEqualTo(elsewhere)
+        assertThat(
+            database.inTransaction { repository.findById(again.id) }?.origin?.sourceUrl,
+        ).isEqualTo("https://mirror.example.com/a.webp")
     }
 
     private fun asset(

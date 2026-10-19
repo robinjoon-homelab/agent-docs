@@ -9,9 +9,20 @@ export type Space = {
   readonly description: string;
   readonly links: readonly SpaceLink[];
   readonly createdAt: string;
+  /** Set while the owner keeps the space archived: it leaves space lists and pickers but still opens at its address. */
+  readonly archivedAt: string | null;
   readonly lastActivityAt: string | null;
   readonly documentCount: number;
 };
+
+export function isArchived(space: Space): boolean {
+  return space.archivedAt !== null;
+}
+
+/** Spaces to offer for new work: the active ones, plus any archived space already chosen so it can be unchosen. */
+export function pickableSpaces(spaces: readonly Space[], chosen: readonly string[] = []): Space[] {
+  return spaces.filter((space) => !isArchived(space) || chosen.includes(space.id));
+}
 
 export type SpaceDraft = {
   readonly slug: string;

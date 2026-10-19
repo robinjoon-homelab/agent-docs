@@ -1,9 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence
 
 import org.jetbrains.exposed.v1.core.ResultRow
-import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.exceptions.ExposedSQLException
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetRepository
@@ -14,23 +12,17 @@ import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetOrigin
 
 class ExposedAssetRepository : AssetRepository {
-    // A concurrent upload of the same bytes to the same space wins the unique key; this one then returns that asset.
     override fun add(asset: Asset): Asset {
-        try {
-            AssetsTable.insert {
-                it[id] = asset.id.value
-                it[spaceId] = asset.spaceId.value
-                it[mediaType] = asset.content.mediaType
-                it[sizeBytes] = asset.content.size
-                it[sha256] = asset.content.sha256
-                it[fileName] = asset.origin.fileName
-                it[sourceUrl] = asset.origin.sourceUrl
-                uploader.write(it, asset.origin.uploadedBy)
-                it[uploadedAt] = asset.origin.uploadedAt.utc()
-            }
-        } catch (exception: ExposedSQLException) {
-            if (exception.isUniqueViolation()) return requireNotNull(findByContent(asset.spaceId, asset.content.sha256))
-            throw exception
+        AssetsTable.insert {
+            it[id] = asset.id.value
+            it[spaceId] = asset.spaceId.value
+            it[mediaType] = asset.content.mediaType
+            it[sizeBytes] = asset.content.size
+            it[sha256] = asset.content.sha256
+            it[fileName] = asset.origin.fileName
+            it[sourceUrl] = asset.origin.sourceUrl
+            uploader.write(it, asset.origin.uploadedBy)
+            it[uploadedAt] = asset.origin.uploadedAt.utc()
         }
         return requireNotNull(findById(asset.id))
     }
@@ -39,16 +31,6 @@ class ExposedAssetRepository : AssetRepository {
         AssetsTable
             .selectAll()
             .where { AssetsTable.id eq id.value }
-            .singleOrNull()
-            ?.toAsset()
-
-    override fun findByContent(
-        space: SpaceId,
-        sha256: String,
-    ): Asset? =
-        AssetsTable
-            .selectAll()
-            .where { (AssetsTable.spaceId eq space.value) and (AssetsTable.sha256 eq sha256) }
             .singleOrNull()
             ?.toAsset()
 

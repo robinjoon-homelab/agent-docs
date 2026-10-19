@@ -111,6 +111,10 @@ object WebFixtures {
                 fieldWithPath("$prefix.links[].value").description("정규화한 값. 레포는 owner/repo").optional().type(JsonFieldType.STRING),
                 fieldWithPath("$prefix.formerSlugs").description("예전 주소. 계속 이 스페이스로 연결된다"),
                 fieldWithPath("$prefix.createdAt").description("생성 시각"),
+                fieldWithPath("$prefix.archivedAt")
+                    .type(JsonFieldType.STRING)
+                    .optional()
+                    .description("보관한 시각. 보관한 스페이스는 목록·검색·에이전트의 스페이스 찾기에서 빠지고 주소로는 열린다"),
             )
 
     fun headerFields(prefix: String): Array<FieldDescriptor> =

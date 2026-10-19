@@ -26,8 +26,9 @@ import xyz.robinjoon.agentdocs.workspace.domain.space.Space
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import java.util.UUID
 
-// The bytes go to the store before the row is written. If the row then fails, the stored bytes are an unreferenced
-// copy under their own hash, which a retry reuses.
+// Every upload or import is its own asset with its own name and source address; identical bytes are stored once under
+// their hash, which every asset with that content shares. The bytes go to the store before the row is written, so if
+// the row then fails they are an unreferenced copy a retry reuses.
 @Transactional(readOnly = true)
 class AssetService(
     private val spaces: SpaceRepository,
@@ -78,7 +79,6 @@ class AssetService(
         source: Source,
     ): Asset {
         val content = AssetContent.of(image.mediaType, image.bytes)
-        assets.findByContent(space.id, content.sha256)?.let { return it }
         store.put(content.sha256, content.mediaType.mime, image.bytes)
         val name =
             source.fileName.substringAfterLast('\\').trim().take(AssetOrigin.MAX_FILE_NAME_LENGTH).ifBlank {

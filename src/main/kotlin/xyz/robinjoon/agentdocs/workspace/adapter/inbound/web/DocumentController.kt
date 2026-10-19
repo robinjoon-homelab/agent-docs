@@ -31,7 +31,8 @@ import java.net.URI
 import java.security.Principal
 import java.util.UUID
 
-// Writes take an optional opId so a retried request applies once, and an optional one-line summary for history.
+// Writes take an optional opId so a retried request applies once, in the body or, for a write without one, as a
+// query parameter, and an optional one-line summary for history.
 @RestController
 class DocumentController(
     private val documents: DocumentUseCase,
@@ -151,27 +152,30 @@ class DocumentController(
     @PostMapping("/api/documents/{id}/trash")
     fun trash(
         @PathVariable id: UUID,
+        @RequestParam(required = false) opId: String?,
         principal: Principal?,
     ): ResponseEntity<Unit> {
-        documents.trash(CallerAccess.write(principal, null, null), DocumentId(id))
+        documents.trash(CallerAccess.write(principal, opId, null), DocumentId(id))
         return ResponseEntity.noContent().build()
     }
 
     @PostMapping("/api/documents/{id}/untrash")
     fun untrash(
         @PathVariable id: UUID,
+        @RequestParam(required = false) opId: String?,
         principal: Principal?,
     ): ResponseEntity<Unit> {
-        documents.untrash(CallerAccess.write(principal, null, null), DocumentId(id))
+        documents.untrash(CallerAccess.write(principal, opId, null), DocumentId(id))
         return ResponseEntity.noContent().build()
     }
 
     @DeleteMapping("/api/documents/{id}")
     fun purge(
         @PathVariable id: UUID,
+        @RequestParam(required = false) opId: String?,
         principal: Principal?,
     ): ResponseEntity<Unit> {
-        documents.purge(CallerAccess.write(principal, null, null), DocumentId(id))
+        documents.purge(CallerAccess.write(principal, opId, null), DocumentId(id))
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
     }
 

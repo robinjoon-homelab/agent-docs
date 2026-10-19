@@ -20,6 +20,8 @@ import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.space
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.spaceId
 import xyz.robinjoon.agentdocs.workspace.application.model.AnchorRequest
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationKey
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadChange
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadCriteria
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadQuery
@@ -37,6 +39,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
+import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Anchor
 import xyz.robinjoon.agentdocs.workspace.domain.thread.AnchorResolution
@@ -79,6 +82,17 @@ class ThreadServiceTest {
         assertThat(view.thread.location.anchor).isEqualTo(Anchor.Text(intro.id, 12, 19, "a delay"))
         assertThat(view.resolution).isEqualTo(AnchorResolution.Attached(12, 19))
         assertThat(view.thread.location.anchoredRevision).isEqualTo(5)
+    }
+
+    @Test
+    fun `a thread on a whole block keeps the start of the block's text as its quote`() {
+        val diagram = CodeBlock(BlockId("diag01"), "mermaid", "flowchart LR\n" + "  A --> B\n".repeat(40))
+        every { documents.findById(documentId) } returns document(listOf(intro, diagram), revision = 5)
+        every { threads.add(any()) } answers { firstArg() }
+
+        val view = service.open(context(ownerAccess), documentId, AnchorRequest.Whole(diagram.id), "Is the order right?")
+
+        assertThat(view.thread.location.anchor).isEqualTo(Anchor.Whole(diagram.id, diagram.code.take(200)))
     }
 
     @Test
@@ -142,6 +156,43 @@ class ThreadServiceTest {
         assertThatThrownBy {
             service.open(context(agentAccess(Permission.READ, setOf(spaceId)), ChangeSource.MCP), documentId, AnchorRequest.Document, "Hi")
         }.hasMessage("commenting needs comment permission")
+    }
+
+    @Test
+    fun `a retried comment edit answers with the comment as it is without editing it again`() {
+        val opened = thread(owner)
+        val comment = opened.comments.first().id
+        every { operations.find(OperationKey(WorkspaceFixtures.ownerId.toString(), "op-edit")) } returns
+            OperationRecord("comment.edit", comment.value, null)
+        every { threads.findByCommentForUpdate(comment) } returns opened
+        every { documents.findById(documentId) } returns current
+
+        val view = service.editComment(context(ownerAccess, operationId = "op-edit"), comment, "Edited again?")
+
+        assertThat(view.written).isEqualTo(comment)
+        assertThat(
+            view.thread.comments
+                .first()
+                .body,
+        ).isEqualTo("How long?")
+    }
+
+    @Test
+    fun `a retried thread change answers with the thread as it is`() {
+        every { operations.find(OperationKey(WorkspaceFixtures.connectionId.toString(), "op-answer")) } returns
+            OperationRecord("thread.change", threadId.value, null)
+        every { threads.findById(threadId) } returns thread(owner)
+        every { documents.findById(documentId) } returns current
+
+        val view =
+            service.change(
+                context(agentAccess, ChangeSource.MCP, "op-answer"),
+                threadId,
+                ThreadChange(status = ThreadStatus.ANSWERED),
+            )
+
+        assertThat(view.thread.status).isEqualTo(ThreadStatus.OPEN)
+        assertThat(view.written).isNull()
     }
 
     private fun query(spaces: Set<SpaceId>? = setOf(spaceId)): ThreadQuery =

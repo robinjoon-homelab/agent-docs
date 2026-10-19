@@ -9,7 +9,7 @@ import java.time.Instant
 @ConsistentCopyVisibility
 data class InboxItem private constructor(
     val id: InboxItemId,
-    val recipient: String,
+    val recipient: InboxRecipient,
     val notice: Notice,
     val delivery: Delivery,
 ) {
@@ -21,11 +21,11 @@ data class InboxItem private constructor(
             recipient: String,
             notice: Notice,
             at: Instant,
-        ): InboxItem = InboxItem(id, recipient.lowercase(), notice, Delivery(at, null))
+        ): InboxItem = InboxItem(id, InboxRecipient(recipient.lowercase(), null), notice, Delivery(at, null))
 
         fun restore(
             id: InboxItemId,
-            recipient: String,
+            recipient: InboxRecipient,
             notice: Notice,
             delivery: Delivery,
         ): InboxItem = InboxItem(id, recipient, notice, delivery)

@@ -5,8 +5,11 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.agent
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.agentAccess
@@ -48,6 +51,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.ChangeOrigin
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.Revision
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionContent
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
 
 // Every port is a strict mock: a call a test does not prepare fails the test.
@@ -120,6 +124,20 @@ class DocumentServiceTest {
         assertThat(written.revision).isEqualTo(3)
         assertThat(written.amended).isTrue()
         assertThat(written.document.blocks.last()).isEqualTo(paragraph("second", "Second, typed on"))
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RevisionKind::class, names = ["RESTORE", "TRANSITION"])
+    fun `a person's save right after a restore or a trash move adds a revision instead of rewriting it`(kind: RevisionKind) {
+        val latest = revision(3, current.blocks, byOwnerOnWeb, now.minusSeconds(10))
+        every { documents.findByIdForUpdate(documentId) } returns current
+        every { revisions.find(documentId, 3) } returns latest.copy(change = latest.change.withKind(kind))
+        every { documents.update(any(), any(), false) } answers { firstArg() }
+
+        val written = service.save(context(ownerAccess), documentId, 3, listOf(first, paragraph("second", "Second, typed on")))
+
+        assertThat(written.revision).isEqualTo(4)
+        assertThat(written.amended).isFalse()
     }
 
     @Test
@@ -257,6 +275,28 @@ class DocumentServiceTest {
         val written = service.trash(context(ownerAccess), documentId)
 
         assertThat(written.unchanged).isTrue()
+    }
+
+    @Test
+    fun `a retried trash move answers with the revision the first attempt produced`() {
+        every { operations.find(OperationKey(WorkspaceFixtures.ownerId.toString(), "op-trash")) } returns
+            OperationRecord("document.trash", documentId.value, 4)
+        every { documents.findById(documentId) } returns document(listOf(first), revision = 4, trashedAt = now.minusSeconds(5))
+        every { revisions.find(documentId, 4) } returns revision(4, listOf(first), byOwnerOnWeb, now.minusSeconds(5))
+
+        val written = service.trash(context(ownerAccess, operationId = "op-trash"), documentId)
+
+        assertThat(written.revision).isEqualTo(4)
+        assertThat(written.unchanged).isFalse()
+    }
+
+    @Test
+    fun `a retried permanent delete finds the document already gone and succeeds`() {
+        every { operations.find(OperationKey(WorkspaceFixtures.ownerId.toString(), "op-purge")) } returns
+            OperationRecord("document.purge", documentId.value, null)
+        every { documents.findByIdForUpdate(documentId) } returns null
+
+        assertThatCode { service.purge(context(ownerAccess, operationId = "op-purge"), documentId) }.doesNotThrowAnyException()
     }
 
     @Test

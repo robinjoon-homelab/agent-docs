@@ -11,6 +11,7 @@ import {
   SCOPE_LABEL,
 } from '../../../../../domain/connection/connection';
 import type { Space } from '../../../../../domain/space/space';
+import { pickableSpaces } from '../../../../../domain/space/space';
 import { useServices } from '../../../../../config/ServicesContext';
 import { ErrorBox, errorMessage, Loading } from '../../common/States';
 import { useLoad } from '../../hooks/useLoad';
@@ -120,7 +121,7 @@ function ApprovalForm({ request, spaces }: { request: OAuthRequest; spaces: read
             <p className="faint small">스페이스가 없습니다. 먼저 스페이스를 만드세요.</p>
           ) : null}
           <div className="approval-spaces">
-            {spaces.map((space) => (
+            {pickableSpaces(spaces, spaceIds).map((space) => (
               <label key={space.id} className="checkbox-row">
                 <input
                   type="checkbox"

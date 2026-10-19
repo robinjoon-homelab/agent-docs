@@ -1,7 +1,9 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.mockk
+import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
@@ -44,16 +46,18 @@ class McpApiDocumentationTest : RestDocsWebTest() {
     private val queries = mockk<DocumentQueryUseCase>()
     private val documents = mockk<DocumentUseCase>()
     private val json = JsonMapper.builder().build()
+    private val meters = SimpleMeterRegistry()
     private val config = McpConfig()
-    private val settings = McpSettings(setOf("https://docs.example.com"), "0.1.0")
+    private val mapper = config.mcpJsonMapper(json)
+    private val settings = McpSettings(setOf("https://docs.example.com"))
+
+    private val tools = listOf(DocsReadTool(queries), DocsEditTool(documents))
 
     // Building the server installs it as the transport's handler.
     private val transport =
-        config
-            .mcpTransport(
-                json,
-                settings,
-            ).also { config.mcpServer(it, listOf(DocsReadTool(queries), DocsEditTool(documents)), json, settings) }
+        config.mcpTransport(mapper, settings).also {
+            config.mcpServer(it, tools, config.mcpToolSpecifications(json, meters), mapper)
+        }
     private val mockMvc = restDocsMockMvc(config.mcpRoutes(transport))
     private val mcpContext = WriteContext(agentAccess, ChangeSource.MCP, null, null)
 
@@ -139,7 +143,7 @@ class McpApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
-    fun `a changed block comes back as a tool error with the block as it is now`() {
+    fun `a changed block comes back as a tool error with the block as it is now and is counted as a conflict`() {
         val operations = listOf(EditOperation.Delete(body.id, "00000000"))
         every { documents.edit(mcpContext, documentId, operations, null) } throws
             EditConflictException(listOf(BlockConflict(body.id, BlockMarkdown.hash(body), BlockMarkdown.of(body))))
@@ -152,6 +156,7 @@ class McpApiDocumentationTest : RestDocsWebTest() {
             .andExpect(jsonPath("$.result.content[0].text", containsString("\"code\":\"conflict\"")))
             .andExpect(jsonPath("$.result.content[0].text", containsString("\"blockId\":\"para01\"")))
             .andDo(documented("mcp-tool-error"))
+        assertThat(meters.timer("agentdocs.mcp.calls", "tool", "docs_edit", "outcome", "conflict").count()).isEqualTo(1)
     }
 
     @Test

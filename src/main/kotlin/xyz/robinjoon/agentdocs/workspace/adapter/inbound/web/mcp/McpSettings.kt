@@ -4,5 +4,4 @@ package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp
 // are always allowed.
 class McpSettings(
     val allowedOrigins: Set<String>,
-    val serverVersion: String,
 )

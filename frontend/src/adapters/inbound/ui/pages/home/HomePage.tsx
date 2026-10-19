@@ -1,7 +1,7 @@
 import { Link, useSearchParams } from 'react-router';
 import { documentHref } from '../../../../../domain/document/document';
 import type { Space } from '../../../../../domain/space/space';
-import { spaceInitial } from '../../../../../domain/space/space';
+import { isArchived, spaceInitial } from '../../../../../domain/space/space';
 import { useServices } from '../../../../../config/ServicesContext';
 import { useSession } from '../../app/SessionContext';
 import { ActorChip } from '../../common/ActorChip';
@@ -117,9 +117,11 @@ export function HomePage() {
               내 스페이스
             </h2>
             <div className="grid-cards">
-              {spaces.data.map((space) => (
-                <SpaceCard key={space.id} space={space} />
-              ))}
+              {spaces.data
+                .filter((space) => !isArchived(space))
+                .map((space) => (
+                  <SpaceCard key={space.id} space={space} />
+                ))}
             </div>
           </section>
           <section className="section" aria-labelledby="home-recent">
@@ -128,6 +130,18 @@ export function HomePage() {
             </h2>
             <RecentDocuments spaces={spaces.data} />
           </section>
+          {spaces.data.some(isArchived) ? (
+            <section className="section" aria-labelledby="home-archived">
+              <h2 className="section-title" id="home-archived">
+                보관한 스페이스
+              </h2>
+              <div className="grid-cards space-cards-archived">
+                {spaces.data.filter(isArchived).map((space) => (
+                  <SpaceCard key={space.id} space={space} />
+                ))}
+              </div>
+            </section>
+          ) : null}
         </>
       ) : null}
       {me.owner ? (

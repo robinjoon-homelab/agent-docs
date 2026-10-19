@@ -38,6 +38,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.history.ChangeOrigin
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.ChangeSummary
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.Revision
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionChange
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentThread
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
@@ -82,7 +83,13 @@ class DocumentService(
         journal.replayed(context, SAVE)?.let { return replay(context.access, it) }
         val document = lockForEdit(context.access, id)
         val stale = baseRevision != document.revision
-        val written = write(context, document, Content(document.header, mergeOnto(document, baseRevision, blocks)), amendable = !stale)
+        val written =
+            write(
+                context,
+                document,
+                Content(document.header, mergeOnto(document, baseRevision, blocks)),
+                if (stale) WriteMode.EDIT else WriteMode.TYPING,
+            )
         return remember(context, SAVE, written.copy(merged = stale))
     }
 
@@ -97,7 +104,7 @@ class DocumentService(
         val document = lockForEdit(context.access, id)
         val thread = answering?.let { lockThreadOf(document, it) }
         val result =
-            write(context, document, Content(document.header, DocumentEditor.apply(document.blocks, operations)), amendable = false)
+            write(context, document, Content(document.header, DocumentEditor.apply(document.blocks, operations)), WriteMode.EDIT)
         if (thread != null && !result.unchanged) linkAnswer(context, thread, result)
         return remember(context, EDIT, result)
     }
@@ -113,7 +120,7 @@ class DocumentService(
         change.baseRevision?.takeIf { it != document.revision }?.let { requireUntouchedSince(document, it, change) }
         val header = headerWith(document.header, change)
         if (header.path != document.header.path) requirePathFree(document.spaceId, header.path, document.id)
-        return remember(context, HEADER, write(context, document, Content(header, document.blocks), amendable = true))
+        return remember(context, HEADER, write(context, document, Content(header, document.blocks), WriteMode.TYPING))
     }
 
     @Transactional
@@ -133,13 +140,16 @@ class DocumentService(
         context: WriteContext,
         id: DocumentId,
     ) {
-        val document = documents.findByIdForUpdate(id)?.takeIf { context.access.sees(it.spaceId) } ?: throw DocumentNotFoundException(id)
         Permissions.requireOwner(context.access, "deleting a document permanently")
+        // The document is gone after the first attempt, so a retry has nothing left to answer with.
+        if (journal.replayed(context, PURGE) != null) return
+        val document = documents.findByIdForUpdate(id)?.takeIf { context.access.sees(it.spaceId) } ?: throw DocumentNotFoundException(id)
         if (!document.isTrashed) {
             throw InvalidRequestException("only a document in the trash can be deleted permanently", "move it to the trash first")
         }
         documents.delete(id)
         journal.record(context, "document.purged", subjectOf(document), "${document.header.title}: 영구 삭제")
+        journal.remember(context, OperationRecord(PURGE, id.value, null))
     }
 
     @Transactional
@@ -155,7 +165,7 @@ class DocumentService(
         val target = revisions.find(id, revision) ?: throw RevisionNotFoundException("$id rev $revision")
         val header = document.header.copy(title = target.content.header.title)
         val restoring = context.copy(summary = context.summary ?: "rev $revision 내용으로 복원")
-        return remember(context, RESTORE, write(restoring, document, Content(header, target.content.blocks), amendable = false))
+        return remember(context, RESTORE, write(restoring, document, Content(header, target.content.blocks), WriteMode.RESTORE))
     }
 
     @Transactional
@@ -174,13 +184,18 @@ class DocumentService(
         id: DocumentId,
         transition: Transition,
     ): DocumentWrite {
+        journal.replayed(context, transition.operation)?.let { return replay(context.access, it) }
         val document = lockForEdit(context.access, id)
         val now = journal.now()
         val moved = transition.apply(document, now) ?: return unchanged(document)
-        val change = RevisionChange.of(originOf(context), transition.summary, emptyList(), now)
+        val change = RevisionChange.of(originOf(context), transition.summary, emptyList(), now).withKind(RevisionKind.TRANSITION)
         val saved = documents.update(moved, Revision.of(moved, change), amended = false)
         journal.record(context, transition.kind, subjectOf(saved), "${saved.header.title}: ${transition.summary}")
-        return DocumentWrite(saved, saved.revision, emptyList(), amended = false, unchanged = false)
+        return remember(
+            context,
+            transition.operation,
+            DocumentWrite(saved, saved.revision, emptyList(), amended = false, unchanged = false),
+        )
     }
 
     // A write that changes nothing adds no revision.
@@ -188,25 +203,25 @@ class DocumentService(
         context: WriteContext,
         document: Document,
         next: Content,
-        amendable: Boolean,
+        mode: WriteMode,
     ): DocumentWrite {
         // Compared as whole lists: the diff ignores moved blocks, but a new order is still a change.
         if (next.blocks == document.blocks && next.header == document.header) return unchanged(document)
         val changes = BlockDiff.between(document.blocks, next.blocks)
         val now = journal.now()
-        val latest = if (amendable) amendableRevision(context, document, now) else null
+        val latest = if (mode.amendable) amendableRevision(context, document, now) else null
         if (latest != null) return amend(context, document, latest, next)
         val revised = document.revise(next.header, next.blocks, now)
         val summary =
             context.summary ?: ChangeSummary.of(document.header, next.header, changes, BlockDiff.reordered(document.blocks, next.blocks))
-        val change = RevisionChange.of(originOf(context), summary, changes.map { it.blockId }, now)
+        val change = RevisionChange.of(originOf(context), summary, changes.map { it.blockId }, now).withKind(mode.kind)
         val saved = documents.update(revised, Revision.of(revised, change), amended = false)
         journal.record(context, "document.revised", subjectOf(saved), "${saved.header.title}: ${change.summary}")
         return DocumentWrite(saved, saved.revision, change.changedBlocks, amended = false, unchanged = false)
     }
 
-    // A person's web saves group into one revision while they keep typing: the latest revision is theirs, came from
-    // the web, and was last saved at most 30 seconds ago. Agents and other paths always add a revision.
+    // A person's web saves group into one revision while they keep typing: the latest revision is an edit of theirs,
+    // came from the web, and was last saved at most 30 seconds ago. Agents and other paths always add a revision.
     private fun amendableRevision(
         context: WriteContext,
         document: Document,
@@ -218,7 +233,7 @@ class DocumentService(
         val origin = latest.change.origin
         val recent = Duration.between(latest.change.period.updatedAt, now) <= amendWindow
         return latest.takeIf {
-            recent && origin.source == ChangeSource.WEB &&
+            recent && latest.change.amendable && origin.source == ChangeSource.WEB &&
                 origin.actor.isSameAuthorAs(
                     actor,
                 ) && !latest.content.trashed
@@ -374,36 +389,13 @@ class DocumentService(
         val blocks: List<Block>,
     )
 
-    private enum class Transition(
-        val kind: String,
-        val summary: String,
-    ) {
-        TRASH("document.trashed", "휴지통으로 이동") {
-            override fun apply(
-                document: Document,
-                at: Instant,
-            ): Document? = document.trash(at)
-        },
-        UNTRASH("document.untrashed", "휴지통에서 복원") {
-            override fun apply(
-                document: Document,
-                at: Instant,
-            ): Document? = document.untrash(at)
-        },
-        ;
-
-        abstract fun apply(
-            document: Document,
-            at: Instant,
-        ): Document?
-    }
-
     private companion object {
         const val CREATE = "document.create"
         const val SAVE = "document.save"
         const val EDIT = "document.edit"
         const val HEADER = "document.header"
         const val RESTORE = "document.restore"
+        const val PURGE = "document.purge"
         val amendWindow: Duration = Duration.ofSeconds(30)
         val trashRetention: Duration = Duration.ofDays(30)
     }

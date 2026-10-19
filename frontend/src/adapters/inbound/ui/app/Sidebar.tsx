@@ -5,7 +5,7 @@ import type { PathNode } from '../../../../domain/document/pathTree';
 import { buildPathTree } from '../../../../domain/document/pathTree';
 import { PATH_RULE_TEXT, documentHref } from '../../../../domain/document/document';
 import type { Space } from '../../../../domain/space/space';
-import { spaceInitial } from '../../../../domain/space/space';
+import { pickableSpaces, spaceInitial } from '../../../../domain/space/space';
 import { useServices } from '../../../../config/ServicesContext';
 import { ActorChip } from '../common/ActorChip';
 import { Icon } from '../common/Icon';
@@ -43,7 +43,7 @@ function SpaceSwitcher({ current, spaces }: { current: Space | null; spaces: rea
       </button>
       {open ? (
         <div className="popover" role="menu" style={{ top: 36, left: 0, right: 0 }}>
-          {spaces.map((space) => (
+          {pickableSpaces(spaces).map((space) => (
             <Link
               key={space.id}
               role="menuitem"
@@ -56,7 +56,7 @@ function SpaceSwitcher({ current, spaces }: { current: Space | null; spaces: rea
               {space.id === current?.id ? <Icon name="check" size={14} /> : null}
             </Link>
           ))}
-          {spaces.length > 0 ? <div className="menu-separator" /> : null}
+          {pickableSpaces(spaces).length > 0 ? <div className="menu-separator" /> : null}
           <Link role="menuitem" className="menu-item" to="/?new=space" onClick={() => setOpen(false)}>
             <Icon name="plus" size={14} />새 스페이스
           </Link>

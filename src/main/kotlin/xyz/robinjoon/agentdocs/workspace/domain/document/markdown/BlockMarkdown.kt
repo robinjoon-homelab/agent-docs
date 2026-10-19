@@ -90,7 +90,11 @@ object BlockMarkdown {
     }
 
     private fun table(block: TableBlock): String {
-        val lines = block.rows.map { row -> "| <!--r:${row.id}-->" + row.cells.joinToString(" | ") { it.markdown } + " |" }
+        val lines =
+            block.rows.map { row ->
+                "| <!--r:${row.id}-->" + row.cells.joinToString(" | ") { TableSyntax.escape(it.markdown) } +
+                    " |"
+            }
         val delimiter = block.columns.joinToString(" | ", "| ", " |") { TableSyntax.delimiter(it.alignment) }
         return (listOf(lines.first(), delimiter) + lines.drop(1)).joinToString("\n")
     }

@@ -33,6 +33,8 @@ import { CodeBlockWithView, ImageWithView } from './nodeViews';
 import { BlockHandle, SelectionToolbar, TableToolbar } from './overlays';
 import { blockDecorationsKey } from './plugins/blockDecorations';
 import { clearDuplicateIds } from './plugins/blockIds';
+import { unmergePastedTables } from './plugins/tableSpans';
+import { pastedImageUrls } from './pastedImages';
 import { threadMarksInput, threadMarksKey } from './plugins/threadMarks';
 import { anchorForSelection, blockAtPos } from './positions';
 import {
@@ -284,6 +286,11 @@ export function DocumentEditor(props: DocumentEditorProps) {
     }
   };
 
+  // One at a time, so the images land in page order after the pasted text.
+  const importImages = async (urls: readonly string[]): Promise<void> => {
+    for (const url of urls) await importImage(url);
+  };
+
   const follow = (href: string | null): void => {
     if (href === null) return;
     const internal = docLinkHref(href);
@@ -338,7 +345,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
             return false;
           },
         },
-        transformPasted: (slice, view) => clearDuplicateIds(slice, view.state.doc),
+        transformPasted: (slice, view) => clearDuplicateIds(unmergePastedTables(slice), view.state.doc),
         handlePaste: (view, event) => {
           if (!view.editable) return false;
           const files = Array.from(event.clipboardData?.files ?? []).filter((file) =>
@@ -353,6 +360,9 @@ export function DocumentEditor(props: DocumentEditorProps) {
             void importImage(text.trim());
             return true;
           }
+          // The editor drops <img> from pasted web content; the server downloads each image after the text is in.
+          const images = pastedImageUrls(event.clipboardData?.getData('text/html') ?? '');
+          if (images.length > 0) setTimeout(() => void importImages(images), 0);
           return false;
         },
         handleDrop: (view, event, _slice, moved) => {

@@ -36,9 +36,16 @@ describe('HttpThreadGateway', () => {
         anchor: { kind: 'cell', blockId: 'b', rowId: 'r', columnId: 'c', quote: 'q' },
         resolution: { state: 'detached' },
       },
-      { ...base, id: 't3', anchor: { kind: 'document' }, resolution: { state: 'attached' } },
+      {
+        ...base,
+        id: 't3',
+        anchor: { kind: 'block', blockId: 'img', quote: '배포 순서' },
+        resolution: { state: 'detached' },
+      },
+      { ...base, id: 't4', anchor: { kind: 'document' }, resolution: { state: 'attached' } },
     ]).list('d1');
-    expect(threads.map((thread) => thread.anchor.kind)).toEqual(['text', 'cell', 'document']);
+    expect(threads.map((thread) => thread.anchor.kind)).toEqual(['text', 'cell', 'block', 'document']);
+    expect(threads[2]?.anchor).toEqual({ kind: 'block', blockId: 'img', quote: '배포 순서' });
     expect(threads[0]?.resolution).toEqual({ state: 'attached', start: 4, end: 6 });
     expect(threads[0]?.linkedRevisions).toEqual([5]);
     expect(threads[1]?.resolution).toEqual({ state: 'detached' });

@@ -161,7 +161,13 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
     @Test
     fun `a person resolves a thread`() {
         val resolved = requireNotNull(thread.resolve(ownerAccess.actor, at))
-        every { threads.change(webContext, threadId, ThreadChange(status = ThreadStatus.RESOLVED)) } returns
+        every {
+            threads.change(
+                webContext.copy(operationId = "op-resolve"),
+                threadId,
+                ThreadChange(status = ThreadStatus.RESOLVED),
+            )
+        } returns
             ThreadView(resolved, AnchorResolution.Attached(5, 8), null)
 
         mockMvc
@@ -169,7 +175,7 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
                 patch(
                     "/api/threads/{id}",
                     threadId.value,
-                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"status":"resolved"}"""),
+                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"status":"resolved","opId":"op-resolve"}"""),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("resolved"))
             .andDo(
@@ -179,6 +185,7 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("status").optional().description("open, answered, resolved. 사람이 연 스레드는 에이전트가 resolved로 바꿀 수 없다"),
                         subsectionWithPath("anchor").optional().type(JsonFieldType.OBJECT).description("다른 위치에 다시 달기. 형식은 스레드 열기와 같다"),
                         fieldWithPath("linkRevision").optional().type(JsonFieldType.NUMBER).description("이 스레드에 연결할 리비전"),
+                        fieldWithPath("opId").optional().description("재시도해도 한 번만 적용할 작업 ID"),
                     ),
                     responseFields(*threadFields("")),
                 ),
@@ -186,10 +193,11 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
-    fun `a comment is edited and deleted by its author only`() {
+    fun `a comment is edited and deleted by its author only, with an opId for retries`() {
         val edited = thread.editComment(commentId, ownerAccess.actor, "90초로 늘려 줘", at)
-        every { threads.editComment(webContext, commentId, "90초로 늘려 줘") } returns ThreadView(edited, AnchorResolution.Attached(5, 8), null)
-        every { threads.deleteComment(webContext, commentId) } returns
+        every { threads.editComment(webContext.copy(operationId = "op-edit"), commentId, "90초로 늘려 줘") } returns
+            ThreadView(edited, AnchorResolution.Attached(5, 8), null)
+        every { threads.deleteComment(webContext.copy(operationId = "op-delete"), commentId) } returns
             ThreadView(thread.deleteComment(commentId, ownerAccess.actor, at), AnchorResolution.Attached(5, 8), null)
 
         mockMvc
@@ -197,21 +205,29 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
                 patch(
                     "/api/comments/{id}",
                     commentId.value,
-                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"body":"90초로 늘려 줘"}"""),
+                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"body":"90초로 늘려 줘","opId":"op-edit"}"""),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.editedAt").exists())
             .andDo(
                 documented(
                     "comments-edit",
-                    requestFields(fieldWithPath("body").description("새 본문. 이전 본문은 수정 이력으로 남는다")),
+                    requestFields(
+                        fieldWithPath("body").description("새 본문. 이전 본문은 수정 이력으로 남는다"),
+                        fieldWithPath("opId").optional().description("재시도해도 한 번만 적용할 작업 ID"),
+                    ),
                     responseFields(*commentFields("")),
                 ),
             )
         mockMvc
             .perform(
-                delete("/api/comments/{id}", commentId.value).principal(owner),
+                delete("/api/comments/{id}", commentId.value).param("opId", "op-delete").principal(owner),
             ).andExpect(status().isNoContent)
-            .andDo(documented("comments-delete"))
+            .andDo(
+                documented(
+                    "comments-delete",
+                    queryParameters(parameterWithName("opId").optional().description("재시도해도 한 번만 적용할 작업 ID")),
+                ),
+            )
     }
 
     @Test

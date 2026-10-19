@@ -5,6 +5,7 @@ import org.jetbrains.exposed.v1.core.java.javaUUID
 import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
 
 internal object DocumentRevisionsTable : Table("document_revisions") {
     val documentId = javaUUID("document_id")
@@ -20,6 +21,7 @@ internal object DocumentRevisionsTable : Table("document_revisions") {
     val actor = ActorColumns(this, "actor")
     val changeSource = enumerationByName("change_source", 10, ChangeSource::class)
     val summary = varchar("summary", 200)
+    val kind = enumerationByName("kind", 10, RevisionKind::class)
     val changedBlocks = text("changed_blocks")
     val createdAt = timestampWithTimeZone("created_at")
     val updatedAt = timestampWithTimeZone("updated_at")

@@ -24,7 +24,10 @@ class SpacesListTool(
     override fun call(
         arguments: Arguments,
         context: WriteContext,
-    ): McpToolResult = McpToolResult.data(mapOf("spaces" to spaces.list(context.access).map(WorkspaceJson::overview)))
+    ): McpToolResult =
+        McpToolResult.data(
+            mapOf("spaces" to spaces.list(context.access, includeArchived = false).map(WorkspaceJson::overview)),
+        )
 }
 
 class SpacesResolveTool(

@@ -7,6 +7,7 @@
 - 기본 구성을 사용할 때는 `.github/deployment.json`을 만들지 않는다.
 - 이 앱의 Gradle 빌드는 공용 구성에 웹 화면 빌드(`frontendCheck`)와 `bootJar`의 `static/` 포함을 더한다. 공용 구성을 갱신할 때 이 연결을 유지한다. CI·Dockerfile은 바꾸지 않는다.
 - 이 앱의 최초 생성 설정은 `.github/deployment.json`이다. GitHub 로그인 값은 `agent-docs` namespace의 `agent-docs-runtime` Secret(`GITHUB_CLIENT_ID`·`GITHUB_CLIENT_SECRET`)에서 읽는다. 공용 오브젝트 스토리지가 생기기 전까지 첨부는 컨테이너 디스크에 저장되어 Pod가 바뀌면 사라진다.
+- 운영 지표는 소유자로 로그인한 브라우저에서 `/actuator/metrics`로 본다. `agentdocs.writes`(활동 종류·행위자별 쓰기 수), `agentdocs.mcp.calls`(MCP 도구·결과별 호출 수와 시간, 결과 `conflict`가 충돌 거절), `http.server.requests`(REST 응답 시간과 상태 코드)를 남긴다.
 - CI 변경 시 PR 소스 커밋 검사를 유지한다. 신뢰하지 않는 PR에 배포 자격 증명을 제공하거나 `pull_request_target`으로 실행하지 않는다.
 
 ## 배포 전 설정

@@ -8,6 +8,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxKind
 internal object InboxItemsTable : Table("inbox_items") {
     val id = javaUUID("id")
     val recipient = varchar("recipient", 39)
+    val recipientUserId = javaUUID("recipient_user_id").nullable()
     val kind = enumerationByName("kind", 20, InboxKind::class)
     val spaceId = javaUUID("space_id")
     val documentId = javaUUID("document_id")

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import tools.jackson.databind.JsonNode
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadChange
@@ -62,7 +63,7 @@ class ThreadController(
         @RequestBody body: JsonNode,
         principal: Principal?,
     ): Map<String, Any?> {
-        val context = CallerAccess.write(principal, null, null)
+        val context = CallerAccess.write(principal, Wire.optional(body, "opId"), null)
         val change =
             ThreadChange(
                 anchor = body.get("anchor")?.let(ThreadJson::anchorRequest),
@@ -78,16 +79,17 @@ class ThreadController(
         @RequestBody request: CommentRequest,
         principal: Principal?,
     ): Map<String, Any?> {
-        val view = threads.editComment(CallerAccess.write(principal, null, null), CommentId(id), request.body)
+        val view = threads.editComment(CallerAccess.write(principal, request.opId, null), CommentId(id), request.body)
         return ThreadJson.comment(requireNotNull(view.thread.comment(CommentId(id))))
     }
 
     @DeleteMapping("/api/comments/{id}")
     fun deleteComment(
         @PathVariable id: UUID,
+        @RequestParam(required = false) opId: String?,
         principal: Principal?,
     ): ResponseEntity<Unit> {
-        threads.deleteComment(CallerAccess.write(principal, null, null), CommentId(id))
+        threads.deleteComment(CallerAccess.write(principal, opId, null), CommentId(id))
         return ResponseEntity.noContent().build()
     }
 
@@ -101,6 +103,7 @@ class ThreadController(
 
 data class CommentRequest(
     val body: String,
+    val opId: String? = null,
 )
 
 // Query parameters of the thread query; every one is optional.

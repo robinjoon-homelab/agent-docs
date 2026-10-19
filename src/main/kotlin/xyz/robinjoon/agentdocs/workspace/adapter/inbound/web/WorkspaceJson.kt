@@ -43,6 +43,7 @@ object WorkspaceJson {
                 "links" to space.profile.links.map { mapOf("kind" to it.kind.name.lowercase(), "value" to it.value) },
                 "formerSlugs" to space.address.formerSlugs.map { it.value },
                 "createdAt" to space.createdAt,
+                "archivedAt" to space.lifecycle.archivedAt,
             )
 
     fun overview(overview: SpaceOverview): Map<String, Any?> =

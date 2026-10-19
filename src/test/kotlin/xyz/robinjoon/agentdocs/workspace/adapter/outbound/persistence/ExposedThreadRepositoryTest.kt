@@ -42,7 +42,7 @@ class ExposedThreadRepositoryTest {
             listOf(
                 Anchor.Text(BlockId("para01"), 3, 8, "delay"),
                 Anchor.Cell(BlockId("tabl01"), BlockId("row001"), BlockId("colm01"), "30s"),
-                Anchor.Whole(BlockId("imag01")),
+                Anchor.Whole(BlockId("imag01"), "배포 순서 다이어그램"),
                 Anchor.Document,
             )
         anchors.forEach { anchor ->

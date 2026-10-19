@@ -10,9 +10,11 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItemId
 import java.time.Clock
+import java.util.UUID
 
 // Items about documents that were deleted, or spaces the caller can no longer see, are left out instead of failing.
-@Transactional(readOnly = true)
+// Every read first claims the items delivered to the reader's login, so they stay the reader's after a login change.
+@Transactional
 class InboxService(
     private val inbox: InboxRepository,
     private val documents: DocumentRepository,
@@ -24,7 +26,7 @@ class InboxService(
         unreadOnly: Boolean,
     ): List<InboxView> {
         if (access.actor.isAgent) return emptyList()
-        val items = inbox.list(access.actor.login.lowercase(), unreadOnly, LIMIT).filter { access.sees(it.notice.target.spaceId) }
+        val items = inbox.list(readerOf(access), unreadOnly, LIMIT).filter { access.sees(it.notice.target.spaceId) }
         val titles = documents.findByIds(items.map { it.notice.target.documentId }.distinct()).associate { it.id to it.header.title }
         val spacesById = spaces.findByIds(items.map { it.notice.target.spaceId }.toSet()).associateBy { it.id }
         return items.mapNotNull { item ->
@@ -34,22 +36,25 @@ class InboxService(
         }
     }
 
-    override fun unreadCount(access: Access): Int = if (access.actor.isAgent) 0 else inbox.countUnread(access.actor.login.lowercase())
+    override fun unreadCount(access: Access): Int = if (access.actor.isAgent) 0 else inbox.countUnread(readerOf(access))
 
-    @Transactional
     override fun markRead(
         access: Access,
         id: InboxItemId,
     ) {
         val item =
-            inbox.findById(id)?.takeIf { !access.actor.isAgent && it.recipient == access.actor.login.lowercase() }
+            inbox.findById(id)?.takeIf { !access.actor.isAgent && it.recipient.isFor(readerOf(access)) }
                 ?: throw InboxItemNotFoundException(id)
         item.markRead(clock.instant())?.let(inbox::update)
     }
 
-    @Transactional
-    override fun markAllRead(access: Access): Int =
-        if (access.actor.isAgent) 0 else inbox.markAllRead(access.actor.login.lowercase(), clock.instant())
+    override fun markAllRead(access: Access): Int = if (access.actor.isAgent) 0 else inbox.markAllRead(readerOf(access), clock.instant())
+
+    private fun readerOf(access: Access): UUID {
+        val actor = access.actor
+        inbox.claim(actor.login.lowercase(), actor.userId)
+        return actor.userId
+    }
 
     private companion object {
         const val LIMIT = 200
