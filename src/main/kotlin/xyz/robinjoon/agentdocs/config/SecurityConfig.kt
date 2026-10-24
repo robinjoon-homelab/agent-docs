@@ -18,6 +18,7 @@ import xyz.robinjoon.agentdocs.access.adapter.inbound.web.ApiAuthenticationEntry
 import xyz.robinjoon.agentdocs.access.adapter.inbound.web.BearerTokenFilter
 import xyz.robinjoon.agentdocs.access.adapter.inbound.web.CsrfCookieFilter
 import xyz.robinjoon.agentdocs.access.adapter.inbound.web.GitHubTokenDiscarder
+import xyz.robinjoon.agentdocs.access.adapter.inbound.web.GitHubTokenResponseClient
 import xyz.robinjoon.agentdocs.access.adapter.inbound.web.GitHubUserService
 import xyz.robinjoon.agentdocs.access.adapter.inbound.web.NextPathAuthorizationRequestResolver
 import xyz.robinjoon.agentdocs.access.adapter.inbound.web.RateLimitFilter
@@ -98,6 +99,7 @@ class SecurityConfig {
                 login
                     .loginPage("/login")
                     .authorizationEndpoint { it.authorizationRequestResolver(NextPathAuthorizationRequestResolver(registrations)) }
+                    .tokenEndpoint { it.accessTokenResponseClient(GitHubTokenResponseClient.create()) }
                     .userInfoEndpoint { it.userService(GitHubUserService(signIn)) }
                     .authorizedClientRepository(GitHubTokenDiscarder())
                     .successHandler(SignInSuccessHandler(sessions))
