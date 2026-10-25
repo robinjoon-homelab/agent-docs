@@ -39,6 +39,7 @@ export function CommentRail({
   onCancelPending,
   onDocumentComment,
   onClose,
+  onCollapse,
 }: {
   threads: readonly Thread[];
   filter: ThreadFilter;
@@ -57,6 +58,8 @@ export function CommentRail({
   onCancelPending: () => void;
   onDocumentComment: () => void;
   onClose?: () => void;
+  /** Folds the docked rail away; given only where the rail sits next to the document. */
+  onCollapse?: () => void;
 }) {
   const visible = filterThreads(threads, filter);
   const listRef = useRef<HTMLDivElement>(null);
@@ -118,33 +121,57 @@ export function CommentRail({
 
   return (
     <aside className={`comment-rail${aligned ? ' is-aligned' : ''}`} aria-label="댓글">
-      <div className="rail-header">
-        <div className="segmented" role="group" aria-label="댓글 필터">
-          {FILTERS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={filter === option}
-              onClick={() => onFilter(option)}
-            >
-              {THREAD_FILTER_LABEL[option]} {counts[option]}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={onDocumentComment}
-          title="문서에 댓글"
-          aria-label="문서에 댓글"
-        >
-          <Icon name="plus" />
-        </button>
-        {onClose === undefined ? null : (
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="댓글 닫기">
-            <Icon name="close" />
+      {/* The empty-state message is pinned with the header: the rail is as tall as the document, so in the list it
+          would scroll away with the first screen. */}
+      <div className="rail-top">
+        <div className="rail-header">
+          <div className="segmented" role="group" aria-label="댓글 필터">
+            {FILTERS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={filter === option}
+                onClick={() => onFilter(option)}
+              >
+                {THREAD_FILTER_LABEL[option]} {counts[option]}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onDocumentComment}
+            title="문서에 댓글"
+            aria-label="문서에 댓글"
+          >
+            <Icon name="plus" />
           </button>
-        )}
+          {onCollapse === undefined ? null : (
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={onCollapse}
+              aria-label="댓글 접기"
+              title="댓글 접기"
+            >
+              <Icon name="sidebar" />
+            </button>
+          )}
+          {onClose === undefined ? null : (
+            <button type="button" className="icon-btn" onClick={onClose} aria-label="댓글 닫기">
+              <Icon name="close" />
+            </button>
+          )}
+        </div>
+        {visible.length === 0 && pending === null ? (
+          <p className="rail-empty faint small">
+            {threads.length === 0
+              ? '댓글이 없습니다. 텍스트를 선택하고 댓글을 남기세요.'
+              : filter === 'detached'
+                ? '분리된 댓글이 없습니다.'
+                : '열린 댓글이 없습니다.'}
+          </p>
+        ) : null}
       </div>
       <div className="rail-list" ref={listRef}>
         {pending === null ? null : (
@@ -171,15 +198,6 @@ export function CommentRail({
             </article>
           </div>
         )}
-        {visible.length === 0 && pending === null ? (
-          <p className="rail-empty faint small">
-            {threads.length === 0
-              ? '댓글이 없습니다. 텍스트를 선택하고 댓글을 남기세요.'
-              : filter === 'detached'
-                ? '분리된 댓글이 없습니다.'
-                : '열린 댓글이 없습니다.'}
-          </p>
-        ) : null}
         {visible.map((thread) => (
           <div className="rail-item" key={thread.id} data-rail-id={thread.id}>
             <ThreadCard

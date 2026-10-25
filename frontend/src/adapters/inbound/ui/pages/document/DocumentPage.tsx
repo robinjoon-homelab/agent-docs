@@ -149,6 +149,13 @@ function DocumentWorkspace({
   const [layoutVersion, setLayoutVersion] = useState(0);
   const wide = useMediaQuery('(min-width: 1280px)');
   const [railOpen, setRailOpen] = useState(false);
+  const docked = wide && !shell.railCollapsed;
+  const { setRailCollapsed } = shell;
+  // Pointing at a comment brings the rail back however it was put away: the drawer on narrow screens, folding on wide.
+  const showRail = useCallback(() => {
+    setRailOpen(true);
+    setRailCollapsed(false);
+  }, [setRailCollapsed]);
   const editable = me.owner && document.trashedAt === null;
   const frame = useRef<number | null>(null);
 
@@ -182,14 +189,14 @@ function DocumentWorkspace({
         const threadId = decodeURIComponent(hash.slice('#thread-'.length));
         setActiveThreadId(threadId);
         setFilter('all');
-        setRailOpen(true);
+        showRail();
         editorRef.current?.scrollToThread(threadId);
       } else if (hash.startsWith('#block-')) {
         editorRef.current?.scrollToBlock(decodeURIComponent(hash.slice('#block-'.length)));
       }
     }, 50);
     return () => clearTimeout(timer);
-  }, [hash]);
+  }, [hash, showRail]);
 
   const measure = useMemo(
     () => ({
@@ -206,7 +213,7 @@ function DocumentWorkspace({
   const requestComment = (anchor: Anchor): void => {
     setPending(anchor);
     setActiveThreadId(null);
-    setRailOpen(true);
+    showRail();
   };
 
   /** Saves pending edits first; anchors and trashing assume the server has what the user sees. */
@@ -316,11 +323,12 @@ function DocumentWorkspace({
       onCancelPending={() => setPending(null)}
       onDocumentComment={() => requestComment({ kind: 'document' })}
       onClose={wide ? undefined : () => setRailOpen(false)}
+      onCollapse={wide ? () => setRailCollapsed(true) : undefined}
     />
   );
 
   return (
-    <div className={`doc-layout${wide ? '' : ' is-narrow'}`} ref={layoutRef}>
+    <div className={`doc-layout${docked ? '' : ' is-undocked'}`} ref={layoutRef}>
       <div className="doc-main">
         <div className="doc-body">
           <DocumentHeader
@@ -373,7 +381,7 @@ function DocumentWorkspace({
             mentionLogins={mentionLogins}
             onActivateThread={(threadId) => {
               setActiveThreadId(threadId);
-              if (!wide) setRailOpen(true);
+              showRail();
             }}
             onRequestComment={requestComment}
             onReanchor={(anchor) => void reanchor(anchor)}
@@ -382,8 +390,19 @@ function DocumentWorkspace({
           />
         </div>
       </div>
-      {wide ? (
+      {docked ? (
         rail
+      ) : wide ? (
+        <button
+          type="button"
+          className="rail-toggle"
+          onClick={() => setRailCollapsed(false)}
+          title="댓글 펼치기"
+          aria-label={`댓글 펼치기, 열린 댓글 ${openCount}개`}
+        >
+          <Icon name="comment" />
+          {openCount > 0 ? <span className="nav-count">{openCount}</span> : null}
+        </button>
       ) : (
         <>
           <button

@@ -11,6 +11,9 @@ export type Shell = {
   readonly refreshTree: () => void;
   readonly openPalette: () => void;
   readonly openNewDocument: (spaceSlug: string, path?: string) => void;
+  /** Whether the comment rail beside documents is folded away; it stays so from one document to the next. */
+  readonly railCollapsed: boolean;
+  readonly setRailCollapsed: (collapsed: boolean) => void;
 };
 
 const ShellContext = createContext<Shell | null>(null);

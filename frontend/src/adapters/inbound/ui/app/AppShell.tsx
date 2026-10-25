@@ -21,6 +21,7 @@ export function AppShell() {
   const currentSlug = spaceMatch?.params.space ?? null;
   const narrow = useMediaQuery('(max-width: 1023px)');
   const [collapsed, setCollapsed] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [treeVersion, setTreeVersion] = useState(0);
@@ -45,8 +46,19 @@ export function AppShell() {
       refreshTree,
       openPalette,
       openNewDocument,
+      railCollapsed,
+      setRailCollapsed,
     }),
-    [spaces.state, spaces.data, spaces.reload, lastSlug, refreshTree, openPalette, openNewDocument],
+    [
+      spaces.state,
+      spaces.data,
+      spaces.reload,
+      lastSlug,
+      refreshTree,
+      openPalette,
+      openNewDocument,
+      railCollapsed,
+    ],
   );
 
   const classes = ['app-shell'];

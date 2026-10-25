@@ -7,7 +7,7 @@
   min-height: 100%;
 }
 
-.doc-layout.is-narrow {
+.doc-layout.is-undocked {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -211,16 +211,19 @@
   background: var(--bg);
 }
 
-.rail-header {
+.rail-top {
   position: sticky;
   top: 0;
   z-index: 10;
+  margin-bottom: 12px;
+  background: var(--bg);
+}
+
+.rail-header {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-bottom: 12px;
   padding: 4px 0;
-  background: var(--bg);
 }
 
 .rail-header .segmented {
@@ -394,7 +397,7 @@
   margin-top: 8px;
 }
 
-/* Below 1280px the rail collapses to a button that opens a drawer. */
+/* Below 1280px the rail collapses to a button that opens a drawer; on wider screens the same button unfolds it. */
 .rail-toggle {
   position: fixed;
   right: 20px;

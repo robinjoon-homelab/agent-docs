@@ -1,6 +1,6 @@
 import type { ReactNodeViewProps } from '@tiptap/react';
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MermaidPreview } from '../blocks/MermaidPreview';
 import { CodeBlockNode, ImageNode } from './schema';
 
@@ -28,13 +28,38 @@ function languageOptions(current: string) {
   return known ? CODE_LANGUAGES : [...CODE_LANGUAGES, { value: current, label: current }];
 }
 
-function CodeBlockView({ node, updateAttributes, editor }: ReactNodeViewProps) {
+type DiagramView = 'code' | 'split' | 'preview';
+
+const DIAGRAM_VIEWS: readonly { value: DiagramView; label: string }[] = [
+  { value: 'code', label: '코드' },
+  { value: 'split', label: '함께 보기' },
+  { value: 'preview', label: '미리보기' },
+];
+
+function CodeBlockView({ node, updateAttributes, editor, getPos }: ReactNodeViewProps) {
   const language = String(node.attrs.language ?? '');
   const mermaid = language === 'mermaid';
   const editable = editor.isEditable;
-  const [showCode, setShowCode] = useState(false);
-  const codeVisible = !mermaid || editable || showCode;
+  // A written diagram is read far more often than edited, so it opens on the picture; an empty one opens ready to type.
+  const [view, setView] = useState<DiagramView>(() => (node.textContent.trim() === '' ? 'split' : 'preview'));
+  const codeVisible = !mermaid || view !== 'preview';
+  const previewVisible = mermaid && view !== 'code';
   const label = languageOptions(language).find((option) => option.value === language)?.label ?? language;
+
+  // The code stays in the document while hidden, so a caret arriving there by keyboard would type blind.
+  useEffect(() => {
+    if (!mermaid || view !== 'preview') return;
+    const reveal = (): void => {
+      const position = getPos();
+      if (position === undefined) return;
+      const { from, to } = editor.state.selection;
+      if (from > position && to < position + node.nodeSize) setView('split');
+    };
+    editor.on('selectionUpdate', reveal);
+    return () => {
+      editor.off('selectionUpdate', reveal);
+    };
+  }, [editor, getPos, mermaid, node, view]);
 
   return (
     <NodeViewWrapper
@@ -46,7 +71,11 @@ function CodeBlockView({ node, updateAttributes, editor }: ReactNodeViewProps) {
           <select
             aria-label="코드 언어"
             value={language}
-            onChange={(event) => updateAttributes({ language: event.target.value })}
+            onChange={(event) => {
+              // Code that just became a diagram is being worked on, so it stays in sight next to its picture.
+              if (event.target.value === 'mermaid') setView('split');
+              updateAttributes({ language: event.target.value });
+            }}
           >
             {languageOptions(language).map((option) => (
               <option key={option.value} value={option.value}>
@@ -57,21 +86,26 @@ function CodeBlockView({ node, updateAttributes, editor }: ReactNodeViewProps) {
         ) : (
           <span>{label}</span>
         )}
-        {mermaid && !editable ? (
-          <button
-            type="button"
-            className="btn btn-ghost btn-small"
-            onClick={() => setShowCode((value) => !value)}
-          >
-            {showCode ? '코드 숨기기' : '코드 보기'}
-          </button>
+        {mermaid ? (
+          <div className="segmented" role="group" aria-label="다이어그램 보기">
+            {DIAGRAM_VIEWS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={view === option.value}
+                onClick={() => setView(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         ) : null}
       </div>
       <div className="code-block-body">
         <pre className={codeVisible ? undefined : 'code-hidden'} spellCheck={false}>
           <NodeViewContent<'code'> as="code" />
         </pre>
-        {mermaid ? (
+        {previewVisible ? (
           <div className="code-block-preview" contentEditable={false}>
             <MermaidPreview code={node.textContent} />
           </div>
