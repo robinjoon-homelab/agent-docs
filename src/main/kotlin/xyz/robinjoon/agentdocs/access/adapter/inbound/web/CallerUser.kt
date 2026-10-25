@@ -6,8 +6,8 @@ import org.springframework.security.oauth2.core.user.OAuth2User
 import xyz.robinjoon.agentdocs.access.application.model.Caller
 import java.io.Serializable
 
-// The GitHub login result once the allowlist accepted it. Only lives until SignInSuccessHandler replaces it with a
-// CallerAuthentication.
+// The GitHub login result once the allowlist accepted it. Only lives until SignInSuccessHandler starts a stored sign-in
+// for its caller.
 class CallerUser(
     val caller: Caller,
     attributes: Map<String, Any>,

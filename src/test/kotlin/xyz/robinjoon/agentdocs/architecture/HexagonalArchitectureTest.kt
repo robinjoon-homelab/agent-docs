@@ -65,7 +65,14 @@ class HexagonalArchitectureTest {
             mapOf(
                 "workspace" to
                     setOf("space.Space", "document.Document", "thread.CommentThread", "inbox.InboxItem", "asset.Asset"),
-                "access" to setOf("user.User", "connection.Connection", "client.OAuthClient", "authorization.AuthorizationRequest"),
+                "access" to
+                    setOf(
+                        "user.User",
+                        "connection.Connection",
+                        "client.OAuthClient",
+                        "authorization.AuthorizationRequest",
+                        "session.WebSession",
+                    ),
             )
         private val aggregateRoots =
             contextAggregates.flatMap { (context, roots) -> roots.map { "$ROOT.$context.domain.$it" } }

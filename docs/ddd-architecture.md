@@ -61,6 +61,7 @@ BC가 정해져도 루트의 소유·생명주기가 미정이면 루트와 테�
 | `workspace` | Asset: `AssetId`, 스페이스, 종류·크기·sha256, 파일 이름, 원래 주소 | PNG·JPEG·GIF·WebP·SVG, 20MB 이하. 종류는 파일 내용으로 판단하고 SVG는 스크립트를 지워 저장한다. 업로드·가져오기마다 첨부가 하나씩 생겨 각자 파일 이름과 원래 주소를 남기고, 같은 내용의 바이트는 해시로 한 번만 저장한다. 리비전이 보여 줄 수 있으므로 지우지 않는다. 주소로 가져올 때는 공개 주소만 받는다. |
 | `access` | User: `UserId`, GitHub ID·로그인·프로필 | `AGENT_DOCS_OWNER`와 `agent-docs.members` 목록의 로그인만 들어온다. 소유자는 모든 권한을 가진다. 멤버는 들어올 수만 있고 초대 기능이 생기기 전까지 어떤 스페이스도 보지 못한다. GitHub 토큰은 보관하지 않는다. |
 | `access` | Connection: `ConnectionId`, 사용자, 종류(agent·script)와 클라이언트, 허용 스페이스·범위, 기간, 토큰 해시 | 범위는 `read < comment < edit`. 행위자 기록에는 client_id의 호스트를 남긴다(클라이언트가 밝힌 이름은 스스로 붙인 값이다). 기간 1~365일. **회수·축소는 다음 요청부터 적용**하고 나중에 만든 스페이스는 들어가지 않는다. 액세스 토큰 1시간, 리프레시 토큰은 한 번 쓰면 바뀌며 어떤 토큰도 연결보다 오래가지 않는다. 토큰 원문은 저장하지 않는다. 연결마다 1분에 600번까지. |
+| `access` | WebSession: `WebSessionId`, 사용자, 토큰 해시, 시작·마지막 사용 시각 | 웹 로그인은 브라우저 쿠키(HttpOnly, SameSite=Lax, 공개 주소가 https면 Secure)로 이어진다. **30일 동안 쓰지 않으면 끝나고, 쓰면 마지막 사용부터 다시 30일이다.** 사용은 하루 한 번만 기록하고 그때 쿠키도 다시 보낸다. 요청마다 저장된 로그인과 사용자·허용 목록을 확인하므로 허용 목록에서 빠지면 다음 요청부터 막힌다. 로그아웃하면 서버에서도 지운다. HTTP 세션에 두지 않으므로 재시작·배포로 풀리지 않는다. 토큰 원문은 저장하지 않는다. |
 | `access` | OAuthClient: client_id(https 메타데이터 문서 URL 또는 등록한 `adc_` ID), 이름, 리다이렉트 | 공개 클라이언트만. 리다이렉트는 정확히 맞아야 하고, loopback http만 포트가 달라도 된다. |
 | `access` | AuthorizationRequest: 클라이언트·리다이렉트·state·PKCE challenge·리소스, 결정, 만료 시각 | 소유자 승인을 10분 기다리고, 승인한 코드는 10분 안에 한 번만 바꿀 수 있다. PKCE는 S256만. 토큰은 이 서버의 MCP 엔드포인트용으로만 발급한다. |
 
@@ -128,7 +129,7 @@ config/                             빈 조립·기술 설정
 
 ### BC 경계
 
-- `HexagonalArchitectureTest.contextAggregates`에 `workspace → space.Space, document.Document, thread.CommentThread, inbox.InboxItem, asset.Asset`, `access → user.User, connection.Connection, client.OAuthClient, authorization.AuthorizationRequest`를 유지하고 새 BC·루트를 같은 변경에서 등록한다.
+- `HexagonalArchitectureTest.contextAggregates`에 `workspace → space.Space, document.Document, thread.CommentThread, inbox.InboxItem, asset.Asset`, `access → user.User, connection.Connection, client.OAuthClient, authorization.AuthorizationRequest, session.WebSession`를 유지하고 새 BC·루트를 같은 변경에서 등록한다.
 - 미등록 업무 패키지·루트, 코드 없는 등록 항목, 중첩 기능 경로를 만들지 않는다.
 - 루트 공용 도메인에는 `AggregateRoot`만 둔다. BC 안의 공유 값도 의미·제약이 같은 경우에만 올린다.
 - 자기 저장소·테이블을 사용하고 다른 BC 타입을 직접 참조하지 않는다. `config`의 조립만 예외로 둔다.

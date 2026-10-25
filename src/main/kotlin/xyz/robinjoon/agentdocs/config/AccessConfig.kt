@@ -11,6 +11,7 @@ import xyz.robinjoon.agentdocs.access.application.port.input.ClientRegistrationU
 import xyz.robinjoon.agentdocs.access.application.port.input.ConnectionUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.SignInUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.TokenUseCase
+import xyz.robinjoon.agentdocs.access.application.port.input.WebSessionUseCase
 import xyz.robinjoon.agentdocs.access.application.service.AccessJournal
 import xyz.robinjoon.agentdocs.access.application.service.AuthorizationService
 import xyz.robinjoon.agentdocs.access.application.service.CallerService
@@ -19,6 +20,7 @@ import xyz.robinjoon.agentdocs.access.application.service.ClientRegistrationServ
 import xyz.robinjoon.agentdocs.access.application.service.ConnectionService
 import xyz.robinjoon.agentdocs.access.application.service.SignInService
 import xyz.robinjoon.agentdocs.access.application.service.TokenService
+import xyz.robinjoon.agentdocs.access.application.service.WebSessionService
 import xyz.robinjoon.agentdocs.access.domain.user.Allowlist
 import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
 import java.time.Clock
@@ -52,6 +54,13 @@ class AccessConfig {
         settings: AccessSettings,
         clock: Clock,
     ): SignInUseCase = SignInService(ports.users, Allowlist(settings.owner, settings.members), clock)
+
+    @Bean
+    fun webSessionUseCase(
+        ports: AccessPorts,
+        settings: AccessSettings,
+        clock: Clock,
+    ): WebSessionUseCase = WebSessionService(ports.sessions, ports.users, Allowlist(settings.owner, settings.members), ports.secrets, clock)
 
     @Bean
     fun callerUseCase(

@@ -22,6 +22,8 @@ import xyz.robinjoon.agentdocs.access.domain.connection.ConnectionState
 import xyz.robinjoon.agentdocs.access.domain.connection.ConnectionTerm
 import xyz.robinjoon.agentdocs.access.domain.connection.Credentials
 import xyz.robinjoon.agentdocs.access.domain.connection.Grant
+import xyz.robinjoon.agentdocs.access.domain.session.WebSession
+import xyz.robinjoon.agentdocs.access.domain.session.WebSessionId
 import xyz.robinjoon.agentdocs.access.domain.user.GitHubAccount
 import xyz.robinjoon.agentdocs.access.domain.user.User
 import xyz.robinjoon.agentdocs.access.domain.user.UserId
@@ -37,6 +39,7 @@ class ExposedAccessRepositoriesTest {
     private val connections = ExposedConnectionRepository()
     private val clients = ExposedOAuthClientRepository()
     private val requests = ExposedAuthorizationRequestRepository()
+    private val sessions = ExposedWebSessionRepository()
     private val at = Instant.parse("2026-10-18T09:00:00.123456Z")
     private val user =
         User.register(
@@ -113,6 +116,24 @@ class ExposedAccessRepositoriesTest {
 
         assertThat(approved).isEqualTo(request.approve(approval, at.plusSeconds(10)))
         assertThat(database.inTransaction { requests.findByCodeForUpdate(TokenHash.of("code")) }?.id).isEqualTo(request.id)
+    }
+
+    @Test
+    fun `a web sign-in is found by its token hash, keeps its latest use, and is gone once ended or unused`() {
+        database.inTransaction { users.add(user) }
+        val kept = WebSession.start(WebSessionId(UUID.randomUUID()), user.id, TokenHash.of("adt_w_kept"), at)
+        val ended = WebSession.start(WebSessionId(UUID.randomUUID()), user.id, TokenHash.of("adt_w_ended"), at)
+        val unused = WebSession.start(WebSessionId(UUID.randomUUID()), user.id, TokenHash.of("adt_w_unused"), at.minus(Duration.ofDays(31)))
+        database.inTransaction { listOf(kept, ended, unused).forEach(sessions::add) }
+
+        val renewed = requireNotNull(kept.used(at.plus(Duration.ofDays(2))))
+        database.inTransaction { sessions.update(renewed) }
+        database.inTransaction { sessions.deleteByTokenHash(TokenHash.of("adt_w_ended")) }
+        database.inTransaction { sessions.deleteUnusedBefore(at.minus(Duration.ofDays(30))) }
+
+        assertThat(database.inTransaction { sessions.findByTokenHash(TokenHash.of("adt_w_kept")) }).isEqualTo(renewed)
+        assertThat(database.inTransaction { sessions.findByTokenHash(TokenHash.of("adt_w_ended")) }).isNull()
+        assertThat(database.inTransaction { sessions.findByTokenHash(TokenHash.of("adt_w_unused")) }).isNull()
     }
 
     private fun connection(): Connection {
