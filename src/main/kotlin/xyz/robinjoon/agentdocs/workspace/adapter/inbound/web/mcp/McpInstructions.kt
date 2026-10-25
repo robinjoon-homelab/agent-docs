@@ -10,8 +10,9 @@ internal object McpInstructions {
             "naming each " +
             "block id and its current hash as ifHash; if someone changed the block since you read it, nothing is applied and the error " +
             "returns " +
-            "the current block, so read it again and retry. Never overwrite a person's change. Keep a table's cols: list and its " +
-            "<!--r:ID--> row markers when you rewrite it, so comments on cells stay attached.\n\n" +
+            "the current block, so read it again and retry. Never overwrite a person's change. When you rewrite a table, keep its " +
+            "<!--r:ID--> row markers and either copy its <!-- b:ID h:HASH cols:... --> line exactly as read or leave that line " +
+            "out, so comments on cells stay attached.\n\n" +
             "Work arrives as comment threads, not calls: when your user runs you, use comments_query (open threads by default) to see " +
             "what " +
             "people asked, with the anchored block and its neighbors. After handling a thread, pass answering=<thread id> to docs_edit " +

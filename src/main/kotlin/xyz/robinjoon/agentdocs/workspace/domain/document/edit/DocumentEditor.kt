@@ -77,6 +77,14 @@ object DocumentEditor {
         if (operation.blocks.isEmpty()) {
             throw InvalidEditException("operation $index: a replacement needs at least one block; use delete to remove a block")
         }
+        // The first block takes the target's id, so a table turned into anything else takes its cell threads with it. A
+        // mistyped annotation line ahead of the table is the usual way this happens.
+        if (target is TableBlock && operation.blocks.first() !is TableBlock) {
+            throw InvalidEditException(
+                "operation $index: block ${target.id} is a table, so its replacement must start with a table; send the table " +
+                    "without an annotation line to keep its row and column ids, or delete it and insert the new blocks",
+            )
+        }
         val at = blocks.indexOf(target)
         val first = keptIds(target, operation.blocks.first().withId(target.id))
         return blocks.subList(0, at) + first + fresh(operation.blocks.drop(1), blocks) + blocks.subList(at + 1, blocks.size)
