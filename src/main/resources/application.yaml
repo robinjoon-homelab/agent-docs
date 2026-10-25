@@ -76,6 +76,8 @@ agent-docs:
     directory: ${AGENT_DOCS_ASSET_DIR:./data/assets}
     s3:
       bucket: ${AGENT_DOCS_S3_BUCKET:}
-      prefix: ${AGENT_DOCS_S3_PREFIX:agent-docs}
+      prefix: ${AGENT_DOCS_S3_PREFIX:}
       endpoint: ${AGENT_DOCS_S3_ENDPOINT:}
       region: ${AGENT_DOCS_S3_REGION:us-east-1}
+      access-key: ${AGENT_DOCS_S3_ACCESS_KEY:}
+      secret-key: ${AGENT_DOCS_S3_SECRET_KEY:}

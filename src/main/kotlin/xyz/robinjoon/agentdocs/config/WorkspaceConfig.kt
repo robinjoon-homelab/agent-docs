@@ -2,7 +2,10 @@ package xyz.robinjoon.agentdocs.config
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation
+import software.amazon.awssdk.core.checksums.ResponseChecksumValidation
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import xyz.robinjoon.agentdocs.application.port.output.ActivityCatalog
@@ -118,8 +121,20 @@ class WorkspaceConfig {
     private fun assetStoreOf(assets: AssetProperties): AssetStore {
         if (assets.store != "s3") return FileSystemAssetStore(Path.of(assets.directory))
         val s3 = assets.s3
-        val builder = S3Client.builder().region(Region.of(s3.region)).credentialsProvider(DefaultCredentialsProvider.builder().build())
-        if (s3.endpoint.isNotBlank()) builder.endpointOverride(URI.create(s3.endpoint)).forcePathStyle(true)
+        require(s3.bucket.isNotBlank() && s3.accessKey.isNotBlank() && s3.secretKey.isNotBlank()) {
+            "agent-docs.assets.s3 needs bucket, access-key and secret-key when the store is s3"
+        }
+        val credentials = StaticCredentialsProvider.create(AwsBasicCredentials.create(s3.accessKey, s3.secretKey))
+        val builder = S3Client.builder().region(Region.of(s3.region)).credentialsProvider(credentials)
+        // S3-compatible servers such as the homelab's MinIO-based gateway predate the SDK's default trailing checksums,
+        // so checksums are sent only where the API requires them.
+        if (s3.endpoint.isNotBlank()) {
+            builder
+                .endpointOverride(URI.create(s3.endpoint))
+                .forcePathStyle(true)
+                .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
+                .responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED)
+        }
         return S3AssetStore(builder.build(), s3.bucket, s3.prefix)
     }
 }

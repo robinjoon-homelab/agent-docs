@@ -23,4 +23,6 @@ data class S3Properties(
     val prefix: String,
     val endpoint: String,
     val region: String,
+    val accessKey: String,
+    val secretKey: String,
 )

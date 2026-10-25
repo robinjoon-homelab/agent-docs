@@ -10,7 +10,7 @@
 - `AGENT_DOCS_OWNER`에 소유자 GitHub 로그인을 지정한다. 비어 있으면 앱이 시작하지 않는다. 함께 들어올 로그인은 `AGENT_DOCS_MEMBERS`에 쉼표로 적는다.
 - GitHub 로그인에는 GitHub OAuth App의 `GITHUB_CLIENT_ID`·`GITHUB_CLIENT_SECRET`이 필요하다. 콜백 주소는 `<공개 주소>/login/oauth2/code/github`다.
 - `AGENT_DOCS_PUBLIC_URL`에 브라우저와 MCP 클라이언트가 쓰는 주소를 지정한다. 기본값은 `http://localhost:8080`이며 OAuth 메타데이터·토큰 대상이 이 주소를 따른다.
-- 첨부 파일은 기본으로 `AGENT_DOCS_ASSET_DIR`(기본 `./data/assets`)에 저장한다. S3 호환 저장소는 `AGENT_DOCS_ASSET_STORE=s3`와 `AGENT_DOCS_S3_BUCKET`·`AGENT_DOCS_S3_ENDPOINT`·`AGENT_DOCS_S3_REGION`·`AGENT_DOCS_S3_PREFIX`로 지정하고, 자격 증명은 AWS SDK 기본 경로(`AWS_ACCESS_KEY_ID`·`AWS_SECRET_ACCESS_KEY` 등)로 넘긴다.
+- 첨부 파일은 기본으로 `AGENT_DOCS_ASSET_DIR`(기본 `./data/assets`)에 저장한다. S3 호환 저장소는 `AGENT_DOCS_ASSET_STORE=s3`와 `AGENT_DOCS_S3_BUCKET`·`AGENT_DOCS_S3_ENDPOINT`·`AGENT_DOCS_S3_REGION`·`AGENT_DOCS_S3_PREFIX`(기본 없음)로 지정하고, 접근 키는 `AGENT_DOCS_S3_ACCESS_KEY`·`AGENT_DOCS_S3_SECRET_KEY`로 넘긴다. 버킷과 접근 키가 없으면 시작하지 않는다.
 - 웹 화면은 `frontend/`에서 [프런트엔드 명령](frontend-architecture.md#명령)으로 실행한다. 개발 서버는 API를 `http://localhost:8080`으로 프록시한다.
 
 ## 기능 변경
