@@ -166,7 +166,12 @@ function ImageView({ node, updateAttributes, editor, extension, selected }: Reac
 }
 
 export const CodeBlockWithView = CodeBlockNode.extend({
-  addNodeView: () => ReactNodeViewRenderer(CodeBlockView),
+  addNodeView: () =>
+    ReactNodeViewRenderer(CodeBlockView, {
+      // A click on the picture opens its viewer; the editor must not also put the caret into the code it hides.
+      stopEvent: ({ event }) =>
+        event.target instanceof Element && event.target.closest('.code-block-preview') !== null,
+    }),
 });
 
 export const ImageWithView = ImageNode.extend<ImageOptions>({

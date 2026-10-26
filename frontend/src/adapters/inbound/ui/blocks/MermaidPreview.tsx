@@ -2,6 +2,7 @@ import type { Mermaid } from 'mermaid';
 import { useEffect, useId, useState } from 'react';
 import type { MermaidFailure } from './mermaidError';
 import { describeMermaidError } from './mermaidError';
+import { DiagramViewer } from './DiagramViewer';
 
 type Rendered = {
   readonly code: string;
@@ -31,6 +32,7 @@ function loadMermaid(): Promise<Mermaid> {
 export function MermaidPreview({ code, debounceMs = 250 }: { code: string; debounceMs?: number }) {
   const id = `mermaid-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const [rendered, setRendered] = useState<Rendered | null>(null);
+  const [zoomed, setZoomed] = useState(false);
 
   useEffect(() => {
     let current = true;
@@ -66,6 +68,19 @@ export function MermaidPreview({ code, debounceMs = 250 }: { code: string; debou
       </div>
     );
   }
+  const svg = rendered.svg ?? '';
   // mermaid runs with securityLevel "strict", which sanitizes labels before producing the SVG.
-  return <div className="mermaid-diagram" dangerouslySetInnerHTML={{ __html: rendered.svg ?? '' }} />;
+  return (
+    <>
+      <button
+        type="button"
+        className="mermaid-diagram"
+        title="크게 보기"
+        aria-label="다이어그램 크게 보기"
+        onClick={() => setZoomed(true)}
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+      {zoomed ? <DiagramViewer svg={svg} onClose={() => setZoomed(false)} /> : null}
+    </>
+  );
 }

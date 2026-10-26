@@ -20,7 +20,8 @@ export type IconName =
   | 'doc'
   | 'folder'
   | 'image'
-  | 'more';
+  | 'more'
+  | 'minus';
 
 const PATHS: Record<IconName, string> = {
   search:
@@ -47,6 +48,7 @@ const PATHS: Record<IconName, string> = {
   doc: 'M6 2h8l5 5v15H6V2Zm7 1.5V8h4.5L13 3.5ZM8 12v2h8v-2H8Zm0 4v2h8v-2H8Z',
   folder: 'M3 5h7l2 2h9v12H3V5Z',
   image: 'M3 4h18v16H3V4Zm2 2v9.6l3.5-3.5 3 3 4-4L19 14.6V6H5Zm4 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z',
+  minus: 'M5 11h14v2H5v-2Z',
   more: 'M6 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z',
 };
 

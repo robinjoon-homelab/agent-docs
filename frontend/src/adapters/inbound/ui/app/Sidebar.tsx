@@ -1,8 +1,8 @@
 import type { DragEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router';
+import { Link, NavLink, useMatch, useNavigate } from 'react-router';
 import type { PathNode } from '../../../../domain/document/pathTree';
-import { buildPathTree } from '../../../../domain/document/pathTree';
+import { buildPathTree, isFolderOpen } from '../../../../domain/document/pathTree';
 import { PATH_RULE_TEXT, documentHref } from '../../../../domain/document/document';
 import type { Space } from '../../../../domain/space/space';
 import { pickableSpaces, spaceInitial } from '../../../../domain/space/space';
@@ -75,6 +75,15 @@ type TreeDrag = {
   readonly drop: (documentId: string, folder: string) => void;
 };
 
+type TreeFolding = {
+  readonly isOpen: (folder: string) => boolean;
+  readonly toggle: (folder: string) => void;
+};
+
+function FoldIcon({ open }: { open: boolean }) {
+  return <Icon name={open ? 'chevron-down' : 'chevron-right'} size={14} />;
+}
+
 function dropProps(folder: string, drag: TreeDrag) {
   return {
     onDragOver: (event: DragEvent) => {
@@ -99,42 +108,68 @@ function TreeNodes({
   nodes,
   spaceSlug,
   drag,
+  folding,
 }: {
   nodes: readonly PathNode[];
   spaceSlug: string;
   drag: TreeDrag;
+  folding: TreeFolding;
 }) {
   return (
     <ul className="tree">
       {nodes.map((node) => {
         const isFolder = node.children.length > 0;
+        const open = isFolder && folding.isOpen(node.path);
         const targetClass = isFolder && drag.target === node.path ? ' drop-target' : '';
+        const name = node.document === null || node.document.title === '' ? node.name : node.document.title;
         return (
           <li key={node.path} {...(isFolder ? dropProps(node.path, drag) : {})}>
             {node.document === null ? (
-              <div className={`nav-item tree-folder${targetClass}`} title={node.path}>
+              <button
+                type="button"
+                className={`nav-item tree-folder${targetClass}`}
+                title={node.path}
+                aria-expanded={open}
+                onClick={() => folding.toggle(node.path)}
+              >
+                <FoldIcon open={open} />
                 <Icon name="folder" size={14} />
                 {node.name}
-              </div>
+              </button>
             ) : (
-              <NavLink
-                className={({ isActive }) => `nav-item${isActive ? ' active' : ''}${targetClass}`}
-                to={documentHref(spaceSlug, node.document.id)}
-                title={`${node.path} · 폴더로 끌어서 옮기기`}
-                draggable
-                onDragStart={(event) => {
-                  event.dataTransfer.setData(DOCUMENT_DRAG_TYPE, node.document?.id ?? '');
-                  event.dataTransfer.effectAllowed = 'move';
-                }}
-                onDragEnd={() => drag.setTarget(null)}
-              >
-                <Icon name="doc" size={14} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {node.document.title === '' ? node.name : node.document.title}
-                </span>
-              </NavLink>
+              <div className="tree-row">
+                {isFolder ? (
+                  <button
+                    type="button"
+                    className="tree-toggle"
+                    aria-expanded={open}
+                    aria-label={`${name} ${open ? '접기' : '펼치기'}`}
+                    onClick={() => folding.toggle(node.path)}
+                  >
+                    <FoldIcon open={open} />
+                  </button>
+                ) : null}
+                <NavLink
+                  className={({ isActive }) => `nav-item${isActive ? ' active' : ''}${targetClass}`}
+                  to={documentHref(spaceSlug, node.document.id)}
+                  title={`${node.path} · 폴더로 끌어서 옮기기`}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(DOCUMENT_DRAG_TYPE, node.document?.id ?? '');
+                    event.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragEnd={() => drag.setTarget(null)}
+                >
+                  <Icon name="doc" size={14} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {name}
+                  </span>
+                </NavLink>
+              </div>
             )}
-            {isFolder ? <TreeNodes nodes={node.children} spaceSlug={spaceSlug} drag={drag} /> : null}
+            {open ? (
+              <TreeNodes nodes={node.children} spaceSlug={spaceSlug} drag={drag} folding={folding} />
+            ) : null}
           </li>
         );
       })}
@@ -147,6 +182,8 @@ function DocumentTree({ spaceSlug, version }: { spaceSlug: string; version: numb
   const services = useServices();
   const toast = useToast();
   const [target, setTarget] = useState<string | null>(null);
+  const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const currentId = useMatch('/s/:space/d/:id')?.params.id ?? null;
   const documents = useLoad(`tree:${spaceSlug}:${version}`, () => services.documents.listInSpace(spaceSlug));
   if (documents.state !== 'ready') return null;
   if (documents.data.length === 0)
@@ -170,6 +207,12 @@ function DocumentTree({ spaceSlug, version }: { spaceSlug: string; version: numb
     );
   };
   const drag: TreeDrag = { target, setTarget, drop };
+  const currentPath = documents.data.find((candidate) => candidate.id === currentId)?.path ?? null;
+  const isOpen = (folder: string): boolean => isFolderOpen(folder, currentPath, toggled);
+  const folding: TreeFolding = {
+    isOpen,
+    toggle: (folder) => setToggled((previous) => new Map(previous).set(folder, !isOpen(folder))),
+  };
   return (
     <div
       className={`tree-root${target === '' ? ' drop-target' : ''}`}
@@ -178,7 +221,7 @@ function DocumentTree({ spaceSlug, version }: { spaceSlug: string; version: numb
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTarget(null);
       }}
     >
-      <TreeNodes nodes={buildPathTree(documents.data)} spaceSlug={spaceSlug} drag={drag} />
+      <TreeNodes nodes={buildPathTree(documents.data)} spaceSlug={spaceSlug} drag={drag} folding={folding} />
     </div>
   );
 }
@@ -263,7 +306,7 @@ export function Sidebar({
                 <Icon name="plus" size={14} />
               </button>
             </div>
-            <DocumentTree spaceSlug={currentSlug} version={treeVersion} />
+            <DocumentTree key={currentSlug} spaceSlug={currentSlug} version={treeVersion} />
           </>
         )}
         <div className="nav-section">설정</div>

@@ -895,6 +895,30 @@ h3 {
   font-size: 13px;
 }
 
+.tree-row {
+  display: flex;
+  align-items: center;
+}
+
+.tree-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.tree-toggle:hover {
+  background: var(--bg-hover);
+}
+
 /* Command palette ----------------------------------------------------------------------------- */
 
 .palette {
@@ -1052,12 +1076,98 @@ h3 {
 .mermaid-diagram {
   display: flex;
   justify-content: center;
+  width: 100%;
+  padding: 0;
   overflow-x: auto;
+  border: none;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: zoom-in;
+}
+
+.mermaid-diagram:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .mermaid-diagram svg {
   max-width: 100%;
   height: auto;
+}
+
+/* The viewer fills the screen but a 16px margin, which still shows the page dimmed behind it. */
+.diagram-viewer {
+  position: fixed;
+  inset: 16px;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.diagram-viewer[open] {
+  display: flex;
+}
+
+.diagram-viewer::backdrop {
+  background: rgba(10, 10, 10, 0.5);
+}
+
+.diagram-viewer-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.diagram-viewer-hint {
+  flex: 1;
+}
+
+.diagram-viewer-bar .zoom-level {
+  min-width: 56px;
+  font-variant-numeric: tabular-nums;
+}
+
+.diagram-viewer-frame {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.diagram-viewer-frame.is-dragging {
+  cursor: grabbing;
+}
+
+.diagram-viewer-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+/* mermaid caps the svg at its own width inline; here the wrapper sets the size and the transform scales it. */
+.diagram-viewer-content svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none !important;
 }
 
 .mermaid-empty {

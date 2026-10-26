@@ -42,6 +42,20 @@ export function buildPathTree(documents: readonly DocumentSummary[]): PathNode[]
   return sortTree(roots);
 }
 
+/**
+ * Folders start closed, except those holding the open document, so a long tree stays short and the reader still sees
+ * where they are. A folder the reader opened or closed keeps that choice.
+ */
+export function isFolderOpen(
+  folder: string,
+  currentPath: string | null,
+  toggled: ReadonlyMap<string, boolean>,
+): boolean {
+  const choice = toggled.get(folder);
+  if (choice !== undefined) return choice;
+  return currentPath !== null && (currentPath === folder || currentPath.startsWith(`${folder}/`));
+}
+
 export function sortByRecent<T extends { readonly updatedAt: string }>(items: readonly T[]): T[] {
   return [...items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }

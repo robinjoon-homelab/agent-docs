@@ -9,7 +9,7 @@ import { toDraftBlock, toSavableBlocks } from './draft';
 import { textRun } from './inline';
 import { listOrdinals } from './listOrdinals';
 import { mergeAfterConflict } from './merge';
-import { buildPathTree } from './pathTree';
+import { buildPathTree, isFolderOpen } from './pathTree';
 import { recentAgentChanges } from './agentChanges';
 
 const table: TableBlock = {
@@ -204,5 +204,28 @@ describe('document inputs', () => {
   it('normalizes paths and tags', () => {
     expect(normalizePath(' /guides// setup / ')).toBe('guides/setup');
     expect(parseTags('a, b,,a , c')).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('isFolderOpen', () => {
+  it('opens only the folders around the open document until someone toggles one', () => {
+    const none = new Map<string, boolean>();
+
+    expect(isFolderOpen('guides', 'guides/deploy/ci', none)).toBe(true);
+    expect(isFolderOpen('guides/deploy', 'guides/deploy/ci', none)).toBe(true);
+    expect(isFolderOpen('guides', 'guides', none)).toBe(true);
+    expect(isFolderOpen('guide', 'guides/deploy/ci', none)).toBe(false);
+    expect(isFolderOpen('design', 'guides/deploy/ci', none)).toBe(false);
+    expect(isFolderOpen('design', null, none)).toBe(false);
+  });
+
+  it('follows the reader once they open or close a folder', () => {
+    const toggled = new Map([
+      ['guides', false],
+      ['design', true],
+    ]);
+
+    expect(isFolderOpen('guides', 'guides/setup', toggled)).toBe(false);
+    expect(isFolderOpen('design', 'guides/setup', toggled)).toBe(true);
   });
 });
