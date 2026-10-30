@@ -68,6 +68,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
 import xyz.robinjoon.agentdocs.workspace.domain.document.Paragraph
+import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.BlockConflict
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditConflictException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
@@ -102,7 +103,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     queryParameters(
                         parameterWithName("status").optional().description("draft, in_review, confirmed, archived"),
                         parameterWithName("tag").optional().description("태그"),
-                        parameterWithName("folder").optional().description("이 폴더 아래 문서만"),
+                        parameterWithName("folder").optional().description("이 경로의 문서 아래에 있는 문서만"),
                     ),
                     responseFields(*listingFields("[].")),
                 ),
@@ -338,6 +339,28 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
             ).andExpect(status().isConflict)
             .andExpect(jsonPath("$.code").value("conflict"))
             .andDo(documented("documents-stale-revision", responseFields(*workspaceProblemFields())))
+    }
+
+    @Test
+    fun `a move onto a path in use answers 409 naming the path, which may belong to a document moved along`() {
+        every { documents.changeHeader(webContext, documentId, HeaderChange(null, DocumentPath("billing"), null, null, null, 3)) } throws
+            PathTakenException(DocumentPath("billing/retry"))
+
+        mockMvc
+            .perform(
+                patch(
+                    "/api/documents/{id}",
+                    documentId,
+                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"baseRevision":3,"path":"billing"}"""),
+            ).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("taken"))
+            .andExpect(jsonPath("$.path").value("billing/retry"))
+            .andDo(
+                documented(
+                    "documents-path-taken",
+                    responseFields(*workspaceProblemFields(), fieldWithPath("path").description("이미 다른 문서가 쓰고 있는 경로")),
+                ),
+            )
     }
 
     @Test

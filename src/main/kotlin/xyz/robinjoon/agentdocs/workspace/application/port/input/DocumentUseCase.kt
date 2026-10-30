@@ -5,13 +5,17 @@ import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
+import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 
 // Every write needs edit permission on the document's space, takes a row lock on the document, and adds a revision,
-// except that a person's saves within 30 seconds of their own last web save replace that revision.
+// except that a person's saves within 30 seconds of their own last web save replace that revision. The leading
+// segments of a path are the parent document: writes that would leave a document without a live parent create or
+// restore one, and moves, trash moves, restores, and permanent deletes take the documents under it along. What they
+// wrote besides the named document is in DocumentWrite.related.
 interface DocumentUseCase {
     fun create(
         context: WriteContext,
@@ -37,7 +41,9 @@ interface DocumentUseCase {
         answering: ThreadId?,
     ): DocumentWrite
 
-    // Fails with StaleRevisionException when change.baseRevision is set and is not the current revision.
+    // Fails with StaleRevisionException when change.baseRevision is set and is not the current revision. A new path
+    // under the document's own path fails, and so does one where the document or any document under it would land
+    // on a path in use, with PathTakenException naming it.
     fun changeHeader(
         context: WriteContext,
         id: DocumentId,
@@ -71,4 +77,9 @@ interface DocumentUseCase {
 
     // Removes documents that have been in the trash for 30 days. Returns how many were removed.
     fun purgeExpiredTrash(): Int
+
+    // Gives every folder path that has no document an empty one, written in the name of the person with the owner's
+    // login. Paths that already have a document are left alone, so running it again adds nothing. Returns the
+    // documents it created.
+    fun fillMissingParents(owner: String): List<Document>
 }

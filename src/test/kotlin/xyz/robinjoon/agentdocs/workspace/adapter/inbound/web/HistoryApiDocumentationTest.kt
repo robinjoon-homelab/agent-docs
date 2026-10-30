@@ -84,7 +84,7 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("[].revision").description("리비전 번호"),
                         fieldWithPath("[].title").description("그 리비전의 제목"),
                         *actorFields("[].actor"),
-                        fieldWithPath("[].source").description("web, mcp, rest"),
+                        fieldWithPath("[].source").description("web, mcp, rest, system(앱이 스스로 바꾼 것)"),
                         fieldWithPath("[].summary").description("변경 요약. 비워 보내면 '블록 1개 수정'처럼 채운다"),
                         fieldWithPath("[].changedBlockIds").description("바뀐 블록 ID"),
                         fieldWithPath("[].createdAt").description("리비전이 생긴 시각"),

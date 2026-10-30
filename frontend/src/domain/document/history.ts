@@ -1,6 +1,11 @@
 import type { Revision, RevisionSource } from './document';
 
-export const REVISION_SOURCE_LABEL: Record<RevisionSource, string> = { web: '웹', mcp: 'MCP', rest: 'REST' };
+export const REVISION_SOURCE_LABEL: Record<RevisionSource, string> = {
+  web: '웹',
+  mcp: 'MCP',
+  rest: 'REST',
+  system: '자동',
+};
 
 export type RevisionActorFilter = 'all' | 'human' | 'agent';
 

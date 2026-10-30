@@ -7,6 +7,7 @@ import {
   expiryState,
 } from '../../../../../domain/connection/connection';
 import type { TrashedDocument } from '../../../../../domain/document/document';
+import { trashedTogether } from '../../../../../domain/document/pathTree';
 import type { Space, SpaceDraft, SpaceLink, SpaceLinkKind } from '../../../../../domain/space/space';
 import {
   SPACE_DRAFT_ERROR_TEXT,
@@ -186,11 +187,14 @@ function TrashSection({ spaceSlug }: { spaceSlug: string }) {
   const trash = useLoad(`space-settings:trash:${spaceSlug}`, () => services.documents.listTrash(spaceSlug));
   const [pendingDelete, setPendingDelete] = useState<TrashedDocument | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
+  const togetherCount =
+    pendingDelete !== null && trash.state === 'ready' ? trashedTogether(trash.data, pendingDelete).length : 0;
 
   const restore = async (document: TrashedDocument): Promise<void> => {
     try {
       await services.documents.untrash(document.id);
-      trash.setData((items) => items.filter((item) => item.id !== document.id));
+      // Documents trashed together with it come back too, so the list is read again.
+      trash.reload();
       shell.refreshTree();
       toast(`'${document.title}' 문서를 복원했습니다`);
     } catch (error) {
@@ -202,7 +206,7 @@ function TrashSection({ spaceSlug }: { spaceSlug: string }) {
     setPendingDelete(null);
     try {
       await services.documents.destroy(document.id);
-      trash.setData((items) => items.filter((item) => item.id !== document.id));
+      trash.reload();
       toast(`'${document.title}' 문서를 영구 삭제했습니다`);
     } catch (error) {
       setFailure(error);
@@ -265,7 +269,9 @@ function TrashSection({ spaceSlug }: { spaceSlug: string }) {
         }
       >
         <p style={{ margin: 0 }}>
-          ‘{pendingDelete?.title}’ 문서와 모든 리비전·댓글을 영구 삭제합니다. 되돌릴 수 없습니다.
+          ‘{pendingDelete?.title}’ 문서와 모든 리비전·댓글을 영구 삭제합니다.
+          {togetherCount > 0 ? ` 함께 휴지통에 들어간 하위 문서 ${togetherCount}개도 지웁니다.` : ''} 되돌릴
+          수 없습니다.
         </p>
       </Dialog>
     </>

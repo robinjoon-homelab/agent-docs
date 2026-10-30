@@ -21,6 +21,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListing
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentLocation
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
@@ -88,6 +89,60 @@ class ExposedDocumentRepository : DocumentRepository {
             .where { (DocumentsTable.spaceId eq space.value) and (DocumentsTable.activePath eq path.value) }
             .singleOrNull()
             ?.let(DocumentRows::document)
+
+    override fun lockLiveAt(
+        space: SpaceId,
+        paths: List<DocumentPath>,
+    ): List<Document> {
+        if (paths.isEmpty()) return emptyList()
+        return DocumentsTable
+            .selectAll()
+            .where { (DocumentsTable.spaceId eq space.value) and (DocumentsTable.activePath inList paths.map { it.value }) }
+            .forUpdate()
+            .map(DocumentRows::document)
+    }
+
+    override fun lockLiveUnder(
+        space: SpaceId,
+        path: DocumentPath,
+    ): List<Document> =
+        under(space, path)
+            .andWhere { DocumentsTable.trashedAt.isNull() }
+            .forUpdate()
+            .map(DocumentRows::document)
+            .sortedBy { it.header.path.value }
+
+    override fun lockTrashedTogether(
+        space: SpaceId,
+        path: DocumentPath,
+        trashedAt: Instant,
+    ): List<Document> =
+        under(space, path)
+            .andWhere { DocumentsTable.trashedAt eq trashedAt.utc() }
+            .forUpdate()
+            .map(DocumentRows::document)
+            .sortedBy { it.header.path.value }
+
+    override fun lockLastTrashedAt(
+        space: SpaceId,
+        path: DocumentPath,
+    ): Document? =
+        DocumentsTable
+            .selectAll()
+            .where {
+                (DocumentsTable.spaceId eq space.value) and (DocumentsTable.path eq path.value) and
+                    DocumentsTable.trashedAt.isNotNull()
+            }.orderBy(DocumentsTable.trashedAt to SortOrder.DESC)
+            .limit(1)
+            .forUpdate()
+            .singleOrNull()
+            ?.let(DocumentRows::document)
+
+    override fun livePaths(): List<DocumentLocation> =
+        DocumentsTable
+            .select(DocumentsTable.spaceId, DocumentsTable.path)
+            .where { DocumentsTable.trashedAt.isNull() }
+            .map { DocumentLocation(SpaceId(it[DocumentsTable.spaceId]), DocumentPath(it[DocumentsTable.path])) }
 
     // Joined with the latest revision for who made it; the body is not read.
     override fun list(
@@ -169,6 +224,15 @@ class ExposedDocumentRepository : DocumentRepository {
             }
         }
     }
+
+    // Paths starting with the path and a slash, so payments/retry is under payments and payments-old is not.
+    private fun under(
+        space: SpaceId,
+        path: DocumentPath,
+    ): Query =
+        DocumentsTable
+            .selectAll()
+            .where { (DocumentsTable.spaceId eq space.value) and (DocumentsTable.path like LikePatterns.startingWith("$path/")) }
 
     private fun selectById(id: DocumentId): Query = DocumentsTable.selectAll().where { DocumentsTable.id eq id.value }
 }

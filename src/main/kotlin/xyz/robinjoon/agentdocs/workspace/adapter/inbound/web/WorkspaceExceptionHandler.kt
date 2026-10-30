@@ -90,8 +90,16 @@ class WorkspaceExceptionHandler : ResponseEntityExceptionHandler() {
     fun handleStale(exception: StaleRevisionException): ProblemDetail =
         problem(HttpStatus.CONFLICT, "conflict", exception, "read the document again and resend the change against its current revision")
 
-    @ExceptionHandler(SlugTakenException::class, PathTakenException::class)
-    fun handleTaken(exception: RuntimeException): ProblemDetail = problem(HttpStatus.CONFLICT, "taken", exception, ProblemFixes.TAKEN)
+    @ExceptionHandler(SlugTakenException::class)
+    fun handleTaken(exception: SlugTakenException): ProblemDetail = problem(HttpStatus.CONFLICT, "taken", exception, ProblemFixes.TAKEN)
+
+    // The path lets the screen show which document is in the way, also when it is under the one being moved.
+    @ExceptionHandler(PathTakenException::class)
+    fun handlePathTaken(exception: PathTakenException): ProblemDetail {
+        val problem = problem(HttpStatus.CONFLICT, "taken", exception, ProblemFixes.TAKEN)
+        problem.setProperty("path", exception.path.value)
+        return problem
+    }
 
     // Each conflict carries the block as it is now, as markdown for agents and as JSON for the web editor's conflict card.
     @ExceptionHandler(EditConflictException::class)

@@ -78,6 +78,7 @@ class DocumentServiceTest {
     fun `creating a document starts its history at revision one with every block changed`() {
         every { spaces.findBySlug(space.slug) } returns space
         every { documents.findByPath(spaceId, DocumentPath("notes/today")) } returns null
+        every { documents.lockLiveAt(spaceId, listOf(DocumentPath("notes"))) } returns emptyList()
         every { documents.add(any(), any()) } answers { firstArg() }
 
         val draft = DocumentDraft(DocumentPath("notes/today"), " Today ", DocumentProperties.initial, listOf(first, second))

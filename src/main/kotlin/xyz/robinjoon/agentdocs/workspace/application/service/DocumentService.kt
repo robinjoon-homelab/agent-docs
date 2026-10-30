@@ -21,6 +21,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepositor
 import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceScope
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
@@ -54,6 +55,8 @@ class DocumentService(
     private val threads: ThreadRepository,
     private val journal: WriteJournal,
 ) : DocumentUseCase {
+    private val tree = DocumentTree(documents, journal)
+
     @Transactional
     override fun create(
         context: WriteContext,
@@ -64,13 +67,15 @@ class DocumentService(
         val target = spaces.findBySlug(space)?.takeIf { context.access.sees(it.id) } ?: throw SpaceNotFoundException(space)
         Permissions.require(context.access, target.id, Permission.EDIT, "writing documents")
         requirePathFree(target.id, draft.path, null)
+        val parents = tree.fillParents(context, target.id, draft.path)
         val now = journal.now()
         val header = DocumentHeader(target.id, draft.path, draft.title.trim(), draft.properties)
         val document = Document.create(DocumentId(UUID.randomUUID()), header, draft.blocks, now)
         val change = RevisionChange.of(originOf(context), context.summary ?: "문서 생성", document.blocks.map { it.id }, now)
         val saved = documents.add(document, Revision.of(document, change))
         journal.record(context, "document.created", subjectOf(saved), "${saved.header.title}: ${change.summary}")
-        return remember(context, CREATE, DocumentWrite(saved, saved.revision, change.changedBlocks, amended = false, unchanged = false))
+        val written = DocumentWrite(saved, saved.revision, change.changedBlocks, amended = false, unchanged = false, related = parents)
+        return remember(context, CREATE, written)
     }
 
     @Transactional
@@ -119,21 +124,44 @@ class DocumentService(
         val document = lockForEdit(context.access, id)
         change.baseRevision?.takeIf { it != document.revision }?.let { requireUntouchedSince(document, it, change) }
         val header = headerWith(document.header, change)
-        if (header.path != document.header.path) requirePathFree(document.spaceId, header.path, document.id)
-        return remember(context, HEADER, write(context, document, Content(header, document.blocks), WriteMode.TYPING))
+        val content = Content(header, document.blocks)
+        if (header.path == document.header.path) return remember(context, HEADER, write(context, document, content, WriteMode.TYPING))
+        // A new path takes the documents under it along and needs a parent there, so it is checked whole first.
+        val moves = tree.planMove(document, header.path)
+        val parents = tree.fillParents(context, document.spaceId, header.path)
+        val written = write(context, document, content, WriteMode.TYPING)
+        return remember(context, HEADER, written.copy(related = parents + tree.moveAlong(context, moves)))
     }
 
     @Transactional
     override fun trash(
         context: WriteContext,
         id: DocumentId,
-    ): DocumentWrite = transition(context, id, Transition.TRASH)
+    ): DocumentWrite {
+        journal.replayed(context, Transition.TRASH.operation)?.let { return replay(context.access, it) }
+        val document = lockForEdit(context.access, id)
+        if (document.isTrashed) return unchanged(document)
+        val now = journal.now()
+        val written = transition(context, document, Transition.TRASH, now)
+        return remember(context, Transition.TRASH.operation, written.copy(related = tree.trashAlong(context, document, now)))
+    }
 
+    // Brings back the documents trashed together with this one, and the parents it needs.
     @Transactional
     override fun untrash(
         context: WriteContext,
         id: DocumentId,
-    ): DocumentWrite = transition(context, id, Transition.UNTRASH)
+    ): DocumentWrite {
+        journal.replayed(context, Transition.UNTRASH.operation)?.let { return replay(context.access, it) }
+        val document = lockForEdit(context.access, id)
+        if (!document.isTrashed) return unchanged(document)
+        val together = tree.planRestore(document)
+        val now = journal.now()
+        val parents = tree.reviveParents(context, document.spaceId, document.header.path, now)
+        val written = transition(context, document, Transition.UNTRASH, now)
+        val related = parents + tree.restoreAlong(context, together, now)
+        return remember(context, Transition.UNTRASH.operation, written.copy(related = related))
+    }
 
     @Transactional
     override fun purge(
@@ -147,8 +175,10 @@ class DocumentService(
         if (!document.isTrashed) {
             throw InvalidRequestException("only a document in the trash can be deleted permanently", "move it to the trash first")
         }
+        val together = tree.trashedTogether(document)
         documents.delete(id)
         journal.record(context, "document.purged", subjectOf(document), "${document.header.title}: 영구 삭제")
+        tree.purgeAlong(context, together)
         journal.remember(context, OperationRecord(PURGE, id.value, null))
     }
 
@@ -179,23 +209,27 @@ class DocumentService(
         return expired.size
     }
 
+    @Transactional
+    override fun fillMissingParents(owner: String): List<Document> {
+        val missing = DocumentTree.missingParents(documents.livePaths())
+        if (missing.isEmpty()) return emptyList()
+        // Revisions name a person, and the owner is the one the folders belonged to. One who never wrote has none.
+        val author = revisions.authorOf(owner) ?: return emptyList()
+        val context = WriteContext(Access(author, SpaceScope.AllSpaces, Permission.OWNER), ChangeSource.SYSTEM, null, null)
+        return missing.flatMap { tree.fillFolder(context, it) }
+    }
+
     private fun transition(
         context: WriteContext,
-        id: DocumentId,
+        document: Document,
         transition: Transition,
+        now: Instant,
     ): DocumentWrite {
-        journal.replayed(context, transition.operation)?.let { return replay(context.access, it) }
-        val document = lockForEdit(context.access, id)
-        val now = journal.now()
         val moved = transition.apply(document, now) ?: return unchanged(document)
         val change = RevisionChange.of(originOf(context), transition.summary, emptyList(), now).withKind(RevisionKind.TRANSITION)
         val saved = documents.update(moved, Revision.of(moved, change), amended = false)
         journal.record(context, transition.kind, subjectOf(saved), "${saved.header.title}: ${transition.summary}")
-        return remember(
-            context,
-            transition.operation,
-            DocumentWrite(saved, saved.revision, emptyList(), amended = false, unchanged = false),
-        )
+        return DocumentWrite(saved, saved.revision, emptyList(), amended = false, unchanged = false)
     }
 
     // A write that changes nothing adds no revision.

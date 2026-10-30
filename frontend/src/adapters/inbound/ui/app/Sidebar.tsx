@@ -2,7 +2,12 @@ import type { DragEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useMatch, useNavigate } from 'react-router';
 import type { PathNode } from '../../../../domain/document/pathTree';
-import { buildPathTree, isFolderOpen } from '../../../../domain/document/pathTree';
+import {
+  buildPathTree,
+  descendantCount,
+  isFolderOpen,
+  isWithinPath,
+} from '../../../../domain/document/pathTree';
 import { PATH_RULE_TEXT, documentHref } from '../../../../domain/document/document';
 import type { Space } from '../../../../domain/space/space';
 import { pickableSpaces, spaceInitial } from '../../../../domain/space/space';
@@ -69,10 +74,19 @@ function SpaceSwitcher({ current, spaces }: { current: Space | null; spaces: rea
 /** Drag payload: the id of a document being moved in the tree. */
 const DOCUMENT_DRAG_TYPE = 'application/x-agent-docs-document';
 
+type Dragged = { readonly id: string; readonly path: string };
+
+/**
+ * `target` is the path the dragged document would go under ('' is the space root). The dragged document is kept
+ * here because a drag event only reveals its data on drop, and hovering must already refuse the document itself and
+ * what lies under it.
+ */
 type TreeDrag = {
   readonly target: string | null;
-  readonly setTarget: (folder: string | null) => void;
-  readonly drop: (documentId: string, folder: string) => void;
+  readonly setTarget: (path: string | null) => void;
+  readonly dragged: Dragged | null;
+  readonly setDragged: (dragged: Dragged | null) => void;
+  readonly drop: (documentId: string, under: string) => void;
 };
 
 type TreeFolding = {
@@ -84,14 +98,20 @@ function FoldIcon({ open }: { open: boolean }) {
   return <Icon name={open ? 'chevron-down' : 'chevron-right'} size={14} />;
 }
 
-function dropProps(folder: string, drag: TreeDrag) {
+function dropProps(path: string, drag: TreeDrag) {
   return {
     onDragOver: (event: DragEvent) => {
       if (!event.dataTransfer.types.includes(DOCUMENT_DRAG_TYPE)) return;
-      event.preventDefault();
       event.stopPropagation();
+      // Not accepting the drop shows the no-drop cursor: a document cannot go under itself or its descendants.
+      if (drag.dragged !== null && isWithinPath(path, drag.dragged.path)) {
+        event.dataTransfer.dropEffect = 'none';
+        if (drag.target !== null) drag.setTarget(null);
+        return;
+      }
+      event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
-      if (drag.target !== folder) drag.setTarget(folder);
+      if (drag.target !== path) drag.setTarget(path);
     },
     onDrop: (event: DragEvent) => {
       const documentId = event.dataTransfer.getData(DOCUMENT_DRAG_TYPE);
@@ -99,7 +119,8 @@ function dropProps(folder: string, drag: TreeDrag) {
       event.preventDefault();
       event.stopPropagation();
       drag.setTarget(null);
-      drag.drop(documentId, folder);
+      drag.setDragged(null);
+      drag.drop(documentId, path);
     },
   };
 }
@@ -109,21 +130,23 @@ function TreeNodes({
   spaceSlug,
   drag,
   folding,
+  onAddChild,
 }: {
   nodes: readonly PathNode[];
   spaceSlug: string;
   drag: TreeDrag;
   folding: TreeFolding;
+  onAddChild: (parent: string) => void;
 }) {
   return (
     <ul className="tree">
       {nodes.map((node) => {
         const isFolder = node.children.length > 0;
         const open = isFolder && folding.isOpen(node.path);
-        const targetClass = isFolder && drag.target === node.path ? ' drop-target' : '';
+        const targetClass = drag.target === node.path ? ' drop-target' : '';
         const name = node.document === null || node.document.title === '' ? node.name : node.document.title;
         return (
-          <li key={node.path} {...(isFolder ? dropProps(node.path, drag) : {})}>
+          <li key={node.path} {...dropProps(node.path, drag)}>
             {node.document === null ? (
               <button
                 type="button"
@@ -152,23 +175,42 @@ function TreeNodes({
                 <NavLink
                   className={({ isActive }) => `nav-item${isActive ? ' active' : ''}${targetClass}`}
                   to={documentHref(spaceSlug, node.document.id)}
-                  title={`${node.path} · 폴더로 끌어서 옮기기`}
+                  title={`${node.path} · 다른 문서 위로 끌어 그 아래로 옮기기`}
                   draggable
                   onDragStart={(event) => {
                     event.dataTransfer.setData(DOCUMENT_DRAG_TYPE, node.document?.id ?? '');
                     event.dataTransfer.effectAllowed = 'move';
+                    if (node.document !== null) drag.setDragged({ id: node.document.id, path: node.path });
                   }}
-                  onDragEnd={() => drag.setTarget(null)}
+                  onDragEnd={() => {
+                    drag.setTarget(null);
+                    drag.setDragged(null);
+                  }}
                 >
                   <Icon name="doc" size={14} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {name}
                   </span>
                 </NavLink>
+                <button
+                  type="button"
+                  className="tree-add"
+                  aria-label={`${name} 아래에 새 문서`}
+                  title="하위 문서 추가"
+                  onClick={() => onAddChild(node.path)}
+                >
+                  <Icon name="plus" size={14} />
+                </button>
               </div>
             )}
             {open ? (
-              <TreeNodes nodes={node.children} spaceSlug={spaceSlug} drag={drag} folding={folding} />
+              <TreeNodes
+                nodes={node.children}
+                spaceSlug={spaceSlug}
+                drag={drag}
+                folding={folding}
+                onAddChild={onAddChild}
+              />
             ) : null}
           </li>
         );
@@ -177,11 +219,16 @@ function TreeNodes({
   );
 }
 
-/** The space's path tree. Dropping a document on a folder (or on the empty area: the root) moves it. */
+/**
+ * The space's document tree. Dropping a document on another one moves it under that one, with everything under it;
+ * dropping it on the empty area moves it to the top.
+ */
 function DocumentTree({ spaceSlug, version }: { spaceSlug: string; version: number }) {
   const services = useServices();
+  const shell = useShell();
   const toast = useToast();
   const [target, setTarget] = useState<string | null>(null);
+  const [dragged, setDragged] = useState<Dragged | null>(null);
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(new Map());
   const currentId = useMatch('/s/:space/d/:id')?.params.id ?? null;
   const documents = useLoad(`tree:${spaceSlug}:${version}`, () => services.documents.listInSpace(spaceSlug));
@@ -192,21 +239,28 @@ function DocumentTree({ spaceSlug, version }: { spaceSlug: string; version: numb
         문서가 없습니다.
       </p>
     );
-  const drop = (documentId: string, folder: string): void => {
+  const drop = (documentId: string, under: string): void => {
     const document = documents.data.find((candidate) => candidate.id === documentId);
-    if (document === undefined) return;
-    services.documents.move(document, folder).then(
+    if (document === undefined || isWithinPath(under, document.path)) return;
+    const parent = documents.data.find((candidate) => candidate.path === under);
+    const along = descendantCount(documents.data, document.path);
+    services.documents.move(document, under).then(
       (result) => {
         if (!result.ok) toast(PATH_RULE_TEXT);
         else if (result.value !== null) {
-          toast(`‘${result.value.title}’을(를) ${folder === '' ? '최상위' : folder}(으)로 옮겼습니다`);
-          documents.reload();
+          const place = under === '' ? '최상위로' : `‘${parent?.title ?? under}’ 아래로`;
+          const moved =
+            along > 0
+              ? `‘${result.value.title}’와(과) 하위 문서 ${along}개를`
+              : `‘${result.value.title}’을(를)`;
+          toast(`${moved} ${place} 옮겼습니다`);
+          shell.refreshTree();
         }
       },
       (error: unknown) => toast(errorMessage(error)),
     );
   };
-  const drag: TreeDrag = { target, setTarget, drop };
+  const drag: TreeDrag = { target, setTarget, dragged, setDragged, drop };
   const currentPath = documents.data.find((candidate) => candidate.id === currentId)?.path ?? null;
   const isOpen = (folder: string): boolean => isFolderOpen(folder, currentPath, toggled);
   const folding: TreeFolding = {
@@ -221,7 +275,13 @@ function DocumentTree({ spaceSlug, version }: { spaceSlug: string; version: numb
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTarget(null);
       }}
     >
-      <TreeNodes nodes={buildPathTree(documents.data)} spaceSlug={spaceSlug} drag={drag} folding={folding} />
+      <TreeNodes
+        nodes={buildPathTree(documents.data)}
+        spaceSlug={spaceSlug}
+        drag={drag}
+        folding={folding}
+        onAddChild={(parent) => shell.openNewDocument(spaceSlug, `${parent}/`)}
+      />
     </div>
   );
 }

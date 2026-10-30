@@ -8,6 +8,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.DocumentDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
+import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
@@ -26,7 +27,9 @@ class DocsCreateTool(
             name = "docs_create",
             title = "Create a document",
             description =
-                "Creates a document from markdown. Images must already be uploaded with docs_upload and referenced as ![alt](asset:ID).",
+                "Creates a document from markdown. Images must already be uploaded with docs_upload and referenced as ![alt](asset:ID). " +
+                    "The leading segments of the path are parent documents; missing ones are created empty and listed in alsoChanged. " +
+                    "A retry with the same opId answers with an empty alsoChanged; use docs_list to see them.",
             properties =
                 mapOf(
                     "space" to Schemas.string("Space slug"),
@@ -113,7 +116,9 @@ class DocsMoveTool(
             title = "Move, rename, or relabel a document",
             description =
                 "Changes a document's path inside its space, its title, status, tags, or assignee. The document id stays the same, so " +
-                    "links, history, and comments follow.",
+                    "links, history, and comments follow. A new path takes the documents under it along and creates missing parents; " +
+                    "alsoChanged lists them, except on a retry with the same opId. If any of them would land on a path in use, nothing " +
+                    "moves.",
             properties =
                 mapOf(
                     "document" to Schemas.string("Document id"),
@@ -155,7 +160,8 @@ internal fun statusOf(value: String?): DocumentStatus? =
             ?: throw InvalidRequestException("status must be draft, in_review, confirmed, or archived")
     }
 
-// What a write tool answers: the new revision and the hashes the agent needs for its next edit.
+// What a write tool answers: the new revision and the hashes the agent needs for its next edit, and the other documents
+// the write created, moved, trashed, or restored to keep parents and children together.
 internal object WriteResults {
     fun of(
         written: DocumentWrite,
@@ -176,7 +182,17 @@ internal object WriteResults {
                 "unchanged" to written.unchanged,
                 "changedBlockIds" to written.changedBlocks.map { it.value },
                 "blocks" to blocks,
+                "alsoChanged" to written.related.map(::relatedOf),
             ),
         )
     }
+
+    private fun relatedOf(related: RelatedWrite): Map<String, Any?> =
+        mapOf(
+            "documentId" to related.document.id.value,
+            "path" to related.document.header.path.value,
+            "title" to related.document.header.title,
+            "revision" to related.document.revision,
+            "change" to related.change.name.lowercase(),
+        )
 }

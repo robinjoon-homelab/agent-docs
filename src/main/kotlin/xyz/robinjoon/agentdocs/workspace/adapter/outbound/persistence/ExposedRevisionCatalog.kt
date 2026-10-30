@@ -12,6 +12,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.BlockMark
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionSummary
 import xyz.robinjoon.agentdocs.workspace.application.port.output.RevisionCatalog
+import xyz.robinjoon.agentdocs.workspace.domain.Actor
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.Revision
@@ -41,6 +42,16 @@ class ExposedRevisionCatalog : RevisionCatalog {
             .orderBy(DocumentRevisionsTable.revision to SortOrder.DESC)
             .map { RevisionSummary(it[DocumentRevisionsTable.revision], it[DocumentRevisionsTable.title], RevisionRows.change(it)) }
     }
+
+    // Agent revisions carry the person who connected the agent, so they name that person as well.
+    override fun authorOf(login: String): Actor? =
+        DocumentRevisionsTable
+            .select(DocumentRevisionsTable.actor.userId)
+            .where { DocumentRevisionsTable.actor.login eq login }
+            .orderBy(DocumentRevisionsTable.updatedAt to SortOrder.DESC)
+            .limit(1)
+            .singleOrNull()
+            ?.let { Actor.human(it[DocumentRevisionsTable.actor.userId], login) }
 
     override fun marks(document: DocumentId): List<BlockMark> =
         DocumentBlockMarksTable

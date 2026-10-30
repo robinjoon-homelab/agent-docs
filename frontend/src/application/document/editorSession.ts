@@ -157,6 +157,26 @@ export class DocumentEditorSession {
     }).then(() => saved);
   }
 
+  /**
+   * Reads the stored header again after a change made elsewhere, such as a move in the sidebar that took this
+   * document along. A stored body that differs becomes the new base like a merged save. During a conflict nothing
+   * is read: resolving it reads the current document anyway.
+   */
+  refreshMeta(): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.state.status === 'conflict') return;
+      try {
+        const document = await this.gateway.get(this.documentId);
+        const server = document.blocks.map(withoutHash);
+        if (!sameBlocks(server, this.base)) this.adopt(this.base, server);
+        this.savedMeta = metaOf(document);
+        this.update({ revision: document.revision, meta: this.savedMeta });
+      } catch (error) {
+        this.update({ errorMessage: errorText(error, '문서 정보를 다시 읽지 못했습니다.') });
+      }
+    });
+  }
+
   /** Applies the user's choice per conflicting block and saves the merged result. */
   async resolveConflicts(
     choices: ReadonlyMap<string, ConflictChoice>,

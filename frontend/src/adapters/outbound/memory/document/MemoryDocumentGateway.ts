@@ -104,6 +104,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
         .filter((doc) => doc.trashedAt === null)
         .filter((doc) => filter.status === undefined || doc.status === filter.status)
         .filter((doc) => filter.tag === undefined || doc.tags.includes(filter.tag))
+        .filter((doc) => filter.under === undefined || doc.path.startsWith(`${filter.under}/`))
         .map((doc) => this.summary(doc));
     });
   }

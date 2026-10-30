@@ -37,6 +37,7 @@
 
 .doc-breadcrumb {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -453,4 +454,37 @@
   .doc-main {
     padding-left: 72px;
   }
+}
+
+/* Documents under this one, listed from paths after the body. */
+.doc-children {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.doc-children-title {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.doc-children-list {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-children-list a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-small);
+  color: var(--text);
+}
+
+.doc-children-list a:hover {
+  background: var(--bg-hover);
 }

@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.workspace.application.port.output
 
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListing
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentLocation
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
@@ -38,6 +39,36 @@ interface DocumentRepository {
         space: SpaceId,
         path: DocumentPath,
     ): Document?
+
+    // The live documents at these paths, locked. Writing under a document locks it first, so nothing is added under a
+    // parent that another write is moving or putting in the trash.
+    fun lockLiveAt(
+        space: SpaceId,
+        paths: List<DocumentPath>,
+    ): List<Document>
+
+    // The live documents under the path, not the one at it, locked, shallow paths first.
+    fun lockLiveUnder(
+        space: SpaceId,
+        path: DocumentPath,
+    ): List<Document>
+
+    // The documents under the path that went to the trash at that instant, locked: those trashed together with the
+    // document at the path. Shallow paths first.
+    fun lockTrashedTogether(
+        space: SpaceId,
+        path: DocumentPath,
+        trashedAt: Instant,
+    ): List<Document>
+
+    // The document at the path that went to the trash last, locked.
+    fun lockLastTrashedAt(
+        space: SpaceId,
+        path: DocumentPath,
+    ): Document?
+
+    // Where every document outside the trash sits, in every space.
+    fun livePaths(): List<DocumentLocation>
 
     // Newest change first.
     fun list(

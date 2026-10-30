@@ -65,11 +65,12 @@ class DocsListTool(
             name = "docs_list",
             title = "List documents",
             description =
-                "Documents of a space, most recently changed first. Paths form the folder tree; filter by folder, status, or tag.",
+                "Documents of a space, most recently changed first. The leading segments of a path are the parent document, so " +
+                    "folder lists the documents under a document; filter by status or tag too.",
             properties =
                 mapOf(
                     "space" to Schemas.string("Space slug"),
-                    "folder" to Schemas.string("Folder path prefix such as payments"),
+                    "folder" to Schemas.string("Path of a parent document such as payments: lists the documents under it"),
                     "status" to Schemas.choice("Document status", listOf("draft", "in_review", "confirmed", "archived")),
                     "tag" to Schemas.string("Tag"),
                     "trashed" to Schemas.boolean("List the trash instead"),

@@ -25,6 +25,17 @@ export class ApiError extends Error {
   }
 }
 
+/** Another document already has the path, maybe one that would have moved along; the write changed nothing. */
+export class PathTakenError extends ApiError {
+  readonly path: string;
+
+  constructor(path: string) {
+    super('conflict', 409, `‘${path}’ 경로에 이미 다른 문서가 있어 아무것도 바꾸지 않았습니다.`);
+    this.name = 'PathTakenError';
+    this.path = path;
+  }
+}
+
 export function isApiError(error: unknown, code?: ApiErrorCode): error is ApiError {
   return error instanceof ApiError && (code === undefined || error.code === code);
 }

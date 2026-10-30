@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Navigate, useLocation, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import type { MetaPatch } from '../../../../../application/document/ports/DocumentGateway';
 import { isNotVisible } from '../../../../../application/shared/ports/errors';
-import type { AgentDocument } from '../../../../../domain/document/document';
+import type { AgentDocument, DocumentSummary } from '../../../../../domain/document/document';
 import { documentHref } from '../../../../../domain/document/document';
+import { breadcrumbOf, childrenOf } from '../../../../../domain/document/pathTree';
 import type { ConflictChoice } from '../../../../../domain/document/merge';
 import type { Anchor, Comment, Thread, ThreadFilter } from '../../../../../domain/thread/thread';
 import { filterThreads, isDetached } from '../../../../../domain/thread/thread';
@@ -114,6 +115,46 @@ function useThreadState(documentId: string, initial: readonly Thread[]) {
   return { threads, start, update, actions };
 }
 
+/** The documents under this one, from their paths, with a way to add one when the document is editable. */
+function ChildDocuments({
+  spaceSlug,
+  documents,
+  editable,
+  onAdd,
+}: {
+  spaceSlug: string;
+  documents: readonly DocumentSummary[];
+  editable: boolean;
+  onAdd: () => void;
+}) {
+  if (documents.length === 0 && !editable) return null;
+  return (
+    <section className="doc-children" aria-label="하위 문서">
+      {documents.length === 0 ? null : (
+        <>
+          <h2 className="doc-children-title">하위 문서</h2>
+          <ul className="doc-children-list">
+            {documents.map((child) => (
+              <li key={child.id}>
+                <Link to={documentHref(spaceSlug, child.id)}>
+                  <Icon name="doc" size={14} />
+                  {child.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {editable ? (
+        <button type="button" className="btn btn-small btn-ghost" onClick={onAdd}>
+          <Icon name="plus" size={14} />
+          하위 문서 추가
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
 function mentionCandidates(login: string, document: AgentDocument, threads: readonly Thread[]): string[] {
   const logins = [
     login,
@@ -158,6 +199,16 @@ function DocumentWorkspace({
   }, [setRailCollapsed]);
   const editable = me.owner && document.trashedAt === null;
   const frame = useRef<number | null>(null);
+  const spaceSlug = document.space.slug;
+  const siblings = useLoad(`space-documents:${spaceSlug}:${shell.treeVersion}`, () =>
+    services.documents.listInSpace(spaceSlug),
+  );
+  const spaceDocuments = siblings.state === 'ready' ? siblings.data : [];
+  // A move made in the sidebar can take this document along; its new path then shows in the space's list first.
+  const listedPath = spaceDocuments.find((candidate) => candidate.id === document.id)?.path;
+  useEffect(() => {
+    if (listedPath !== undefined && listedPath !== state.meta.path) void session.refreshMeta();
+  }, [listedPath, state.meta.path, session]);
 
   usePageTitle(state.meta.title);
 
@@ -259,8 +310,15 @@ function DocumentWorkspace({
   };
 
   const trash = async (): Promise<void> => {
-    if (!window.confirm('이 문서를 휴지통으로 옮길까요? 스페이스 설정에서 복원할 수 있습니다.')) return;
     try {
+      // Asked just now for the documents under it, not taken from the space's list on screen, which can be older and
+      // stops at the most recent 1,000 documents.
+      const along = (await services.documents.listInSpace(spaceSlug, { under: state.meta.path })).length;
+      const question =
+        along > 0
+          ? `이 문서와 하위 문서 ${along}개를 휴지통으로 옮길까요? 스페이스 설정에서 함께 복원할 수 있습니다.`
+          : '이 문서를 휴지통으로 옮길까요? 스페이스 설정에서 복원할 수 있습니다.';
+      if (!window.confirm(question)) return;
       if (!(await saveFirst())) return;
       await services.documents.trash(document.id);
       shell.refreshTree();
@@ -333,6 +391,7 @@ function DocumentWorkspace({
         <div className="doc-body">
           <DocumentHeader
             document={document}
+            crumbs={breadcrumbOf(spaceDocuments, state.meta.path)}
             state={state}
             editable={editable}
             onPatch={patch}
@@ -387,6 +446,12 @@ function DocumentWorkspace({
             onReanchor={(anchor) => void reanchor(anchor)}
             onContentChange={relayout}
             onMessage={toast}
+          />
+          <ChildDocuments
+            spaceSlug={spaceSlug}
+            documents={childrenOf(spaceDocuments, state.meta.path)}
+            editable={editable}
+            onAdd={() => shell.openNewDocument(spaceSlug, `${state.meta.path}/`)}
           />
         </div>
       </div>

@@ -9,7 +9,15 @@ import { toDraftBlock, toSavableBlocks } from './draft';
 import { textRun } from './inline';
 import { listOrdinals } from './listOrdinals';
 import { mergeAfterConflict } from './merge';
-import { buildPathTree, isFolderOpen } from './pathTree';
+import {
+  breadcrumbOf,
+  buildPathTree,
+  childrenOf,
+  descendantCount,
+  isFolderOpen,
+  isWithinPath,
+  trashedTogether,
+} from './pathTree';
 import { recentAgentChanges } from './agentChanges';
 
 const table: TableBlock = {
@@ -167,6 +175,57 @@ describe('buildPathTree', () => {
       ['deploy', '3'],
       ['setup', '2'],
     ]);
+  });
+});
+
+describe('document hierarchy', () => {
+  const documents = [
+    summary({ id: 'g', path: 'guides', title: '가이드' }),
+    summary({ id: 's', path: 'guides/setup', title: '설치' }),
+    summary({ id: 'd', path: 'guides/deploy', title: '배포' }),
+    summary({ id: 'c', path: 'guides/deploy/ci', title: 'CI' }),
+    summary({ id: 'o', path: 'guides-old/notes', title: '옛 메모' }),
+  ];
+
+  it('lists only the documents right under a path, by title', () => {
+    expect(childrenOf(documents, 'guides').map((document) => document.id)).toEqual(['d', 's']);
+    expect(childrenOf(documents, 'guides/setup')).toEqual([]);
+  });
+
+  it('counts every document under a path but not one whose name only starts the same', () => {
+    expect(descendantCount(documents, 'guides')).toBe(3);
+    expect(descendantCount(documents, 'guides/deploy/ci')).toBe(0);
+  });
+
+  it('names the documents above a path by title, and a missing one by its segment', () => {
+    expect(breadcrumbOf(documents, 'guides/deploy/ci')).toEqual([
+      { path: 'guides', title: '가이드', id: 'g' },
+      { path: 'guides/deploy', title: '배포', id: 'd' },
+    ]);
+    expect(breadcrumbOf(documents, 'guides-old/notes')).toEqual([
+      { path: 'guides-old', title: 'guides-old', id: null },
+    ]);
+    expect(breadcrumbOf(documents, 'guides')).toEqual([]);
+  });
+
+  it('finds the documents that went to the trash together with one, not those trashed on their own', () => {
+    const at = '2026-10-30T00:00:00Z';
+    const plans = { ...summary({ id: 'p', path: 'plans' }), trashedAt: at };
+    const trash = [
+      plans,
+      { ...summary({ id: 'q', path: 'plans/q4' }), trashedAt: at },
+      { ...summary({ id: 'r', path: 'plans/old' }), trashedAt: '2026-10-01T00:00:00Z' },
+      { ...summary({ id: 'x', path: 'plans-x' }), trashedAt: at },
+    ];
+
+    expect(trashedTogether(trash, plans).map((document) => document.id)).toEqual(['q']);
+  });
+
+  it('treats a document and everything under it as one place to keep a move out of', () => {
+    expect(isWithinPath('guides', 'guides')).toBe(true);
+    expect(isWithinPath('guides/deploy/ci', 'guides')).toBe(true);
+    expect(isWithinPath('guides-old', 'guides')).toBe(false);
+    expect(isWithinPath('guides', 'guides/deploy')).toBe(false);
   });
 });
 

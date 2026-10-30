@@ -9,6 +9,8 @@ export type Shell = {
   readonly refreshSpaces: () => void;
   /** Reloads the sidebar document tree after a create, rename, move or trash. */
   readonly refreshTree: () => void;
+  /** Counts refreshTree calls, so views built from the space's documents (child lists, breadcrumbs) reload too. */
+  readonly treeVersion: number;
   readonly openPalette: () => void;
   readonly openNewDocument: (spaceSlug: string, path?: string) => void;
   /** Whether the comment rail beside documents is folded away; it stays so from one document to the next. */

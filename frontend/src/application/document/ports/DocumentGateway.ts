@@ -20,7 +20,12 @@ export type NewDocument = {
   readonly assignee?: string | null;
 };
 
-export type DocumentFilter = { readonly status?: DocumentStatus; readonly tag?: string };
+/** `under` keeps the documents under that document's path. */
+export type DocumentFilter = {
+  readonly status?: DocumentStatus;
+  readonly tag?: string;
+  readonly under?: string;
+};
 
 export type MetaPatch = Partial<DocumentMeta>;
 

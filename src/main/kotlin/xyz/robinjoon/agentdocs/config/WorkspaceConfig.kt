@@ -10,6 +10,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import xyz.robinjoon.agentdocs.application.port.output.ActivityCatalog
 import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.startup.FolderBackfill
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.http.HttpRemoteImageSource
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.image.SniffingImageVerifier
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.image.SvgSanitizer
@@ -67,6 +68,13 @@ class WorkspaceConfig {
         persistence: WorkspacePersistence,
         journal: WriteJournal,
     ): DocumentUseCase = DocumentService(persistence.documents, persistence.revisions, persistence.spaces, persistence.threads, journal)
+
+    // Folders from before documents had parent documents become documents in the owner's name on each start.
+    @Bean
+    fun folderBackfill(
+        documents: DocumentUseCase,
+        properties: AgentDocsProperties,
+    ): FolderBackfill = FolderBackfill(documents, properties.owner)
 
     @Bean
     fun documentQueryUseCase(

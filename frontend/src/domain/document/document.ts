@@ -55,7 +55,8 @@ export type AgentDocument = DocumentMeta & {
   readonly blockChanges: readonly BlockChange[];
 };
 
-export type RevisionSource = 'web' | 'mcp' | 'rest';
+/** `system` is a change the application made on its own, such as turning a folder into a document. */
+export type RevisionSource = 'web' | 'mcp' | 'rest' | 'system';
 
 export type Revision = {
   readonly revision: number;

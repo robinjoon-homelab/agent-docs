@@ -126,6 +126,22 @@ describe('DocumentEditorSession', () => {
     expect(session.getState().status).toBe('saved');
   });
 
+  it('takes the path a move elsewhere gave the document and keeps unsent typing', async () => {
+    const server = new FakeDocumentServer(
+      document({ revision: 3, path: 'payments', blocks: [stored(paragraph(A, 'hello'))] }),
+    );
+    const session = open(server);
+    server.agentWrites({ path: 'billing/payments' });
+    session.markEdited();
+    void session.saveContent([paragraph(A, 'hello there')]);
+
+    await session.refreshMeta();
+    await session.idle();
+
+    expect(session.getState().meta.path).toBe('billing/payments');
+    expect(server.doc.blocks.map(withoutHash)).toEqual([paragraph(A, 'hello there')]);
+  });
+
   it('marks the document unsaved as soon as the user types', () => {
     const server = new FakeDocumentServer(document({ revision: 1 }));
     const session = open(server);

@@ -6,6 +6,7 @@ import type {
   RevisionFilter,
   SaveContentResult,
 } from '../../../../application/document/ports/DocumentGateway';
+import { PathTakenError } from '../../../../application/shared/ports/errors';
 import type { Block } from '../../../../domain/document/block';
 import type {
   AgentDocument,
@@ -64,12 +65,24 @@ function toTrashed(value: unknown): TrashedDocument {
   return { ...toDocumentSummary(value), trashedAt: str(obj(value), 'trashedAt') };
 }
 
+/** A path in use comes back as PathTakenError, so the screen can say which document is in the way. */
+async function namingTakenPath<T>(request: Promise<T>): Promise<T> {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof ProblemError && error.body.code === 'taken' && typeof error.body.path === 'string') {
+      throw new PathTakenError(error.body.path);
+    }
+    throw error;
+  }
+}
+
 function toRevision(value: unknown): Revision {
   const source = obj(value, 'revision');
   return {
     revision: num(source, 'revision'),
     actor: toActor(source.actor),
-    source: oneOf(source, 'source', ['web', 'mcp', 'rest'] as const),
+    source: oneOf(source, 'source', ['web', 'mcp', 'rest', 'system'] as const),
     summary: strOr(source, 'summary', ''),
     changedBlockIds: strings(source, 'changedBlockIds'),
     createdAt: str(source, 'createdAt'),
@@ -147,7 +160,8 @@ export class HttpDocumentGateway implements DocumentGateway {
   }
 
   async listInSpace(spaceSlug: string, filter: DocumentFilter = {}): Promise<DocumentSummary[]> {
-    const url = `/api/spaces/${segment(spaceSlug)}/documents${query({ status: filter.status, tag: filter.tag })}`;
+    const params = query({ status: filter.status, tag: filter.tag, folder: filter.under });
+    const url = `/api/spaces/${segment(spaceSlug)}/documents${params}`;
     return list(await this.http.get(url), toDocumentSummary);
   }
 
@@ -156,7 +170,9 @@ export class HttpDocumentGateway implements DocumentGateway {
   }
 
   async create(spaceSlug: string, document: NewDocument): Promise<AgentDocument> {
-    return toDocument(await this.http.post(`/api/spaces/${segment(spaceSlug)}/documents`, document));
+    return toDocument(
+      await namingTakenPath(this.http.post(`/api/spaces/${segment(spaceSlug)}/documents`, document)),
+    );
   }
 
   async get(documentId: string): Promise<AgentDocument> {
@@ -182,7 +198,9 @@ export class HttpDocumentGateway implements DocumentGateway {
 
   async patch(documentId: string, baseRevision: number, patch: MetaPatch): Promise<AgentDocument> {
     return toDocument(
-      await this.http.patch(`/api/documents/${segment(documentId)}`, { baseRevision, ...patch }),
+      await namingTakenPath(
+        this.http.patch(`/api/documents/${segment(documentId)}`, { baseRevision, ...patch }),
+      ),
     );
   }
 
@@ -191,7 +209,7 @@ export class HttpDocumentGateway implements DocumentGateway {
   }
 
   async untrash(documentId: string): Promise<void> {
-    await this.http.post(`/api/documents/${segment(documentId)}/untrash`);
+    await namingTakenPath(this.http.post(`/api/documents/${segment(documentId)}/untrash`));
   }
 
   async destroy(documentId: string): Promise<void> {

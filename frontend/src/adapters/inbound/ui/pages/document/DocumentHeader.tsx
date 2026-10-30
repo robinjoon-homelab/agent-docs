@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { EditorSessionState } from '../../../../../application/document/editorSession';
 import type { MetaPatch } from '../../../../../application/document/ports/DocumentGateway';
 import type { AgentDocument } from '../../../../../domain/document/document';
 import { documentHref, historyHref, parseTags } from '../../../../../domain/document/document';
+import type { Crumb } from '../../../../../domain/document/pathTree';
 import { CopyButton } from '../../common/CopyButton';
 import { Icon } from '../../common/Icon';
 import { StatusSelect } from '../../common/StatusBadge';
@@ -57,8 +58,10 @@ function MetaInput({
   );
 }
 
+/** `crumbs` are the documents above this one, top first, as the breadcrumb shows them. */
 export function DocumentHeader({
   document,
+  crumbs,
   state,
   editable,
   onPatch,
@@ -66,6 +69,7 @@ export function DocumentHeader({
   onRetrySave,
 }: {
   document: AgentDocument;
+  crumbs: readonly Crumb[];
   state: EditorSessionState;
   editable: boolean;
   onPatch: (patch: MetaPatch) => void;
@@ -106,17 +110,31 @@ export function DocumentHeader({
         <nav className="doc-breadcrumb" aria-label="위치">
           <Link to={`/s/${document.space.slug}`}>{document.space.name}</Link>
           <span className="faint">·</span>
+          {crumbs.map((crumb) => (
+            <Fragment key={crumb.path}>
+              {crumb.id === null ? (
+                <span className="muted">{crumb.title}</span>
+              ) : (
+                <Link to={documentHref(document.space.slug, crumb.id)} title={crumb.path}>
+                  {crumb.title}
+                </Link>
+              )}
+              <span className="faint">/</span>
+            </Fragment>
+          ))}
           {editable ? (
             <button
               type="button"
               className="link-btn mono"
               onClick={() => setPathOpen(true)}
-              title="경로 바꾸기"
+              title={`${meta.path} · 경로 바꾸기`}
             >
-              {meta.path}
+              {meta.path.slice(meta.path.lastIndexOf('/') + 1)}
             </button>
           ) : (
-            <span className="mono muted">{meta.path}</span>
+            <span className="mono muted" title={meta.path}>
+              {meta.path.slice(meta.path.lastIndexOf('/') + 1)}
+            </span>
           )}
         </nav>
         <div className="doc-topbar-actions">

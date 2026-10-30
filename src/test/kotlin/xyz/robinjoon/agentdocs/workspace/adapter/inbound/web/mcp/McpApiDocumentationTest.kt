@@ -28,17 +28,24 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.body
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.document
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.documentId
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
+import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownChunk
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownFormat
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
+import xyz.robinjoon.agentdocs.workspace.application.model.RelatedChange
+import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
+import xyz.robinjoon.agentdocs.workspace.domain.document.Document
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.BlockConflict
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditConflictException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
+import java.util.UUID
 
 // The SDK server and transport as McpConfig wires them, with two real tools against strict use case mocks; tool rules
 // belong to the use case tests. This test checks the JSON-RPC shapes the endpoint answers and how tool failures return.
@@ -51,7 +58,7 @@ class McpApiDocumentationTest : RestDocsWebTest() {
     private val mapper = config.mcpJsonMapper(json)
     private val settings = McpSettings(setOf("https://docs.example.com"))
 
-    private val tools = listOf(DocsReadTool(queries), DocsEditTool(documents))
+    private val tools = listOf(DocsReadTool(queries), DocsEditTool(documents), DocsMoveTool(documents))
 
     // Building the server installs it as the transport's handler.
     private val transport =
@@ -173,6 +180,31 @@ class McpApiDocumentationTest : RestDocsWebTest() {
                 )}"}]}}}""",
         ).andExpect(jsonPath("$.result.isError").value(false))
             .andExpect(jsonPath("$.result.content[0].text", containsString("\"revision\":4")))
+    }
+
+    @Test
+    fun `a move answers with the documents it moved along`() {
+        val child =
+            document().let {
+                Document.restore(DocumentId(UUID.randomUUID()), it.header.copy(path = DocumentPath("billing/x")), it.blocks, it.lifecycle)
+            }
+        every { documents.changeHeader(mcpContext, documentId, HeaderChange(null, DocumentPath("billing"), null, null, null, 3)) } returns
+            DocumentWrite(
+                document(revision = 4),
+                4,
+                emptyList(),
+                amended = false,
+                unchanged = false,
+                related = listOf(RelatedWrite(child, RelatedChange.MOVED)),
+            )
+
+        call(
+            """{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"docs_move","arguments":{"document":"$documentId",""" +
+                """"path":"billing","baseRevision":3}}}""",
+        ).andExpect(jsonPath("$.result.isError").value(false))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"documentId\":\"${child.id}\"")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"path\":\"billing/x\"")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"change\":\"moved\"")))
     }
 
     @Test

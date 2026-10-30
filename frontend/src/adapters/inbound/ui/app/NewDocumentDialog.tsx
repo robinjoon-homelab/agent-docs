@@ -84,7 +84,10 @@ export function NewDocumentDialog({
             placeholder="guides/setup"
             onChange={(event) => setPath(event.target.value)}
           />
-          <span className="field-hint">슬래시로 폴더를 나눕니다. 마지막 이름이 문서 이름입니다.</span>
+          <span className="field-hint">
+            슬래시 앞부분은 상위 문서입니다. 예: guides/setup은 guides 문서 아래에 놓이고, 없는 상위 문서는 빈
+            문서로 함께 만듭니다.
+          </span>
         </div>
         {errors.map((error) => (
           <p key={error} className="field-error">

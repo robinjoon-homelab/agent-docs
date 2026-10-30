@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PathTakenError } from '../../../../application/shared/ports/errors';
 import { HttpClient } from '../shared/httpClient';
 import { HttpDocumentGateway } from './HttpDocumentGateway';
 
@@ -13,6 +14,36 @@ function gatewayReturning(status: number, body: unknown): HttpDocumentGateway {
 }
 
 describe('HttpDocumentGateway', () => {
+  it('turns a path in use into an error naming that path, which a document moved along may hold', async () => {
+    const gateway = gatewayReturning(409, {
+      code: 'taken',
+      detail: 'another document in the space already has the path billing/retry',
+      path: 'billing/retry',
+    });
+
+    const refused = await gateway.patch('d1', 3, { path: 'billing' }).catch((error: unknown) => error);
+
+    expect(refused).toBeInstanceOf(PathTakenError);
+    expect((refused as PathTakenError).path).toBe('billing/retry');
+    expect((refused as PathTakenError).message).toContain('billing/retry');
+  });
+
+  it('reads a revision written by the application itself', async () => {
+    const [revision] = await gatewayReturning(200, [
+      {
+        revision: 1,
+        actor: { kind: 'human', login: 'octocat', agent: null },
+        source: 'system',
+        summary: '폴더를 문서로 바꿈',
+        changedBlockIds: [],
+        createdAt: '2026-10-30T00:00:00Z',
+        threadIds: [],
+      },
+    ]).revisions('d1');
+
+    expect(revision?.source).toBe('system');
+  });
+
   it('maps a document with every block type and the block change list', async () => {
     const document = await gatewayReturning(200, {
       id: 'd1',
