@@ -6,8 +6,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Block } from '../../../../domain/document/block';
 import { blocksToDoc } from './convert';
-import { CodeBlockWithView } from './nodeViews';
-import { CodeBlockNode, schemaExtensions } from './schema';
+import { CodeBlockWithView, ImageWithView } from './nodeViews';
+import { CodeBlockNode, ImageNode, schemaExtensions } from './schema';
 
 afterEach(cleanup);
 
@@ -83,5 +83,64 @@ describe('mermaid code block views', () => {
 
     expect(pressed('함께 보기')).toBe(true);
     expect(codeShown()).toBe(true);
+  });
+});
+
+function Picture({ caption }: { caption: string }) {
+  const blocks: Block[] = [{ id: 'i000000001', type: 'image', assetId: 'asset', alt: '', caption }];
+  const editor = useEditor({
+    extensions: [...schemaExtensions.filter((extension) => extension !== ImageNode), ImageWithView],
+    content: blocksToDoc(blocks, () => 'n000000001'),
+    onCreate: ({ editor: created }) => {
+      current = created;
+    },
+  });
+  return <EditorContent editor={editor} />;
+}
+
+function captionField(): Promise<HTMLInputElement> {
+  return screen.findByRole<HTMLInputElement>('textbox', { name: '캡션' });
+}
+
+function documentCaption(): unknown {
+  return current?.state.doc.firstChild?.attrs.caption;
+}
+
+describe('image fields', () => {
+  it('keeps the text being typed in the field at once, or the browser drops the Korean letter being composed', async () => {
+    render(<Picture caption="" />);
+    const field = await captionField();
+
+    fireEvent.change(field, { target: { value: 'ㅎ' } });
+
+    expect(field.value).toBe('ㅎ');
+  });
+
+  it('writes what is typed into the document', async () => {
+    render(<Picture caption="" />);
+    const field = await captionField();
+
+    await act(async () => {
+      fireEvent.change(field, { target: { value: '한글' } });
+      await Promise.resolve();
+    });
+
+    expect(field.value).toBe('한글');
+    expect(documentCaption()).toBe('한글');
+  });
+
+  it('shows a caption the document got some other way, such as an undo', async () => {
+    render(<Picture caption="처음" />);
+    const field = await captionField();
+
+    await act(async () => {
+      current?.commands.command(({ tr, state }) => {
+        tr.setNodeMarkup(0, undefined, { ...state.doc.firstChild?.attrs, caption: '바뀜' });
+        return true;
+      });
+      await Promise.resolve();
+    });
+
+    expect(field.value).toBe('바뀜');
   });
 });

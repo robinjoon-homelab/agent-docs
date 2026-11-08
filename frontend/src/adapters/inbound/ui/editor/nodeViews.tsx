@@ -117,6 +117,41 @@ function CodeBlockView({ node, updateAttributes, editor, getPos }: ReactNodeView
 
 export type ImageOptions = { contentUrl: (assetId: string) => string };
 
+// A node view gets its new attributes a microtask after the change. Bound to them directly, React would put the old
+// value back when the input event ends, which cancels the IME composition and splits Korean into separate letters.
+function ImageField({
+  className,
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  className: string;
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (text: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [source, setSource] = useState(value);
+  if (source !== value) {
+    setSource(value);
+    setDraft(value);
+  }
+  return (
+    <input
+      className={`input ${className}`}
+      aria-label={label}
+      placeholder={placeholder}
+      value={draft}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        onChange(event.target.value);
+      }}
+    />
+  );
+}
+
 function ImageView({ node, updateAttributes, editor, extension, selected }: ReactNodeViewProps) {
   const options = extension.options as ImageOptions;
   const assetId = String(node.attrs.assetId ?? '');
@@ -143,19 +178,19 @@ function ImageView({ node, updateAttributes, editor, extension, selected }: Reac
       </div>
       {editable ? (
         <div className="image-fields" contentEditable={false}>
-          <input
-            className="input image-alt"
-            aria-label="대체 텍스트"
+          <ImageField
+            className="image-alt"
+            label="대체 텍스트"
             placeholder="대체 텍스트: 이미지가 보여 주는 내용"
             value={alt}
-            onChange={(event) => updateAttributes({ alt: event.target.value })}
+            onChange={(text) => updateAttributes({ alt: text })}
           />
-          <input
-            className="input image-caption"
-            aria-label="캡션"
+          <ImageField
+            className="image-caption"
+            label="캡션"
             placeholder="캡션"
             value={caption}
-            onChange={(event) => updateAttributes({ caption: event.target.value })}
+            onChange={(text) => updateAttributes({ caption: text })}
           />
         </div>
       ) : caption === '' ? null : (
