@@ -10,14 +10,17 @@ import xyz.robinjoon.agentdocs.access.application.AccessFixtures.now
 import xyz.robinjoon.agentdocs.access.application.AccessFixtures.ownerId
 import xyz.robinjoon.agentdocs.access.application.AccessFixtures.space
 import xyz.robinjoon.agentdocs.access.application.model.CallerScope
+import xyz.robinjoon.agentdocs.access.application.model.UploadToken
 import xyz.robinjoon.agentdocs.access.application.port.output.ConnectionRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.UserRepository
 import xyz.robinjoon.agentdocs.access.application.service.CallerService
 import xyz.robinjoon.agentdocs.access.domain.TokenHash
+import xyz.robinjoon.agentdocs.access.domain.connection.ConnectionId
 import xyz.robinjoon.agentdocs.access.domain.user.GitHubAccount
 import xyz.robinjoon.agentdocs.access.domain.user.User
 import xyz.robinjoon.agentdocs.access.domain.user.UserId
 import xyz.robinjoon.agentdocs.access.domain.user.UserProfile
+import java.util.UUID
 
 class CallerServiceTest {
     private val connections = mockk<ConnectionRepository>()
@@ -50,5 +53,35 @@ class CallerServiceTest {
         assertThat(service.callerFor("adt_a_unknown")).isNull()
         assertThat(service.callerFor("adt_a_revoked")).isNull()
         assertThat(service.callerFor("ghp_github_token")).isNull()
+    }
+
+    @Test
+    fun `an upload token acts for its connection as it is now`() {
+        val active = connection("adt_a_token", null)
+        every { connections.findById(active.id) } returns active
+        every { users.findById(UserId(ownerId)) } returns user
+
+        val caller = requireNotNull(service.callerForUpload(UploadToken.of(active.id.value, "secret")))
+
+        assertThat(caller.agent?.connectionId).isEqualTo(active.id.value)
+        assertThat(caller.spaces).containsExactly(space)
+        assertThat(caller.scope).isEqualTo(CallerScope.EDIT)
+    }
+
+    @Test
+    fun `an upload token of an ended or unknown connection, or something else entirely, acts for nobody`() {
+        val revoked = requireNotNull(connection("adt_a_revoked", null).revoke(now.minusSeconds(1)))
+        val unknown = UUID.randomUUID()
+        every { connections.findById(revoked.id) } returns revoked
+        every { connections.findById(ConnectionId(unknown)) } returns null
+
+        assertThat(service.callerForUpload(UploadToken.of(revoked.id.value, "secret"))).isNull()
+        assertThat(service.callerForUpload(UploadToken.of(unknown, "secret"))).isNull()
+        assertThat(service.callerForUpload("adt_a_token")).isNull()
+    }
+
+    @Test
+    fun `an upload token opens nothing but the upload`() {
+        assertThat(service.callerFor(UploadToken.of(UUID.randomUUID(), "secret"))).isNull()
     }
 }

@@ -1,15 +1,19 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp
 
+import xyz.robinjoon.agentdocs.access.application.model.UploadToken
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.ImageUploads
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.McpToolResult
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.Wire
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WorkspaceJson
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionFilter
+import xyz.robinjoon.agentdocs.workspace.application.model.UploadPass
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import java.util.Base64
@@ -113,20 +117,28 @@ class DocsHistoryTool(
 
 class DocsUploadTool(
     private val assets: AssetUseCase,
+    private val uploads: UploadGrantUseCase,
+    private val uploadEndpoint: String,
 ) : McpTool {
     override val definition =
         ToolDefinition(
             name = "docs_upload",
             title = "Upload an image",
             description =
-                "Uploads a PNG, JPEG, GIF, WebP, or SVG (up to 20MB) as base64, or downloads one from a public URL, and returns the " +
-                    "markdown " +
-                    "that shows it. Always give alt text describing what the image shows.",
+                "Uploads a PNG, JPEG, GIF, WebP, or SVG (up to 20MB) and returns the markdown that shows it. Always give alt text " +
+                    "describing what the image shows. Choose by where the image is. A local file, if you can run shell commands that " +
+                    "reach this server: leave out contentBase64 and url, then run the curl command you get back with the file's path; " +
+                    "any size works and nothing is copied by hand. A public image: pass url. No shell, or the command is blocked: pass " +
+                    "contentBase64, but only up to about 5KB, because long base64 written out in a tool call gets mistyped and a " +
+                    "damaged image may still be stored. For a bigger file without a shell, ask a person to paste it in the web editor.",
             properties =
                 mapOf(
                     "space" to Schemas.string("Space slug"),
-                    "fileName" to Schemas.string("File name"),
-                    "contentBase64" to Schemas.string("File content as base64"),
+                    "fileName" to Schemas.string("File name, with contentBase64. An upload command sends the file's own name"),
+                    "contentBase64" to
+                        Schemas.string(
+                            "File content as base64, up to about 5KB and only without a shell; leave it out to get an upload command",
+                        ),
                     "url" to Schemas.string("Public image URL, instead of contentBase64"),
                     "alt" to Schemas.string("Alt text for the returned markdown"),
                 ),
@@ -140,20 +152,44 @@ class DocsUploadTool(
     ): McpToolResult {
         val space = SpaceSlug(arguments.string("space"))
         val url = arguments.optionalString("url")
-        val alt = arguments.optionalString("alt").orEmpty().replace("]", "\\]")
+        val content = arguments.optionalString("contentBase64")
+        val alt = arguments.optionalString("alt").orEmpty()
+        if (url == null && content == null) return commandFor(uploads.grant(context, space, alt))
         val asset =
             if (url != null) {
                 assets.import(context, space, url)
             } else {
-                val bytes = Base64.getMimeDecoder().decode(arguments.string("contentBase64"))
-                assets.upload(context, space, UploadedFile(arguments.optionalString("fileName").orEmpty(), null, bytes))
+                assets.upload(
+                    context,
+                    space,
+                    UploadedFile(arguments.optionalString("fileName").orEmpty(), null, decoded(content.orEmpty())),
+                )
             }
+        return McpToolResult.data(ImageUploads.resultOf(asset, alt))
+    }
+
+    private fun commandFor(pass: UploadPass): McpToolResult {
+        val token = UploadToken.of(pass.connectionId, pass.secret)
         return McpToolResult.data(
             mapOf(
-                "assetId" to asset.id.value,
-                "mediaType" to asset.content.mediaType.mime,
-                "markdown" to "![$alt](asset:${asset.id})",
+                "command" to UploadCommand.of(token, uploadEndpoint),
+                "expiresAt" to pass.expiresAt.toString(),
+                "next" to
+                    "Put the file's absolute path in place of ${UploadCommand.PATH_SLOT}, on its own line exactly as it is, with " +
+                    "no quotes or escaping, and run all the lines in your shell. It prints assetId, mediaType, and markdown. It " +
+                    "works for one file until expiresAt; after that, call docs_upload again.",
             ),
         )
     }
+
+    private fun decoded(content: String): ByteArray =
+        try {
+            Base64.getMimeDecoder().decode(content)
+        } catch (exception: IllegalArgumentException) {
+            throw InvalidRequestException(
+                "contentBase64 is not valid base64",
+                "it was probably mistyped; leave out contentBase64 and url to get an upload command you can run in a shell",
+                exception,
+            )
+        }
 }

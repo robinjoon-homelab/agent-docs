@@ -64,7 +64,14 @@ class HexagonalArchitectureTest {
         private val contextAggregates =
             mapOf(
                 "workspace" to
-                    setOf("space.Space", "document.Document", "thread.CommentThread", "inbox.InboxItem", "asset.Asset"),
+                    setOf(
+                        "space.Space",
+                        "document.Document",
+                        "thread.CommentThread",
+                        "inbox.InboxItem",
+                        "asset.Asset",
+                        "upload.UploadGrant",
+                    ),
                 "access" to
                     setOf(
                         "user.User",

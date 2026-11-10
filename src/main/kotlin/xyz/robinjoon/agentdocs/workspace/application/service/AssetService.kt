@@ -79,15 +79,17 @@ class AssetService(
         source: Source,
     ): Asset {
         val content = AssetContent.of(image.mediaType, image.bytes)
-        store.put(content.sha256, content.mediaType.mime, image.bytes)
         val name =
             source.fileName.substringAfterLast('\\').trim().take(AssetOrigin.MAX_FILE_NAME_LENGTH).ifBlank {
                 "image.${image.mediaType.extension}"
             }
         val origin = AssetOrigin(name, source.url, context.access.actor, journal.now())
-        val asset = assets.add(Asset.upload(AssetId(UUID.randomUUID()), space.id, content, origin))
+        val asset = Asset.upload(AssetId(UUID.randomUUID()), space.id, content, origin)
+        // Last of all, because a rollback does not take stored bytes back.
+        store.put(content.sha256, content.mediaType.mime, image.bytes)
+        val kept = assets.add(asset)
         journal.record(context, "asset.uploaded", ActivitySubject(space.id.value, null, null, null), "첨부 업로드: $name")
-        return asset
+        return kept
     }
 
     private fun verified(bytes: ByteArray): VerifiedImage =

@@ -11,6 +11,7 @@ import software.amazon.awssdk.services.s3.S3Client
 import xyz.robinjoon.agentdocs.application.port.output.ActivityCatalog
 import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.startup.FolderBackfill
+import xyz.robinjoon.agentdocs.workspace.adapter.outbound.crypto.SecureRandomUploadSecretSource
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.http.HttpRemoteImageSource
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.image.SniffingImageVerifier
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.image.SvgSanitizer
@@ -24,6 +25,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.InboxUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SearchUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.UsageUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
 import xyz.robinjoon.agentdocs.workspace.application.service.ActivityService
@@ -34,6 +36,7 @@ import xyz.robinjoon.agentdocs.workspace.application.service.InboxService
 import xyz.robinjoon.agentdocs.workspace.application.service.SearchService
 import xyz.robinjoon.agentdocs.workspace.application.service.SpaceService
 import xyz.robinjoon.agentdocs.workspace.application.service.ThreadService
+import xyz.robinjoon.agentdocs.workspace.application.service.UploadGrantService
 import xyz.robinjoon.agentdocs.workspace.application.service.UsageService
 import xyz.robinjoon.agentdocs.workspace.application.service.WriteJournal
 import java.net.URI
@@ -103,6 +106,14 @@ class WorkspaceConfig {
         ports: AssetPorts,
         journal: WriteJournal,
     ): AssetUseCase = AssetService(persistence.spaces, persistence.assets, ports.store, ports.verifier, ports.remote, journal)
+
+    @Bean
+    fun uploadGrantUseCase(
+        persistence: WorkspacePersistence,
+        assets: AssetUseCase,
+        clock: Clock,
+    ): UploadGrantUseCase =
+        UploadGrantService(persistence.spaces, persistence.uploadGrants, SecureRandomUploadSecretSource(), assets, clock)
 
     @Bean
     fun searchUseCase(persistence: WorkspacePersistence): SearchUseCase =

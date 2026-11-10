@@ -60,6 +60,22 @@ class SecurityAdaptersTest {
     }
 
     @Test
+    fun `an upload token counts on the upload endpoint and nowhere else`() {
+        val callers = mockk<CallerUseCase>()
+        every { callers.callerForUpload("adt_u_token") } returns agent
+        every { callers.callerFor("adt_u_token") } returns null
+        val filter = BearerTokenFilter(callers)
+
+        filter.doFilter(request("Bearer adt_u_token").apply { requestURI = "/api/uploads" }, MockHttpServletResponse(), MockFilterChain())
+        val onUpload = SecurityContextHolder.getContext().authentication?.principal
+        SecurityContextHolder.clearContext()
+        filter.doFilter(request("Bearer adt_u_token").apply { requestURI = "/api/spaces" }, MockHttpServletResponse(), MockFilterChain())
+
+        assertThat(onUpload).isEqualTo(agent)
+        assertThat(SecurityContextHolder.getContext().authentication).isNull()
+    }
+
+    @Test
     fun `only the owner holds the owner role, and an agent never does`() {
         val owner = Caller(UUID.randomUUID(), "robinjoon", true, null, null, CallerScope.OWNER)
         val member = owner.copy(owner = false, scope = CallerScope.READ)

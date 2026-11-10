@@ -19,6 +19,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundExc
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotResolvedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.StaleRevisionException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadNotFoundException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadRejectedException
 import xyz.robinjoon.agentdocs.workspace.domain.InvalidActorException
 import xyz.robinjoon.agentdocs.workspace.domain.asset.InvalidAssetException
 import xyz.robinjoon.agentdocs.workspace.domain.document.InvalidDocumentException
@@ -57,6 +58,10 @@ class WorkspaceExceptionHandler : ResponseEntityExceptionHandler() {
     @ExceptionHandler(UnauthenticatedException::class)
     fun handleUnauthenticated(exception: UnauthenticatedException): ProblemDetail =
         problem(HttpStatus.UNAUTHORIZED, "unauthenticated", exception, ProblemFixes.UNAUTHENTICATED)
+
+    @ExceptionHandler(UploadRejectedException::class)
+    fun handleUploadRejected(exception: UploadRejectedException): ProblemDetail =
+        problem(HttpStatus.UNAUTHORIZED, "upload_rejected", exception, ProblemFixes.UPLOAD_REJECTED)
 
     @ExceptionHandler(PermissionDeniedException::class)
     fun handlePermission(exception: PermissionDeniedException): ProblemDetail =

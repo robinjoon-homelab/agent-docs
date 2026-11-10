@@ -19,6 +19,8 @@ internal object McpInstructions {
             "so the " +
             "revision is linked, then comments_write action reply with markAnswered true. You cannot resolve a thread a person " +
             "opened.\n\n" +
-            "Images: upload with docs_upload first and always give alt text. Use opId on writes you might retry. Document links are " +
+            "Images: upload with docs_upload first and always give alt text. For a local file, call it with no content and run the curl " +
+            "command it returns; write out contentBase64 only without a shell and only up to about 5KB, because long base64 gets " +
+            "mistyped. Use opId on writes you might retry. Document links are " +
             "[title](doc:ID). Do not put secrets in documents or comments."
 }

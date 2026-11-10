@@ -6,4 +6,5 @@ internal object ProblemFixes {
     const val UNAUTHENTICATED = "sign in, or send a bearer token from MCP OAuth or a script token"
     const val INVALID = "correct the value the message names and send the request again"
     const val TAKEN = "choose another path or slug"
+    const val UPLOAD_REJECTED = "call docs_upload again for a new command"
 }

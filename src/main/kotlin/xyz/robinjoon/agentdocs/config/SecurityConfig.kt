@@ -30,6 +30,8 @@ import xyz.robinjoon.agentdocs.access.application.model.AccessSettings
 import xyz.robinjoon.agentdocs.access.application.port.input.CallerUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.SignInUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.WebSessionUseCase
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.UploadGateFilter
+import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCase
 import java.time.Clock
 
 // Two chains. Agents and OAuth clients use stateless bearer tokens on /mcp and the OAuth endpoints. Everything else is
@@ -42,11 +44,13 @@ class SecurityConfig {
     @Bean
     fun securityComponents(
         callers: CallerUseCase,
+        uploads: UploadGrantUseCase,
         settings: AccessSettings,
         clock: Clock,
     ): SecurityComponents =
         SecurityComponents(
             BearerTokenFilter(callers),
+            UploadGateFilter(uploads),
             RateLimitFilter(clock),
             ApiAuthenticationEntryPoint(settings),
         )
@@ -101,11 +105,7 @@ class SecurityConfig {
         http
             .csrf { it.spa().ignoringRequestMatchers(bearerRequests) }
             .securityContext { it.securityContextRepository(RequestAttributeSecurityContextRepository()) }
-            .addFilterAfter(CsrfCookieFilter(), CsrfFilter::class.java)
-            .addFilterBefore(components.bearer, AuthorizationFilter::class.java)
-            // A bearer token, checked after the cookie, decides when a request carries both.
-            .addFilterBefore(web.cookieFilter, BearerTokenFilter::class.java)
-            .addFilterAfter(components.rateLimit, BearerTokenFilter::class.java)
+            .withWebFilters(components, web)
             .authorizeHttpRequests {
                 it
                     .requestMatchers("/actuator/metrics", "/actuator/metrics/**")
@@ -128,6 +128,18 @@ class SecurityConfig {
             }.logout { it.logoutUrl("/logout").addLogoutHandler(web.signOut).logoutSuccessUrl("/login") }
         return http.build()
     }
+
+    private fun HttpSecurity.withWebFilters(
+        components: SecurityComponents,
+        web: WebSignInComponents,
+    ): HttpSecurity =
+        addFilterAfter(CsrfCookieFilter(), CsrfFilter::class.java)
+            .addFilterBefore(components.bearer, AuthorizationFilter::class.java)
+            // A bearer token, checked after the cookie, decides when a request carries both.
+            .addFilterBefore(web.cookieFilter, BearerTokenFilter::class.java)
+            // Ahead of the caller and the rate limit, so a wrong upload secret costs the connection it names nothing.
+            .addFilterBefore(components.uploadGate, BearerTokenFilter::class.java)
+            .addFilterAfter(components.rateLimit, BearerTokenFilter::class.java)
 
     private companion object {
         // A request that brings its own bearer token is not riding on a browser session, so CSRF does not apply.

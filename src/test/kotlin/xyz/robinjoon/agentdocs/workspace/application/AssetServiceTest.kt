@@ -92,6 +92,19 @@ class AssetServiceTest {
     }
 
     @Test
+    fun `a file name that cannot be kept leaves no bytes behind, because storage has no rollback`() {
+        val kept = KeptFiles()
+        val keeping =
+            AssetService(spaces, assets, kept, verifier, remote, WriteJournal(activity, mockk<OperationStore>(), WorkspaceFixtures.clock))
+        every { verifier.verify(png) } returns VerifiedImage(AssetMediaType.PNG, png)
+
+        assertThatThrownBy { keeping.upload(context(ownerAccess), space.slug, UploadedFile("a/b.png", "image/png", png)) }
+            .isInstanceOf(InvalidAssetException::class.java)
+
+        assertThat(kept.hashes).isEmpty()
+    }
+
+    @Test
     fun `an imported image keeps the address it came from`() {
         val url = "https://example.com/diagrams/flow.png?size=large"
         every { remote.fetch(url) } returns RemoteImage(url, "image/png", png)
@@ -129,4 +142,18 @@ class AssetServiceTest {
             )
         }.isInstanceOf(AssetNotFoundException::class.java)
     }
+}
+
+private class KeptFiles : AssetStore {
+    val hashes = mutableSetOf<String>()
+
+    override fun put(
+        sha256: String,
+        mediaType: String,
+        bytes: ByteArray,
+    ) {
+        hashes += sha256
+    }
+
+    override fun get(sha256: String): ByteArray = error("not read here")
 }

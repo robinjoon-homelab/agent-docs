@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.restdocs.headers.HeaderDocumentation.headerWithName
+import org.springframework.restdocs.headers.HeaderDocumentation.requestHeaders
 import org.springframework.restdocs.headers.HeaderDocumentation.responseHeaders
 import org.springframework.restdocs.mockmvc.RestDocumentationRequestBuilders.get
 import org.springframework.restdocs.mockmvc.RestDocumentationRequestBuilders.multipart
@@ -19,28 +20,41 @@ import org.springframework.restdocs.request.RequestDocumentation.partWithName
 import org.springframework.restdocs.request.RequestDocumentation.requestParts
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import xyz.robinjoon.agentdocs.access.application.model.UploadToken
 import xyz.robinjoon.agentdocs.support.web.RestDocsWebTest
 import xyz.robinjoon.agentdocs.support.web.documented
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.agent
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.agentAccess
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.at
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.connectionId
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.owner
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.ownerAccess
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.spaceId
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.webContext
 import xyz.robinjoon.agentdocs.workspace.application.model.AssetFile
+import xyz.robinjoon.agentdocs.workspace.application.model.GrantedUpload
+import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadRejectedException
 import xyz.robinjoon.agentdocs.workspace.domain.asset.Asset
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetContent
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetOrigin
 import xyz.robinjoon.agentdocs.workspace.domain.asset.InvalidAssetException
+import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import java.util.UUID
 
 class AssetApiDocumentationTest : RestDocsWebTest() {
     private val assets = mockk<AssetUseCase>()
-    private val mockMvc = restDocsMockMvc(AssetController(assets), WorkspaceExceptionHandler())
+    private val uploads = mockk<UploadGrantUseCase>()
+    private val mockMvc = restDocsMockMvc(AssetController(assets, uploads), WorkspaceExceptionHandler())
+    private val uploadContext = WriteContext(agentAccess, ChangeSource.MCP, null, null)
+    private val uploadToken = UploadToken.of(connectionId, "secret")
     private val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
     private val assetId = AssetId(UUID.fromString("88888888-8888-4888-8888-888888888888"))
     private val asset =
@@ -137,6 +151,52 @@ class AssetApiDocumentationTest : RestDocsWebTest() {
                 ).file(MockMultipartFile("file", "notes.pdf", "application/pdf", "%PDF".toByteArray())).principal(owner),
             ).andExpect(status().isBadRequest)
             .andDo(documented("assets-invalid", responseFields(*workspaceProblemFields())))
+    }
+
+    @Test
+    fun `a file sent with an upload token answers with the markdown to put in a document`() {
+        every { uploads.upload(uploadContext, "secret", any()) } returns GrantedUpload(asset, "흐름 [초안]")
+
+        mockMvc
+            .perform(
+                multipart("/api/uploads")
+                    .file(MockMultipartFile("file", "flow.png", "image/png", png))
+                    .header("Authorization", "Bearer $uploadToken")
+                    .principal(agent),
+            ).andExpect(status().isCreated)
+            .andExpect(header().string("Location", "/api/assets/$assetId/content"))
+            .andExpect(jsonPath("$.assetId").value(assetId.value.toString()))
+            .andExpect(jsonPath("$.markdown").value("![흐름 [초안\\]](asset:$assetId)"))
+            .andDo(
+                documented(
+                    "uploads-token",
+                    requestHeaders(
+                        headerWithName("Authorization").description("docs_upload가 돌려준 명령의 Bearer adt_u_ 토큰. 파일 하나를 10분 안에 올리는 데만 쓴다"),
+                    ),
+                    requestParts(partWithName("file").description("올릴 파일. 형식과 크기 제한은 첨부 업로드와 같다")),
+                    responseHeaders(headerWithName("Location").description("파일 내용 경로")),
+                    responseFields(
+                        fieldWithPath("assetId").description("첨부 ID"),
+                        fieldWithPath("mediaType").description("파일 종류"),
+                        fieldWithPath("markdown").description("문서에 넣을 이미지 마크다운. docs_upload에 준 대체 텍스트가 들어 있다"),
+                    ),
+                ),
+            )
+    }
+
+    @Test
+    fun `a spent upload token is refused with how to get a new one`() {
+        every { uploads.upload(uploadContext, "secret", any()) } throws UploadRejectedException()
+
+        mockMvc
+            .perform(
+                multipart("/api/uploads")
+                    .file(MockMultipartFile("file", "flow.png", "image/png", png))
+                    .header("Authorization", "Bearer $uploadToken")
+                    .principal(agent),
+            ).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("upload_rejected"))
+            .andDo(documented("uploads-rejected", responseFields(*workspaceProblemFields())))
     }
 
     private fun assetFields(): Array<FieldDescriptor> =

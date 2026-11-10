@@ -15,6 +15,7 @@ import org.springframework.context.annotation.DependsOn
 import org.springframework.web.servlet.function.RouterFunction
 import org.springframework.web.servlet.function.ServerResponse
 import tools.jackson.databind.json.JsonMapper
+import xyz.robinjoon.agentdocs.access.application.model.UploadToken
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.ChangesSinceTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.CommentsQueryTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.CommentsWriteTool
@@ -39,6 +40,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SearchUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCase
 import java.net.URI
 import java.time.Duration
 
@@ -132,7 +134,11 @@ class McpConfig {
     fun docsMoveTool(documents: DocumentUseCase): McpTool = DocsMoveTool(documents)
 
     @Bean
-    fun docsUploadTool(assets: AssetUseCase): McpTool = DocsUploadTool(assets)
+    fun docsUploadTool(
+        assets: AssetUseCase,
+        uploads: UploadGrantUseCase,
+        properties: AgentDocsProperties,
+    ): McpTool = DocsUploadTool(assets, uploads, "${properties.publicUrl.trimEnd('/')}${UploadToken.ENDPOINT}")
 
     @Bean
     fun docsHistoryTool(

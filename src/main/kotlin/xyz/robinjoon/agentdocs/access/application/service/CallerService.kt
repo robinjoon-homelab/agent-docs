@@ -2,10 +2,12 @@ package xyz.robinjoon.agentdocs.access.application.service
 
 import org.springframework.transaction.annotation.Transactional
 import xyz.robinjoon.agentdocs.access.application.model.Caller
+import xyz.robinjoon.agentdocs.access.application.model.UploadToken
 import xyz.robinjoon.agentdocs.access.application.port.input.CallerUseCase
 import xyz.robinjoon.agentdocs.access.application.port.output.ConnectionRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.UserRepository
 import xyz.robinjoon.agentdocs.access.domain.TokenHash
+import xyz.robinjoon.agentdocs.access.domain.connection.ConnectionId
 import java.time.Clock
 
 // Runs on every agent request, so the stored connection, not a cached copy, decides: a revoked or narrowed connection
@@ -23,6 +25,13 @@ class CallerService(
         val connection = connections.findByAccessHash(TokenHash.of(token))?.takeIf { it.acceptsAccessAt(now) } ?: return null
         val user = users.findById(connection.owner.userId) ?: return null
         connection.used(now)?.let(connections::update)
+        return Callers.agent(connection, user.account.login)
+    }
+
+    override fun callerForUpload(token: String): Caller? {
+        val id = UploadToken.connectionOf(token) ?: return null
+        val connection = connections.findById(ConnectionId(id))?.takeIf { it.isActiveAt(clock.instant()) } ?: return null
+        val user = users.findById(connection.owner.userId) ?: return null
         return Callers.agent(connection, user.account.login)
     }
 }

@@ -22,14 +22,20 @@ import xyz.robinjoon.agentdocs.support.web.documented
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.agent
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.agentAccess
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.at
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.connectionId
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.documentId
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.ownerAccess
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.spaceId
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadQuery
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadView
+import xyz.robinjoon.agentdocs.workspace.application.model.UploadPass
+import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCase
+import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
+import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Anchor
 import xyz.robinjoon.agentdocs.workspace.domain.thread.AnchorResolution
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Comment
@@ -45,6 +51,7 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
     private val threads = mockk<ThreadUseCase>()
     private val queries = mockk<DocumentQueryUseCase>()
     private val documents = mockk<DocumentUseCase>()
+    private val uploads = mockk<UploadGrantUseCase>()
     private val tools =
         listOf(
             CommentsQueryTool(threads, mockk()),
@@ -56,7 +63,7 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
             DocsMoveTool(documents),
             DocsHistoryTool(queries, documents),
             DocsSearchTool(mockk()),
-            DocsUploadTool(mockk()),
+            DocsUploadTool(mockk(), uploads, "https://docs.example.com/api/uploads"),
             ChangesSinceTool(mockk()),
             SpacesResolveTool(mockk()),
         )
@@ -127,6 +134,29 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.result.isError").value(false))
             .andExpect(jsonPath("$.result.content[0].text", containsString("\"status\":\"open\"")))
+    }
+
+    @Test
+    fun `docs_upload without a file hands back a one-time command that sends the token in a header`() {
+        val context = WriteContext(agentAccess, ChangeSource.MCP, null, null)
+        every { uploads.grant(context, SpaceSlug("agent-docs"), "흐름") } returns UploadPass(connectionId, "s3cret", at)
+
+        call("docs_upload", """{"space":"agent-docs","alt":"흐름"}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(false))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("Authorization: Bearer adt_u_$connectionId.s3cret")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("<FILE_PATH>")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("no quotes or escaping")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("https://docs.example.com/api/uploads")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"expiresAt\":\"$at\"")))
+    }
+
+    @Test
+    fun `base64 that does not decode says how to upload without writing the file out`() {
+        call("docs_upload", """{"space":"agent-docs","contentBase64":"A"}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(true))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("leave out contentBase64")))
     }
 
     @ParameterizedTest

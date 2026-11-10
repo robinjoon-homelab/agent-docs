@@ -10,6 +10,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.ExposedSea
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.ExposedSpaceRepository
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.ExposedSpaceStatisticsCatalog
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.ExposedThreadRepository
+import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.ExposedUploadGrantRepository
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.ExposedUsageCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
@@ -21,6 +22,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.SearchCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceStatisticsCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepository
+import xyz.robinjoon.agentdocs.workspace.application.port.output.UploadGrantRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.UsageCatalog
 
 // The workspace's database ports, built once and shared by its use cases. The Exposed adapters keep no state; they
@@ -33,6 +35,7 @@ class WorkspacePersistence {
     val threads: ThreadRepository = ExposedThreadRepository()
     val inbox: InboxRepository = ExposedInboxRepository()
     val assets: AssetRepository = ExposedAssetRepository()
+    val uploadGrants: UploadGrantRepository = ExposedUploadGrantRepository()
     val search: SearchCatalog = ExposedSearchCatalog()
     val usage: UsageCatalog = ExposedUsageCatalog()
     val views: DocumentViewReporter = ExposedDocumentViewReporter()
