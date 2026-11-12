@@ -26,6 +26,7 @@ import { filterMentionLogins } from '../common/mentions';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { hasMod } from '../hooks/useHotkey';
 import { BlockBehavior } from './behavior';
+import { clipboardMarkdown } from './clipboardMarkdown';
 import { applyBlocks, insertBlock } from './commands';
 import { blocksToDoc, docToDrafts } from './convert';
 import { randomBlockId } from './ids';
@@ -320,6 +321,11 @@ export function DocumentEditor(props: DocumentEditorProps) {
       editable,
       editorProps: {
         attributes: { class: 'doc-editor', 'aria-label': '문서 본문', spellcheck: 'true' },
+        clipboardTextSerializer: (slice) =>
+          clipboardMarkdown(
+            slice,
+            (assetId) => new URL(services.assets.contentUrl(assetId), window.location.href).href,
+          ),
         handleKeyDown: (_view, event) => {
           if (hasMod(event) && event.altKey && event.code === 'KeyM') {
             requestComment(latest.current.reanchoring);
@@ -328,6 +334,10 @@ export function DocumentEditor(props: DocumentEditorProps) {
           return false;
         },
         handleDOMEvents: {
+          copy: (view) => {
+            if (!view.editable) selectionFromDom(view);
+            return false;
+          },
           click: (view, event) => {
             const target = event.target as HTMLElement;
             const link = target.closest('a');
