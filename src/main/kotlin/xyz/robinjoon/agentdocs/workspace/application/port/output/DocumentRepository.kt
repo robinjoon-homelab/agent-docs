@@ -13,6 +13,12 @@ import java.time.Instant
 // A document is stored together with its revision history: every write passes the revision it produces, so the
 // current state and the history can never disagree.
 interface DocumentRepository {
+    fun nameRevision(
+        id: DocumentId,
+        revision: Int,
+        name: String?,
+    )
+
     // Fails with PathTakenException when another document outside the trash has the same path in the space.
     fun add(
         document: Document,

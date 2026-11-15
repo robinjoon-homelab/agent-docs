@@ -9,6 +9,8 @@ clean-code:
     allowedDepth: 2
   NoMutableCollectionExposure:
     active: true
+  ConsoleProtocolBoundary:
+    active: true
   MaximumFunctionLength:
     active: true
     allowedLines: 80
@@ -145,15 +147,11 @@ style:
         reason: 'Use the application logger.'
       - value: 'java.io.PrintStream.print'
         reason: 'Use the application logger.'
-      - value: 'java.io.PrintStream.println'
-        reason: 'Use the application logger.'
       - value: 'java.lang.System.exit'
         reason: 'Let Spring manage application shutdown.'
       - value: 'java.lang.Runtime.exit'
         reason: 'Let Spring manage application shutdown.'
       - value: 'java.lang.Runtime.halt'
-        reason: 'Let Spring manage application shutdown.'
-      - value: 'kotlin.system.exitProcess'
         reason: 'Let Spring manage application shutdown.'
   ForbiddenSuppress:
     active: true
@@ -280,3 +278,10 @@ style:
       - 'detekt.MaximumFunctionLength'
       - 'detekt:clean-code:MaximumFunctionLength'
       - 'detekt.clean-code.MaximumFunctionLength'
+      - 'ConsoleProtocolBoundary'
+      - 'clean-code:ConsoleProtocolBoundary'
+      - 'clean-code.ConsoleProtocolBoundary'
+      - 'detekt:ConsoleProtocolBoundary'
+      - 'detekt.ConsoleProtocolBoundary'
+      - 'detekt:clean-code:ConsoleProtocolBoundary'
+      - 'detekt.clean-code.ConsoleProtocolBoundary'

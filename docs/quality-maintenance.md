@@ -26,7 +26,9 @@
 detekt는 분석 전에 컴파일된 규칙 JAR를 플러그인으로 읽으므로 사용자 정의 규칙을 앱 소스와 분리한 `quality-rules` 모듈에서 먼저 빌드한다. 빌드 전용 모듈이며 앱 계층이 아니고 실행 JAR에 포함되지 않는다.
 
 - 앱 detekt는 `src/main`·`src/test`를 검사한다. `quality-rules`에는 자기 detekt를 적용하지 않고 ktlint·fixture 테스트를 적용하며, 전체 `build`가 이 테스트를 포함한다.
-- `CleanCodeRuleSetProvider`가 `clean-code` 규칙 `LogicalNestingDepth`·`NoMutableCollectionExposure`·`MaximumFunctionLength`를 등록한다. 동작은 [코드 품질 규칙](code-quality.md)의 조건과 맞추고 조건마다 회귀 fixture를 유지한다.
+- `CleanCodeRuleSetProvider`가 `clean-code` 규칙 `LogicalNestingDepth`·`NoMutableCollectionExposure`·`MaximumFunctionLength`·`ConsoleProtocolBoundary`를 등록한다. 동작은 [코드 품질 규칙](code-quality.md)의 조건과 맞추고 조건마다 회귀 fixture를 유지한다.
+
+- `ConsoleProtocolBoundary`는 builtin `ForbiddenMethodCall`에서 옮긴 두 호출만 담당한다. 허용 경계는 [CLI 콘솔 프로토콜 경계](code-quality.md#cli-콘솔-프로토콜-경계)에만 정의하며, 정확한 클래스·함수·타입·실제 스트림 심볼을 검사한다. 정상·서버 위반·다른 동명 클래스·오버로드·잘못된 수신자·DSL·람다·지역 함수·import 별칭·메서드 참조·재정의 fixture를 함께 유지한다. builtin의 나머지 금지 항목과 새 규칙의 금지 억제 목록을 보존한다.
 
 ## 아키텍처 검사기
 

@@ -597,3 +597,29 @@
     display: none;
   }
 }
+
+.html-mockup-scroll {
+  overflow-x: auto;
+}
+.html-mockup iframe {
+  border: 1px solid var(--border);
+  background: white;
+}
+.html-mockup-source {
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.math-preview {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  vertical-align: middle;
+}
+.math-source {
+  border-bottom: 1px dotted var(--border);
+}
+.math-decoration {
+  padding-inline: 0.5rem;
+  user-select: none;
+}

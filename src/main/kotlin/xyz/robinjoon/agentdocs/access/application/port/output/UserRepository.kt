@@ -10,5 +10,7 @@ interface UserRepository {
 
     fun findById(id: UserId): User?
 
+    fun findByLogin(login: String): User?
+
     fun findByGithubId(githubId: Long): User?
 }

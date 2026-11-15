@@ -25,10 +25,11 @@ export function isExternalImageUrl(text: string): boolean {
   return /^https?:\/\/\S+\.(png|jpe?g|gif|webp|svg)(\?\S*)?$/i.test(text.trim());
 }
 
-export type UploadError = 'not_image' | 'too_large';
+export type UploadError = 'not_image' | 'too_large' | 'empty';
 
 export function checkUpload(mediaType: string, size: number): UploadError | null {
-  if (!isImageMediaType(mediaType)) return 'not_image';
+  if (mediaType.startsWith('image/') && !isImageMediaType(mediaType)) return 'not_image';
+  if (size <= 0) return 'empty';
   if (size > MAX_UPLOAD_BYTES) return 'too_large';
   return null;
 }

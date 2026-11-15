@@ -23,6 +23,10 @@ function service(list: ThreadUseCases['list'], changes: Partial<ThreadUseCases> 
   const unused = () => Promise.reject(new Error('unexpected operation'));
   return {
     list,
+    react: unused,
+    claim: unused,
+    suggest: unused,
+    decide: unused,
     start: unused,
     reply: unused,
     resolve: unused,

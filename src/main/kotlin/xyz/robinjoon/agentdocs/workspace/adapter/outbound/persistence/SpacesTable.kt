@@ -11,6 +11,8 @@ internal object SpacesTable : Table("spaces") {
     val description = varchar("description", 500)
     val createdAt = timestampWithTimeZone("created_at")
     val archivedAt = timestampWithTimeZone("archived_at").nullable()
+    val agentGuideDocumentId = javaUUID("agent_guide_document_id").nullable()
+    val defaultRepository = varchar("default_repository", 201).nullable()
 
     override val primaryKey = PrimaryKey(id)
 }

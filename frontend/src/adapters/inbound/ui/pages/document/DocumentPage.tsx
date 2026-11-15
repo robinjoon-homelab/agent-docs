@@ -1,3 +1,12 @@
+import { DocumentAssetScope } from './DocumentAssetScope';
+import { useEditorInputTime } from './useEditorInputTime';
+import { TransferDialog } from './TransferDialog';
+import { useDocumentEvents } from './useDocumentEvents';
+import { RevisionNamePrompt } from '../history/RevisionNamePrompt';
+import { EditTimeDetails } from '../../statistics/EditTimeDetails';
+import { DocumentNavigation, useRecordDocumentView } from '../../navigation/DocumentNavigation';
+import { githubContextOf } from '../../../../../domain/space/space';
+import type { Space } from '../../../../../domain/space/space';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import type { MetaPatch } from '../../../../../application/document/ports/DocumentGateway';
@@ -50,7 +59,11 @@ export function DocumentPage() {
   if (document.space.slug !== slug) {
     return <Navigate to={`${documentHref(document.space.slug, document.id)}${location.hash}`} replace />;
   }
-  return <DocumentWorkspace key={document.id} document={document} initialThreads={threads} />;
+  return (
+    <DocumentAssetScope key={document.id} documentId={document.id}>
+      <DocumentWorkspace document={document} initialThreads={threads} />
+    </DocumentAssetScope>
+  );
 }
 
 /** The documents under this one, from their paths, with a way to add one when the document is editable. */
@@ -117,6 +130,13 @@ function DocumentWorkspace({
   const shell = useShell();
   const toast = useToast();
   const [session] = useState(() => services.openEditor(document));
+  useRecordDocumentView(services.navigation, document.id);
+  const inputTime = useEditorInputTime(session, document.id, services.statistics);
+  const spaceInfo = useLoad(`document-space:${document.space.slug}`, () =>
+    services.spaces.get(document.space.slug),
+  );
+  const [transferSpaces, setTransferSpaces] = useState<readonly Space[] | null>(null);
+  const [transferring, setTransferring] = useState(false);
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const editorRef = useRef<DocumentEditorHandle>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
@@ -126,7 +146,12 @@ function DocumentWorkspace({
     update,
     actions,
     reload: reloadThreads,
-  } = useThreadState(document.id, initialThreads, services.threads);
+  } = useThreadState(document.id, initialThreads, services.threads, () => session.refreshRemote());
+  useDocumentEvents(document.id, services.documentEvents, {
+    refreshDocument: () => session.refreshRemote(),
+    reloadThreads,
+    onError: (error) => toast(errorMessage(error)),
+  });
   const [filter, setFilter] = useState<ThreadFilter>('open');
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [pending, setPending] = useState<Anchor | null>(null);
@@ -141,7 +166,7 @@ function DocumentWorkspace({
     setRailOpen(true);
     setRailCollapsed(false);
   }, [setRailCollapsed]);
-  const editable = me.owner && document.trashedAt === null;
+  const editable = me.owner && document.trashedAt === null && !transferring;
   const frame = useRef<number | null>(null);
   const spaceSlug = document.space.slug;
   const siblings = useLoad(`space-documents:${spaceSlug}:${shell.treeVersion}`, () =>
@@ -237,8 +262,13 @@ function DocumentWorkspace({
 
   /** Saves pending edits first; anchors and trashing assume the server has what the user sees. */
   const saveFirst = async (): Promise<boolean> => {
+    if (!(await session.flushMeta())) {
+      toast('문서 정보를 저장하지 못했습니다. 입력을 확인하세요.');
+      return false;
+    }
     const outcome = (await editorRef.current?.flushSave()) ?? 'saved';
-    if (outcome === 'saved') return true;
+    if (outcome === 'saved' && (await session.idle()) === 'saved' && session.getState().status === 'saved')
+      return true;
     toast(
       outcome === 'conflict'
         ? '저장 충돌을 먼저 해결하세요.'
@@ -275,6 +305,29 @@ function DocumentWorkspace({
     void session.patchMeta(change).then((saved) => {
       if (saved && (change.path !== undefined || change.title !== undefined)) shell.refreshTree();
     });
+  };
+
+  const openTransfer = async () => {
+    if (!(await saveFirst())) return;
+    try {
+      setTransferSpaces(await services.spaces.list());
+    } catch (error) {
+      toast(errorMessage(error));
+    }
+  };
+  const transfer = async (space: string, path: string) => {
+    setTransferring(true);
+    try {
+      if (!(await saveFirst())) throw new Error('저장하지 못했습니다. 입력을 확인하세요.');
+      await session.finalize();
+      if (session.getState().errorMessage !== null)
+        throw new Error(session.getState().errorMessage ?? '확정 실패');
+      const moved = await services.documents.transfer(document.id, session.getState().version, space, path);
+      shell.refreshTree();
+      window.location.assign(documentHref(moved.space.slug, moved.documentId));
+    } finally {
+      setTransferring(false);
+    }
   };
 
   const trash = async (): Promise<void> => {
@@ -362,10 +415,19 @@ function DocumentWorkspace({
             state={state}
             editable={editable}
             onPatch={patch}
+            onInput={(change) => {
+              for (const field of Object.keys(change) as (keyof MetaPatch)[]) inputTime.mark(field);
+              session.markMetaEdited(change);
+            }}
+            onCancelInput={(key) => {
+              session.cancelMetaEdited(key);
+              inputTime.discard(key);
+            }}
+            onTransfer={() => void openTransfer()}
             onTrash={() => void trash()}
             onRetrySave={() => {
-              void editorRef.current?.flushSave().then((outcome) => {
-                if (outcome === 'saved') toast('저장했습니다');
+              void saveFirst().then((saved) => {
+                if (saved) toast('저장했습니다');
               });
             }}
           />
@@ -396,11 +458,29 @@ function DocumentWorkspace({
               onResolve={resolveConflicts}
             />
           ) : null}
+          {state.revisionNameSuggestion === null ? null : (
+            <RevisionNamePrompt
+              key={state.revisionNameSuggestion}
+              documentId={document.id}
+              revision={state.revisionNameSuggestion}
+              onClose={() => session.dismissRevisionNameSuggestion()}
+            />
+          )}
+          {transferSpaces === null ? null : (
+            <TransferDialog
+              spaces={transferSpaces}
+              path={state.meta.path}
+              onTransfer={transfer}
+              onClose={() => setTransferSpaces(null)}
+            />
+          )}
           <DocumentEditor
             ref={editorRef}
             document={document}
             session={session}
             editable={editable}
+            github={spaceInfo.state === 'ready' ? githubContextOf(spaceInfo.data) : undefined}
+            onInput={() => inputTime.mark('body')}
             threads={threads}
             activeThreadId={highlightedThreadId}
             reanchoring={reanchorThread !== null}
@@ -414,6 +494,8 @@ function DocumentWorkspace({
             onContentChange={relayout}
             onMessage={toast}
           />
+          <DocumentNavigation navigation={services.navigation} documentId={document.id} />
+          <EditTimeDetails statistics={services.statistics} documentId={document.id} />
           <ChildDocuments
             spaceSlug={spaceSlug}
             documents={childrenOf(spaceDocuments, state.meta.path)}

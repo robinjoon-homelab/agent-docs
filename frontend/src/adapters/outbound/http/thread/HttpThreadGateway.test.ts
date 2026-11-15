@@ -70,3 +70,29 @@ describe('HttpThreadGateway', () => {
     });
   });
 });
+
+it('keeps claim timestamps, each actor reaction and the suggestion decision revision', async () => {
+  const claim = {
+    actor: { kind: 'agent', login: 'octocat', agent: { connectionId: 'a', clientName: 'Codex' } },
+    acquiredAt: '2026-11-16T01:00:00Z',
+    expiresAt: '2026-11-16T01:15:00Z',
+  };
+  const anchor = { kind: 'text', blockId: 'b', start: 0, end: 3, quote: 'old' };
+  const decision = { actor: human, at: '2026-11-16T01:01:00Z', accepted: true, revision: 7 };
+  const result = await gatewayReturning({
+    id: 't',
+    documentId: 'd',
+    status: 'open',
+    author: human,
+    comments: [],
+    createdAt: 'x',
+    updatedAt: 'x',
+    anchor,
+    claim,
+    reactions: [{ actor: human, emoji: '👍' }],
+    suggestions: [{ commentId: 'c', anchor, hash: 'abcd1234', before: 'old', after: 'new', decision }],
+  }).react('t', '👍', true);
+  expect(result.claim).toEqual(claim);
+  expect(result.reactions).toEqual([{ actor: human, emoji: '👍' }]);
+  expect(result.suggestions?.[0]?.decision).toEqual(decision);
+});

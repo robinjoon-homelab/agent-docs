@@ -1,8 +1,10 @@
 package xyz.robinjoon.agentdocs.config
 
+import jakarta.servlet.DispatcherType
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.annotation.Order
+import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
@@ -112,6 +114,10 @@ class SecurityConfig {
             .withWebFilters(components, web)
             .authorizeHttpRequests {
                 it
+                    .dispatcherTypeMatchers(DispatcherType.ASYNC)
+                    .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/oauth/clients/adocs")
+                    .permitAll()
                     .requestMatchers("/actuator/metrics", "/actuator/metrics/**")
                     .hasRole("OWNER")
                     .requestMatchers("/api/**")
@@ -121,7 +127,18 @@ class SecurityConfig {
             }.exceptionHandling {
                 it.accessDeniedHandler(ApiAccessDeniedHandler())
                 it.defaultAuthenticationEntryPointFor(components.entryPoint, PathPatternRequestMatcher.withDefaults().matcher("/api/**"))
-            }.oauth2Login { login ->
+            }
+        withOAuthLogin(http, web, registrations)
+        return http.build()
+    }
+
+    private fun withOAuthLogin(
+        http: HttpSecurity,
+        web: WebSignInComponents,
+        registrations: ClientRegistrationRepository,
+    ) {
+        http
+            .oauth2Login { login ->
                 login
                     .loginPage("/login")
                     .authorizationEndpoint { it.authorizationRequestResolver(NextPathAuthorizationRequestResolver(registrations)) }
@@ -131,7 +148,6 @@ class SecurityConfig {
                     .successHandler(web.success)
                     .failureHandler(SignInFailureHandler())
             }.logout { it.logoutUrl("/logout").addLogoutHandler(web.signOut).logoutSuccessUrl("/login") }
-        return http.build()
     }
 
     private fun HttpSecurity.withWebFilters(

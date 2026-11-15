@@ -18,6 +18,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.space.ExternalLink
 import xyz.robinjoon.agentdocs.workspace.domain.space.SlugTakenException
 import xyz.robinjoon.agentdocs.workspace.domain.space.Space
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceAddress
+import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceGuidance
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceLifecycle
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceProfile
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
@@ -33,6 +34,8 @@ class ExposedSpaceRepository : SpaceRepository {
                 it[description] = space.profile.description
                 it[createdAt] = space.createdAt.utc()
                 it[archivedAt] = space.lifecycle.archivedAt?.utc()
+                it[agentGuideDocumentId] = space.guidance.guideDocumentId
+                it[defaultRepository] = space.guidance.defaultRepository
             }
             writeChildren(space)
         } catch (exception: ExposedSQLException) {
@@ -51,6 +54,8 @@ class ExposedSpaceRepository : SpaceRepository {
                     it[name] = space.profile.name
                     it[description] = space.profile.description
                     it[archivedAt] = space.lifecycle.archivedAt?.utc()
+                    it[agentGuideDocumentId] = space.guidance.guideDocumentId
+                    it[defaultRepository] = space.guidance.defaultRepository
                 }
             check(updated == 1) { "Space to update does not exist: ${space.id}" }
             SpaceFormerSlugsTable.deleteWhere { SpaceFormerSlugsTable.spaceId eq space.id.value }
@@ -131,7 +136,8 @@ class ExposedSpaceRepository : SpaceRepository {
                 .where { SpaceLinksTable.spaceId eq id }
                 .orderBy(SpaceLinksTable.position to SortOrder.ASC)
                 .map { ExternalLink.of(it[SpaceLinksTable.kind], it[SpaceLinksTable.value]) }
-        val profile = SpaceProfile.of(this[SpacesTable.name], this[SpacesTable.description], links)
+        val guidance = SpaceGuidance.of(this[SpacesTable.agentGuideDocumentId], this[SpacesTable.defaultRepository])
+        val profile = SpaceProfile.of(this[SpacesTable.name], this[SpacesTable.description], links, guidance)
         return Space.restore(
             SpaceId(id),
             SpaceAddress.of(SpaceSlug(this[SpacesTable.slug]), former.toSet()),

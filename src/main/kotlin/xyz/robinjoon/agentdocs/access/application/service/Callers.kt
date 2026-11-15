@@ -28,6 +28,7 @@ internal object Callers {
     fun agent(
         connection: Connection,
         login: String,
+        cliClientId: String? = null,
     ): Caller {
         val scope =
             when (connection.grant.scope) {
@@ -39,7 +40,7 @@ internal object Callers {
         // there is one: "Claude Code (claude.ai)".
         val client = connection.owner.client
         val label = client.host?.let { "${client.name} ($it)" } ?: client.name
-        val agent = CallerAgent(connection.id.value, label.take(MAX_LABEL_LENGTH))
+        val agent = CallerAgent(connection.id.value, label.take(MAX_LABEL_LENGTH), cliClientId != null && client.clientId == cliClientId)
         return Caller(connection.owner.userId.value, login, false, agent, connection.grant.spaces, scope)
     }
 

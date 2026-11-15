@@ -74,4 +74,40 @@ class SpaceTest {
             .isInstanceOf(InvalidSpaceException::class.java)
             .hasMessage("name must be 1 to 100 characters")
     }
+
+    @Test
+    fun `a default repository is one of the linked repositories, given in any remote form`() {
+        val links = listOf(repository("homelab/agent-docs"), repository("homelab/infra"))
+        val linked = space.describe(SpaceProfile.of("Agent Docs", "", links))
+
+        val chosen = linked.chooseRepository("git@github.com:Homelab/Infra.git")
+
+        assertThat(chosen.guidance.defaultRepository).isEqualTo("homelab/infra")
+        assertThat(chosen.chooseRepository(" ").guidance.defaultRepository).isNull()
+        assertThatThrownBy { linked.chooseRepository("homelab/other") }
+            .isInstanceOf(InvalidSpaceException::class.java)
+            .hasMessage("the default repository must be one of the GitHub repositories linked to the space")
+    }
+
+    @Test
+    fun `an organization link alone names no repository to default to`() {
+        val links = listOf(ExternalLink.of(ExternalLinkKind.GITHUB_ORGANIZATION, "homelab"))
+        val organization = space.describe(SpaceProfile.of("Agent Docs", "", links))
+
+        assertThatThrownBy { organization.chooseRepository("homelab/agent-docs") }.isInstanceOf(InvalidSpaceException::class.java)
+    }
+
+    @Test
+    fun `links without the default repository drop it and keep the guide`() {
+        val guide = UUID.fromString("77777777-7777-4777-8777-777777777777")
+        val links = listOf(repository("homelab/agent-docs"), repository("homelab/infra"))
+        val guided = space.describe(SpaceProfile.of("Agent Docs", "", links)).guideBy(guide).chooseRepository("homelab/infra")
+
+        val profile = SpaceProfile.of("Agent Docs", "", links.take(1), guided.guidance)
+
+        assertThat(guided.describe(profile).guidance).isEqualTo(SpaceGuidance.of(guide, null))
+        assertThat(guided.guideBy(null).guidance.guideDocumentId).isNull()
+    }
+
+    private fun repository(value: String): ExternalLink = ExternalLink.of(ExternalLinkKind.GITHUB_REPOSITORY, value)
 }

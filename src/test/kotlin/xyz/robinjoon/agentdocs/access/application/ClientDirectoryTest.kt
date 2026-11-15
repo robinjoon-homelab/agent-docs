@@ -23,6 +23,28 @@ class ClientDirectoryTest {
     private val directory = ClientDirectory(clients, documents, secrets, clock)
 
     @Test
+    fun `first party CLI metadata resolves locally for the exact issuer client only`() {
+        val clientId = "https://docs.example.com/oauth/clients/adocs"
+        val local = ClientDirectory(clients, documents, secrets, clock, "https://docs.example.com")
+        every { clients.find(clientId) } returns null
+        every { clients.save(any()) } answers { firstArg() }
+        val resolved = local.resolve(clientId)
+        assertThat(resolved.clientId).isEqualTo(clientId)
+        assertThat(resolved.allowsRedirect("http://127.0.0.1:59321/callback")).isTrue()
+        assertThat(resolved.allowsRedirect("http://localhost:59321/callback")).isFalse()
+    }
+
+    @Test
+    fun `a different issuer CLI path still requires its own metadata document`() {
+        val foreign = "https://other.example/oauth/clients/adocs"
+        val local = ClientDirectory(clients, documents, secrets, clock, "https://docs.example.com")
+        every { documents.fetch(foreign) } returns
+            ClientMetadataDocument("https://wrong.example/client", "adocs", listOf("http://127.0.0.1/callback"), "none")
+        assertThatThrownBy { local.resolve(foreign) }
+            .isInstanceOfSatisfying(OAuthException::class.java) { assertThat(it.error).isEqualTo("invalid_client") }
+    }
+
+    @Test
     fun `a metadata document client is trusted only when the document names its own URL`() {
         every { documents.fetch(CLAUDE_CODE) } returns
             ClientMetadataDocument(CLAUDE_CODE, "Claude Code", listOf("http://localhost/callback"), "none")

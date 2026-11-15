@@ -73,6 +73,43 @@ class ThreadController(
         return ThreadJson.thread(threads.change(context, ThreadId(id), change))
     }
 
+    @PostMapping("/api/threads/{id}/reactions")
+    fun react(
+        @PathVariable id: UUID,
+        @RequestBody body: JsonNode,
+        principal: Principal?,
+    ): Map<String, Any?> {
+        val action = Wire.required(body, "action")
+        if (action != "add" &&
+            action != "remove"
+        ) {
+            throw xyz.robinjoon.agentdocs.workspace.application.model
+                .InvalidRequestException("reaction action must be add or remove")
+        }
+        return ThreadJson.thread(
+            threads.react(
+                CallerAccess.write(principal, Wire.optional(body, "opId"), null),
+                ThreadId(id),
+                Wire.required(body, "emoji"),
+                action == "add",
+            ),
+        )
+    }
+
+    @PostMapping("/api/threads/{id}/claim")
+    fun claim(
+        @PathVariable id: UUID,
+        @RequestBody body: JsonNode,
+        principal: Principal?,
+    ): Map<String, Any?> =
+        ThreadJson.thread(
+            threads.claim(
+                CallerAccess.write(principal, Wire.optional(body, "opId"), null),
+                ThreadId(id),
+                Wire.required(body, "action"),
+            ),
+        )
+
     @PatchMapping("/api/comments/{id}")
     fun editComment(
         @PathVariable id: UUID,

@@ -5,6 +5,7 @@ data class CodeBlock(
     override val id: BlockId,
     val language: String,
     val code: String,
+    val displayMath: Boolean = false,
 ) : Block {
     init {
         if (!languagePattern.matches(language)) {
@@ -12,6 +13,9 @@ data class CodeBlock(
         }
         if (code.length > MAX_CODE_LENGTH) {
             throw InvalidDocumentException("code must be at most $MAX_CODE_LENGTH characters")
+        }
+        if (displayMath && (language != "math" || code.lineSequence().any { it.trim() == "$$" })) {
+            throw InvalidDocumentException("display math uses the math language without nested $$ lines")
         }
         if (code.contains('\r')) {
             throw InvalidDocumentException("code uses \\n line endings")

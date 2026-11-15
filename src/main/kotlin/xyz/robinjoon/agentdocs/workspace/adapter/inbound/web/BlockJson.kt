@@ -50,7 +50,9 @@ object BlockJson {
             },
             "quote" to { id, node -> Quote(id, inline(node, "text")) },
             "callout" to { id, node -> Callout(id, enumOf<CalloutKind>(node, "kind"), inline(node, "text")) },
-            "code" to { id, node -> CodeBlock(id, node.path("language").asString(""), text(node, "code")) },
+            "code" to { id, node ->
+                CodeBlock(id, node.path("language").asString(""), text(node, "code"), node.path("displayMath").asBoolean(false))
+            },
             "table" to ::table,
             "image" to { id, node ->
                 ImageBlock(
@@ -98,7 +100,8 @@ object BlockJson {
     private fun nonTextFieldsOf(block: Block): Map<String, Any?> =
         when (block) {
             is CodeBlock -> {
-                mapOf("language" to block.language, "code" to block.code)
+                mapOf("language" to block.language, "code" to block.code) +
+                    if (block.displayMath) mapOf("displayMath" to true) else emptyMap()
             }
 
             is TableBlock -> {

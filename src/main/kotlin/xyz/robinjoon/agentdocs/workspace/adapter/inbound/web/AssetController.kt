@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
 import xyz.robinjoon.agentdocs.access.application.model.UploadToken
+import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
@@ -20,6 +21,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCa
 import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadRejectedException
 import xyz.robinjoon.agentdocs.workspace.domain.asset.Asset
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
+import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import java.net.URI
@@ -79,8 +81,20 @@ class AssetController(
             .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePrivate().immutable())
             .header("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'")
             .header("X-Content-Type-Options", "nosniff")
-            .header("Content-Disposition", "inline")
+            .header("Content-Disposition", if (file.asset.content.mediaType.isImage) "inline" else "attachment")
             .body(file.bytes)
+    }
+
+    @GetMapping("/api/assets/{id}/source")
+    fun source(
+        @PathVariable id: UUID,
+        principal: Principal?,
+    ): Map<String, Any?> {
+        val file = assets.content(CallerAccess.of(principal), AssetId(id))
+        if (file.asset.content.mediaType != AssetMediaType.HTML) {
+            throw InvalidRequestException("only HTML assets have preview source")
+        }
+        return mapOf("assetId" to id, "source" to file.bytes.toString(Charsets.UTF_8))
     }
 
     private fun created(asset: Asset): ResponseEntity<Map<String, Any?>> {

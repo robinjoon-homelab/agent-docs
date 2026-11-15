@@ -12,6 +12,8 @@ internal object DocumentRevisionsTable : Table("document_revisions") {
     val revision = integer("revision")
     val version = integer("content_version")
     val pending = bool("pending")
+    val codeReferences = text("code_references").nullable()
+    val importProvenance = text("import_provenance").nullable()
     val spaceId = javaUUID("space_id")
     val path = varchar("doc_path", 300)
     val title = varchar("title", 200)

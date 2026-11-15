@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping
 // /oauth/authorize with the OAuth endpoint; only the request without client_id is the screen.
 @Controller
 class WebAppController {
-    @GetMapping("/login", "/inbox", "/search", "/settings/**", "/s/**", "/d/**")
+    @GetMapping("/m", "/login", "/inbox", "/search", "/settings/**", "/s/**", "/d/**")
     fun screen(): String = INDEX
 
     @GetMapping("/oauth/authorize", params = ["!client_id"])

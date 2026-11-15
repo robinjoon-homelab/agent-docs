@@ -10,6 +10,6 @@ class CleanCodeRuleSetProvider : RuleSetProvider {
     override fun instance() =
         RuleSet(
             ruleSetId,
-            listOf(::LogicalNestingDepth, ::NoMutableCollectionExposure, ::MaximumFunctionLength),
+            listOf(::LogicalNestingDepth, ::NoMutableCollectionExposure, ::MaximumFunctionLength, ::ConsoleProtocolBoundary),
         )
 }

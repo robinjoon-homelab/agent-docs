@@ -16,7 +16,8 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionChange
 import java.util.UUID
 
 class PendingEditsTest {
-    private val pending = PendingEdits(mockk<DocumentRepository>())
+    private val pending =
+        PendingEdits(mockk<DocumentRepository>(), mockk<xyz.robinjoon.agentdocs.workspace.application.service.WriteJournal>())
     private val edit = revision(2, emptyList(), ChangeOrigin(owner, ChangeSource.WEB), now)
 
     @Test

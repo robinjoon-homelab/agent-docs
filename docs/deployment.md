@@ -65,3 +65,18 @@ bash scripts/verify-runtime-image.sh my-service:local
 - 허용 필드는 `database`, `host`, `env`, `serviceAccountName`이다. **최초 생성에만 적용**하며 기존 앱의 설정 변경은 하네스에서 처리한다. 앱 이름을 바꿔 데이터 이전을 대신하지 않는다.
 - `env`에는 **교체할 전체 목록**을 쓰고 prod·DB 설정을 포함한다. URL의 DB명은 `database`와 맞추며, `DB_HOST`는 설정하지 않고 `DB_PORT`는 이를 참조하는 URL보다 먼저 선언한다.
 - 비밀값은 `secretKeyRef`로 지정한다. 참조할 Secret·ServiceAccount를 먼저 준비하고 `plan`으로 최종 설정을 확인한다.
+
+## 비상 로그인 복구
+
+- 현재 `AGENT_DOCS_OWNER`가 GitHub으로 한 번 이상 로그인해 DB에 등록되어 있어야 한다. 초기 설치 신원이나 GitHub ID를 만들지 않는다.
+- 서버 컨테이너 안에서 기존 DB·소유자·공개 주소 환경을 그대로 사용해 다음 명령을 실행한다. 별도 `emergency-console` 프로필은 웹 서버·보안 설정을 로드하지 않는다. 운영 PostgreSQL에서는 `SPRING_PROFILES_ACTIVE=prod`를 유지한다.
+
+```sh
+# 현재 실행 중인 앱 파드 이름을 지정한다.
+POD=실제_앱_파드_이름
+kubectl -n agent-docs exec -i "$POD" -- sh -s -- /app/data/emergency-link.txt < scripts/emergency-login.sh
+```
+
+- `/app/data/emergency-link.txt`는 존재하지 않아야 하며 모드 `0600`으로 새로 만든다. 파드의 앱 컨테이너가 여러 개면 `-c`로 대상 컨테이너도 지정한다. 파일은 운영자만 읽고 링크를 안전하게 전달한다. 링크를 앱 로그·일반 stdout·공유 터미널 기록에 복사하지 않는다.
+- 링크는 발급부터 10분이며 POST 확인 때 한 번 소비한다. GET 확인 화면·링크 스캐너는 소비하지 않는다. 발급과 소비마다 현재 소유자를 확인하고 해시만 DB에 저장한다. 로그인은 기존 쿠키와 30일 idle 세션을 사용한다.
+- 일반 REST·MCP에서 발급하지 않는다. 출력 실패 후 재발급할 때도 이미 발급된 허가는 10분 만료까지 남을 수 있다. 운영 링크·QA 기록·로그·스크린샷·증거를 임의 삭제하지 않는다.

@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.workspace.application.service
 
 import org.springframework.transaction.annotation.Transactional
 import xyz.robinjoon.agentdocs.application.model.ActivitySubject
+import xyz.robinjoon.agentdocs.application.model.CreatedComment
 import xyz.robinjoon.agentdocs.workspace.application.model.AnchorRequest
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
@@ -11,6 +12,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.ThreadContext
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadCriteria
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadQuery
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadView
+import xyz.robinjoon.agentdocs.workspace.application.model.WorkspaceActivity
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.CommentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
@@ -69,13 +71,21 @@ class ThreadService(
         val locked =
             documents.findByIdForUpdate(document)?.takeIf { context.access.sees(it.spaceId) } ?: throw DocumentNotFoundException(document)
         Permissions.require(context.access, locked.spaceId, Permission.COMMENT, "commenting")
-        val target = PendingEdits(documents).confirm(locked)
+        val target = PendingEdits(documents, journal).confirm(locked)
         val now = journal.now()
         val location = ThreadLocation(target.spaceId, target.id, AnchorPlacement.place(anchor, target), target.revision)
         val comment = Comment.write(CommentId(UUID.randomUUID()), context.access.actor, body, now)
         val thread = threads.add(CommentThread.open(ThreadId(UUID.randomUUID()), location, comment, now))
         notify(thread, comment, target)
-        journal.record(context, "thread.opened", subjectOf(thread), "${target.header.title}: ${comment.body.take(EXCERPT)}")
+        journal.record(
+            context,
+            WorkspaceActivity(
+                "thread.opened",
+                subjectOf(thread),
+                "${target.header.title}: ${comment.body.take(EXCERPT)}",
+                createdComment(thread, comment, target),
+            ),
+        )
         return remembered(context, OperationRecord(OPEN, thread.id.value, null), viewOf(thread, target).copy(written = comment.id))
     }
 
@@ -88,12 +98,21 @@ class ThreadService(
     ): ThreadView {
         journal.replayed(context, REPLY)?.let { return replay(context.access, it) }
         val (current, document) = lockThread(context.access, thread)
+        current.requireAvailable(context.access.actor, journal.now())
         val now = journal.now()
         val comment = Comment.write(CommentId(UUID.randomUUID()), context.access.actor, body, now)
         val replied = current.reply(comment, now).let { if (markAnswered) it.markAnswered(now) ?: it else it }
         val saved = threads.update(replied)
         notify(saved, comment, document)
-        journal.record(context, "comment.added", subjectOf(saved), "${document.header.title}: ${comment.body.take(EXCERPT)}")
+        journal.record(
+            context,
+            WorkspaceActivity(
+                "comment.added",
+                subjectOf(saved),
+                "${document.header.title}: ${comment.body.take(EXCERPT)}",
+                createdComment(saved, comment, document),
+            ),
+        )
         return remembered(context, OperationRecord(REPLY, comment.id.value, null), viewOf(saved, document).copy(written = comment.id))
     }
 
@@ -105,6 +124,7 @@ class ThreadService(
     ): ThreadView {
         journal.replayed(context, EDIT_COMMENT)?.let { return replay(context.access, it) }
         val (current, document) = lockByComment(context.access, comment)
+        if (current.collaboration.suggestions.any { it.comment == comment }) current.requireAvailable(context.access.actor, journal.now())
         val saved = threads.update(current.editComment(comment, context.access.actor, body, journal.now()))
         journal.record(context, "comment.edited", subjectOf(saved), "${document.header.title}: 댓글 수정")
         return remembered(context, OperationRecord(EDIT_COMMENT, comment.value, null), viewOf(saved, document))
@@ -117,6 +137,7 @@ class ThreadService(
     ): ThreadView {
         journal.replayed(context, DELETE_COMMENT)?.let { return replay(context.access, it) }
         val (current, document) = lockByComment(context.access, comment)
+        if (current.collaboration.suggestions.any { it.comment == comment }) current.requireAvailable(context.access.actor, journal.now())
         val saved = threads.update(current.deleteComment(comment, context.access.actor, journal.now()))
         journal.removeCommentResults(comment)
         journal.record(context, "comment.deleted", subjectOf(saved), "${document.header.title}: 댓글 삭제")
@@ -135,6 +156,7 @@ class ThreadService(
         val (current, document) =
             if (change.anchor == null) lockThread(context.access, thread) else lockForAnchor(context.access, thread)
         val now = journal.now()
+        if (change.linkRevision != null || change.status == ThreadStatus.ANSWERED) current.requireAvailable(context.access.actor, now)
         val moved = change.anchor?.let { current.moveTo(AnchorPlacement.place(it, document), document.revision, now) } ?: current
         val updated = change.status?.let { statusChanged(moved, it, context.access.actor, now) } ?: moved
         val linked = change.linkRevision?.let { linked(updated, it, document, now) } ?: updated
@@ -179,6 +201,37 @@ class ThreadService(
             throw InvalidRequestException("revision $revision does not exist; the document is at revision ${document.revision}")
         }
         return thread.linkRevision(revision, now)
+    }
+
+    @Transactional
+    override fun react(
+        context: WriteContext,
+        thread: ThreadId,
+        emoji: String,
+        add: Boolean,
+    ): ThreadView {
+        journal.replayed(context, REACT)?.let { return replay(context.access, it) }
+        val (current, document) = lockThread(context.access, thread)
+        val next = current.collaborate(current.collaboration.react(context.access.actor, emoji, add), journal.now())
+        val saved = threads.update(next)
+        journal.record(context, "thread.reaction", subjectOf(saved), "스레드 반응 변경")
+        return remembered(context, OperationRecord(REACT, thread.value, null), viewOf(saved, document))
+    }
+
+    @Transactional
+    override fun claim(
+        context: WriteContext,
+        thread: ThreadId,
+        action: String,
+    ): ThreadView {
+        journal.replayed(context, CLAIM)?.let { return replay(context.access, it) }
+        val (current, document) = lockThread(context.access, thread)
+        if (current.status != ThreadStatus.OPEN) throw InvalidRequestException("only open threads can be claimed")
+        val now = journal.now()
+        val next = current.collaborate(current.collaboration.claim(context.access.actor, now, action), now)
+        val saved = threads.update(next)
+        journal.record(context, "thread.claim", subjectOf(saved), "스레드 점유 변경")
+        return remembered(context, OperationRecord(CLAIM, thread.value, null), viewOf(saved, document))
     }
 
     override fun forDocument(
@@ -227,7 +280,7 @@ class ThreadService(
         if (!access.sees(document.spaceId)) throw ThreadNotFoundException(id)
         Permissions.require(access, document.spaceId, Permission.COMMENT, "commenting")
         val thread = threads.findByIdForUpdate(id)?.takeIf { access.sees(it.location.spaceId) } ?: throw ThreadNotFoundException(id)
-        return thread to PendingEdits(documents).confirm(document)
+        return thread to PendingEdits(documents, journal).confirm(document)
     }
 
     private fun lockByComment(
@@ -245,6 +298,17 @@ class ThreadService(
         Permissions.require(access, thread.location.spaceId, Permission.COMMENT, "commenting")
         return documents.findById(thread.location.documentId) ?: throw ThreadNotFoundException(thread.id)
     }
+
+    private fun createdComment(
+        thread: CommentThread,
+        comment: Comment,
+        document: Document,
+    ): CreatedComment =
+        CreatedComment(
+            comment.id.value,
+            InboxRecipients.of(thread, comment, document.header.properties.assignee)
+                [xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxKind.MENTION].orEmpty(),
+        )
 
     private fun notify(
         thread: CommentThread,
@@ -271,7 +335,7 @@ class ThreadService(
         access: Access,
         record: OperationRecord,
     ): ThreadView {
-        val byThread = record.kind == OPEN || record.kind == CHANGE
+        val byThread = record.kind in setOf(OPEN, CHANGE, REACT, CLAIM)
         val found = if (byThread) threads.findById(ThreadId(record.target)) else threads.findByCommentForUpdate(CommentId(record.target))
         val thread = found?.takeIf { access.sees(it.location.spaceId) } ?: throw ThreadNotFoundException(record.target)
         commentable(access, thread)
@@ -372,6 +436,8 @@ class ThreadService(
     ): ActivitySubject = ActivitySubject(thread.location.spaceId.value, thread.location.documentId.value, thread.id.value, revision)
 
     private companion object {
+        const val REACT = "thread.react"
+        const val CLAIM = "thread.claim"
         const val OPEN = "thread.open"
         const val REPLY = "thread.reply"
         const val CHANGE = "thread.change"

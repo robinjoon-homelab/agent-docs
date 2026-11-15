@@ -1,6 +1,7 @@
 import type { Revision, RevisionSource } from './document';
 
 export const REVISION_SOURCE_LABEL: Record<RevisionSource, string> = {
+  cli: 'CLI',
   web: '웹',
   mcp: 'MCP',
   rest: 'REST',

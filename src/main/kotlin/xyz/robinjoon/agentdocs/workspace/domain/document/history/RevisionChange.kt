@@ -30,7 +30,7 @@ data class RevisionChange private constructor(
         summary: String,
     ): RevisionChange =
         RevisionChange(
-            origin,
+            origin.withReferences((origin.codeReferences + later.origin.codeReferences).distinct()),
             summary,
             snapshot((changedBlocks + later.changedBlocks).distinct()),
             ChangePeriod(period.createdAt, later.period.updatedAt),

@@ -1,19 +1,17 @@
 import { Link, useSearchParams } from 'react-router';
-import { documentHref } from '../../../../../domain/document/document';
 import type { Space } from '../../../../../domain/space/space';
 import { isArchived, spaceInitial } from '../../../../../domain/space/space';
 import { useServices } from '../../../../../config/ServicesContext';
-import { ActorChip } from '../../common/ActorChip';
 import { Icon } from '../../common/Icon';
 import { RelativeTime } from '../../common/RelativeTime';
 import { EmptyState, ErrorBox, Loading } from '../../common/States';
-import { StatusBadge } from '../../common/StatusBadge';
 import { useLoad } from '../../hooks/useLoad';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { NewSpaceDialog } from './NewSpaceDialog';
 import './home.css';
 
-const RECENT_LIMIT = 10;
+import type { NavigationUseCases } from '../../../../../application/navigation/navigationUseCases';
+import { PersonalDocuments } from '../../navigation/PersonalDocuments';
 
 function SpaceCard({ space }: { space: Space }) {
   return (
@@ -37,42 +35,8 @@ function SpaceCard({ space }: { space: Space }) {
   );
 }
 
-/** Recent documents across spaces; each entry keeps its space so the link and label are right. */
-function RecentDocuments({ spaces }: { spaces: readonly Space[] }) {
-  const services = useServices();
-  const key = spaces.map((space) => space.slug).join(',');
-  const recent = useLoad(`home:recent:${key}`, () => services.documents.recentAcross(spaces, RECENT_LIMIT));
-
-  if (recent.state === 'loading') return <Loading />;
-  if (recent.state === 'error') return <ErrorBox error={recent.error} onRetry={recent.reload} />;
-  if (recent.data.length === 0) return <p className="faint small">최근 문서가 없습니다.</p>;
-  return (
-    <ul className="list card home-list">
-      {recent.data.map(({ space, document }) => (
-        <li key={document.id}>
-          <Link className="list-row list-row-link" to={documentHref(space.slug, document.id)}>
-            <div className="row-main">
-              <div className="row-title">{document.title === '' ? document.path : document.title}</div>
-              <div className="row-sub">
-                {space.name} · {document.path}
-              </div>
-            </div>
-            <span className="home-row-actor">
-              <ActorChip actor={document.updatedBy} />
-            </span>
-            <StatusBadge status={document.status} />
-            <span className="faint small home-row-time">
-              <RelativeTime iso={document.updatedAt} />
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /** S2: my spaces and recent documents across spaces. */
-export function HomePage() {
+export function HomePage({ navigation }: { navigation: NavigationUseCases }) {
   const services = useServices();
   const [params, setParams] = useSearchParams();
   const spaces = useLoad('home:spaces', () => services.spaces.list());
@@ -129,9 +93,13 @@ export function HomePage() {
           </section>
           <section className="section" aria-labelledby="home-recent">
             <h2 className="section-title" id="home-recent">
-              최근 문서
+              최근 본 문서
             </h2>
-            <RecentDocuments spaces={spaces.data} />
+            <PersonalDocuments navigation={navigation} kind="recent" />
+          </section>
+          <section className="section" aria-label="즐겨찾기">
+            <h2 className="section-title">즐겨찾기</h2>
+            <PersonalDocuments navigation={navigation} kind="favorites" />
           </section>
           {spaces.data.some(isArchived) ? (
             <section className="section" aria-labelledby="home-archived">

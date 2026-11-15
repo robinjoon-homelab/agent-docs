@@ -46,6 +46,19 @@ interface ThreadUseCase {
         change: ThreadChange,
     ): ThreadView
 
+    fun react(
+        context: WriteContext,
+        thread: ThreadId,
+        emoji: String,
+        add: Boolean,
+    ): ThreadView
+
+    fun claim(
+        context: WriteContext,
+        thread: ThreadId,
+        action: String,
+    ): ThreadView
+
     fun forDocument(
         access: Access,
         document: DocumentId,

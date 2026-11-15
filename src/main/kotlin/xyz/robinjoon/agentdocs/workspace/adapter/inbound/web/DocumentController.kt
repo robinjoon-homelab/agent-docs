@@ -20,12 +20,14 @@ import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestExcepti
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.MarkdownReader
+import xyz.robinjoon.agentdocs.workspace.domain.space.Space
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 import java.net.URI
@@ -38,6 +40,8 @@ import java.util.UUID
 class DocumentController(
     private val documents: DocumentUseCase,
     private val queries: DocumentQueryUseCase,
+    private val spaces: SpaceUseCase,
+    private val recorder: EditStatisticsRecorder,
 ) {
     @GetMapping("/api/spaces/{slug}/documents")
     fun list(
@@ -78,10 +82,14 @@ class DocumentController(
         val draft = DocumentDraft(DocumentPath(Wire.required(body, "path")), Wire.required(body, "title"), properties, blocksOf(body))
         val written =
             documents.create(
-                CallerAccess.write(principal, Wire.optional(body, "opId"), Wire.optional(body, "summary")),
+                RevisionMetadataJson.context(
+                    CallerAccess.write(principal, Wire.optional(body, "opId"), Wire.optional(body, "summary")),
+                    body,
+                ),
                 SpaceSlug(slug),
                 draft,
             )
+        record(principal, written, body)
         val space = queries.open(CallerAccess.of(principal), written.document.id).space
         val created = responseView(written, space)
         return ResponseEntity.created(URI.create("/api/documents/${written.document.id}")).body(created)
@@ -115,6 +123,11 @@ class DocumentController(
             "markdown" to chunk.text,
             "nextCursor" to chunk.nextCursor,
             "totalBlocks" to chunk.totalBlocks,
+            "agentGuide" to
+                spaces
+                    .agentGuide(CallerAccess.of(principal), chunk.document.spaceId)
+                    ?.takeIf { it.documentId != chunk.document.id }
+                    ?.let(SpaceJson::guideOf),
         )
     }
 
@@ -127,7 +140,15 @@ class DocumentController(
         val base =
             body.get("baseVersion")?.takeIf(JsonNode::isInt)?.intValue() ?: throw InvalidRequestException("baseVersion is required")
         val blocks = body.path("blocks").values().map(BlockJson::read)
-        return writeResult(documents.save(CallerAccess.write(principal, Wire.optional(body, "opId"), null), DocumentId(id), base, blocks))
+        val written =
+            documents.save(
+                RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body),
+                DocumentId(id),
+                base,
+                blocks,
+            )
+        record(principal, written, body)
+        return writeResult(written)
     }
 
     @PostMapping("/api/documents/{id}/finalize")
@@ -145,8 +166,14 @@ class DocumentController(
         principal: Principal?,
     ): Map<String, Any?> {
         val answering = Wire.optional(body, "answering")?.let { ThreadId(UUID.fromString(it)) }
-        val context = CallerAccess.write(principal, Wire.optional(body, "opId"), Wire.optional(body, "summary"))
-        return writeResult(documents.edit(context, DocumentId(id), EditJson.operations(body.get("operations")), answering))
+        val context =
+            RevisionMetadataJson.context(
+                CallerAccess.write(principal, Wire.optional(body, "opId"), Wire.optional(body, "summary")),
+                body,
+            )
+        val written = documents.edit(context, DocumentId(id), EditJson.operations(body.get("operations")), answering)
+        record(principal, written, body)
+        return writeResult(written)
     }
 
     // Answers with the whole document; its revision is the base for the next content save.
@@ -158,10 +185,11 @@ class DocumentController(
     ): Map<String, Any?> {
         val written =
             documents.changeHeader(
-                CallerAccess.write(principal, Wire.optional(body, "opId"), null),
+                RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body),
                 DocumentId(id),
                 Wire.headerChange(body),
             )
+        record(principal, written, body)
         val space = queries.open(CallerAccess.of(principal), DocumentId(id)).space
         return responseView(written, space)
     }
@@ -196,9 +224,19 @@ class DocumentController(
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
     }
 
+    private fun record(
+        principal: Principal?,
+        written: DocumentWrite,
+        body: JsonNode,
+    ) {
+        val context = CallerAccess.write(principal, null, null)
+        recorder.human(context, written, body)
+        if (context.access.actor.isAgent) recorder.agent(context.access, written.document.id)
+    }
+
     private fun responseView(
         written: DocumentWrite,
-        space: xyz.robinjoon.agentdocs.workspace.domain.space.Space,
+        space: Space,
     ): Map<String, Any?> {
         val view = WorkspaceJson.view(DocumentView(written.document, space, written.marks))
         val captured = written.space ?: return view

@@ -81,12 +81,47 @@ class AssetApiDocumentationTest : RestDocsWebTest() {
                 documented(
                     "assets-upload",
                     requestParts(
-                        partWithName("file").description("PNG, JPEG, GIF, WebP, SVG, 20MB 이하. 종류는 파일 내용으로 판단하고 SVG는 스크립트를 지운 뒤 저장한다"),
+                        partWithName("file").description("이미지, PDF, UTF-8 HTML·텍스트, 일반 파일. 20MB 이하. SVG만 정화하며 HTML 원문은 불변으로 보존한다"),
                     ),
                     responseHeaders(headerWithName("Location").description("파일 내용 경로")),
                     responseFields(*assetFields()),
                 ),
             )
+    }
+
+    @Test
+    fun `HTML source is returned as JSON and direct downloads remain sandboxed`() {
+        val bytes = "<html><script>document.body.textContent = '시안'</script></html>".toByteArray()
+        val html =
+            Asset.upload(
+                assetId,
+                spaceId,
+                AssetContent.of(AssetMediaType.HTML, bytes),
+                AssetOrigin("screen.html", null, ownerAccess.actor, at),
+            )
+        every { assets.content(ownerAccess, assetId) } returns AssetFile(html, bytes)
+
+        mockMvc
+            .perform(get("/api/assets/{id}/source", assetId.value).principal(owner))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.source").value(bytes.toString(Charsets.UTF_8)))
+            .andDo(
+                documented(
+                    "assets-source",
+                    responseFields(
+                        fieldWithPath("assetId").description("HTML 원본 첨부 ID"),
+                        fieldWithPath("source").description("불변 UTF-8 HTML 원문. sandbox=allow-scripts 프레임에서만 실행한다"),
+                    ),
+                ),
+            )
+        mockMvc
+            .perform(get("/api/assets/{id}/content", assetId.value).principal(owner))
+            .andExpect(status().isOk)
+            .andExpect(header().string("Content-Disposition", "attachment"))
+            .andExpect(header().string("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"))
+            .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+            .andExpect(content().bytes(bytes))
     }
 
     @Test

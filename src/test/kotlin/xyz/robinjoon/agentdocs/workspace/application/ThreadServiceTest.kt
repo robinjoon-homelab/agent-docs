@@ -72,6 +72,7 @@ class ThreadServiceTest {
     private val agentAccess = agentAccess(Permission.EDIT, setOf(spaceId))
 
     init {
+        every { documents.pending(any()) } returns null
         every { activity.record(any()) } just runs
         every { inbox.addAll(any()) } just runs
         every { documents.confirmPending(any()) } answers { firstArg() }
@@ -328,6 +329,59 @@ class ThreadServiceTest {
         assertThatThrownBy {
             service.change(context(readOnly, operationId = "removed"), threadId, ThreadChange(status = ThreadStatus.ANSWERED))
         }.hasMessage("commenting needs comment permission")
+    }
+
+    @Test
+    fun `claim opId replay returns its first claim time after release`() {
+        var saved = thread(owner)
+        var operation: OperationRecord? = null
+        every { operations.find(any()) } answers { operation }
+        every { operations.save(any(), any(), any()) } answers {
+            operation = secondArg()
+            Unit
+        }
+        every { threads.findByIdForUpdate(threadId) } answers { saved }
+        every { threads.findById(threadId) } answers { saved }
+        every { documents.findById(documentId) } returns current
+        every { threads.update(any()) } answers {
+            saved = firstArg()
+            saved
+        }
+        val first = service.claim(context(agentAccess, operationId = "claim-once"), threadId, "acquire")
+        service.claim(context(agentAccess), threadId, "release")
+        val replay = service.claim(context(agentAccess, operationId = "claim-once"), threadId, "acquire")
+        assertThat(saved.collaboration.claim).isNull()
+        assertThat(replay).isEqualTo(first)
+        assertThat(
+            replay.thread.collaboration.claim
+                ?.expiresAt,
+        ).isEqualTo(now.plusSeconds(900))
+    }
+
+    @Test
+    fun `another connection cannot reply or mark a claimed thread answered while humans can reply`() {
+        val other =
+            Actor.agent(
+                owner.userId,
+                owner.login,
+                xyz.robinjoon.agentdocs.workspace.domain
+                    .AgentIdentity(UUID.randomUUID(), "other"),
+            )
+        val original = thread(owner)
+        val claimed = original.collaborate(original.collaboration.claim(other, now, "acquire"), now)
+        every { threads.findByIdForUpdate(threadId) } returns claimed
+        every { documents.findById(documentId) } returns current
+        every { threads.update(any()) } answers { firstArg() }
+        assertThatThrownBy { service.reply(context(agentAccess), threadId, "mine", false) }.isInstanceOf(ThreadActionException::class.java)
+        assertThatThrownBy { service.change(context(agentAccess), threadId, ThreadChange(status = ThreadStatus.ANSWERED)) }
+            .isInstanceOf(ThreadActionException::class.java)
+        assertThat(
+            service
+                .reply(context(ownerAccess), threadId, "human", false)
+                .thread.comments
+                .last()
+                .body,
+        ).isEqualTo("human")
     }
 
     private fun query(spaces: Set<SpaceId>? = setOf(spaceId)): ThreadQuery =

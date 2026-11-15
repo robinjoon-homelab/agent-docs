@@ -9,8 +9,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 
 interface AssetUseCase {
-    // PNG, JPEG, GIF, WebP, or SVG up to 20MB, checked by content. The same bytes in the same space return the existing
-    // asset.
+    // Immutable attachments up to 20MB, with image signatures and declared text/PDF formats checked.
     fun upload(
         context: WriteContext,
         space: SpaceSlug,

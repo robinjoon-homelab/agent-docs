@@ -11,6 +11,18 @@ class FileSystemAssetStoreTest {
     private val sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 
     @Test
+    fun `storage write failure preserves its IO cause in the application contract`(
+        @TempDir root: Path,
+    ) {
+        val file =
+            java.nio.file.Files
+                .writeString(root.resolve("file"), "occupied")
+        assertThatThrownBy { FileSystemAssetStore(file).put(sha, "image/png", byteArrayOf(1)) }
+            .isInstanceOf(xyz.robinjoon.agentdocs.workspace.application.model.AssetStorageException::class.java)
+            .hasCauseInstanceOf(java.io.IOException::class.java)
+    }
+
+    @Test
     fun `stored bytes read back by their hash and a second write keeps the first`(
         @TempDir root: Path,
     ) {

@@ -71,7 +71,9 @@ class HexagonalArchitectureTest {
                         "inbox.InboxItem",
                         "asset.Asset",
                         "upload.UploadGrant",
+                        "editsession.EditSession",
                     ),
+                "webhook" to setOf("endpoint.WebhookEndpoint", "delivery.WebhookDelivery"),
                 "access" to
                     setOf(
                         "user.User",
@@ -79,6 +81,7 @@ class HexagonalArchitectureTest {
                         "client.OAuthClient",
                         "authorization.AuthorizationRequest",
                         "session.WebSession",
+                        "emergency.EmergencyLoginGrant",
                     ),
             )
         private val aggregateRoots =

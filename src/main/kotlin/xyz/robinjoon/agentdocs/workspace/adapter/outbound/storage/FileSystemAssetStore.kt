@@ -1,7 +1,9 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.outbound.storage
 
 import xyz.robinjoon.agentdocs.workspace.application.model.AssetContentMissingException
+import xyz.robinjoon.agentdocs.workspace.application.model.AssetStorageException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -16,12 +18,16 @@ class FileSystemAssetStore(
         mediaType: String,
         bytes: ByteArray,
     ) {
-        val target = pathOf(sha256)
-        if (Files.exists(target)) return
-        Files.createDirectories(target.parent)
-        val temporary = Files.createTempFile(target.parent, sha256, ".part")
-        Files.write(temporary, bytes)
-        Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        try {
+            val target = pathOf(sha256)
+            if (Files.exists(target)) return
+            Files.createDirectories(target.parent)
+            val temporary = Files.createTempFile(target.parent, sha256, ".part")
+            Files.write(temporary, bytes)
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (exception: IOException) {
+            throw AssetStorageException(exception)
+        }
     }
 
     override fun get(sha256: String): ByteArray {

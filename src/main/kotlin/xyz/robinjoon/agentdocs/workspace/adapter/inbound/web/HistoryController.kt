@@ -7,12 +7,15 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import tools.jackson.databind.JsonNode
+import xyz.robinjoon.agentdocs.workspace.application.model.BlockRestore
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionEntry
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionFilter
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.ActorKind
+import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.BlockChange
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionDiff
@@ -25,6 +28,7 @@ import java.util.UUID
 class HistoryController(
     private val queries: DocumentQueryUseCase,
     private val documents: DocumentUseCase,
+    private val recorder: EditStatisticsRecorder,
 ) {
     @GetMapping("/revisions")
     fun revisions(
@@ -44,6 +48,7 @@ class HistoryController(
     ): Map<String, Any?> {
         val revision = queries.revision(CallerAccess.of(principal), DocumentId(id), number)
         return mapOf(
+            "name" to revision.name,
             "revision" to revision.number,
             "version" to revision.version,
             "title" to revision.content.header.title,
@@ -51,7 +56,7 @@ class HistoryController(
             "blocks" to revision.content.blocks.map(BlockJson::write),
             "actor" to WorkspaceJson.actor(revision.change.origin.actor),
             "createdAt" to revision.change.period.createdAt,
-        )
+        ) + RevisionMetadataJson.fields(revision.change.origin)
     }
 
     // Without to, the diff runs to the current revision.
@@ -66,16 +71,19 @@ class HistoryController(
     @PostMapping("/restore")
     fun restore(
         @PathVariable id: UUID,
-        @RequestBody request: RestoreRequest,
+        @RequestBody body: JsonNode,
         principal: Principal?,
     ): Map<String, Any?> {
         val written =
             documents.restore(
-                CallerAccess.write(principal, request.opId, null),
+                RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body),
                 DocumentId(id),
-                request.revision,
-                request.baseVersion,
+                requiredInt(body, "revision"),
+                requiredInt(body, "baseVersion"),
             )
+        recorder.human(CallerAccess.write(principal, null, null), written, body)
+        val access = CallerAccess.of(principal)
+        if (access.actor.isAgent) recorder.agent(access, written.document.id)
         return mapOf(
             "version" to written.document.version,
             "revision" to written.revision,
@@ -83,9 +91,60 @@ class HistoryController(
         )
     }
 
+    @PostMapping("/revisions/{number}/name")
+    fun nameRevision(
+        @PathVariable id: UUID,
+        @PathVariable number: Int,
+        @RequestBody body: JsonNode,
+        principal: Principal?,
+    ): Map<String, Any?> {
+        val label =
+            documents.nameRevision(
+                CallerAccess.write(principal, Wire.optional(body, "opId"), null),
+                DocumentId(id),
+                number,
+                Wire.required(body, "name"),
+            )
+        return mapOf("documentId" to label.documentId.value, "revision" to label.revision, "name" to label.name)
+    }
+
+    @PostMapping("/restore-block")
+    fun restoreBlock(
+        @PathVariable id: UUID,
+        @RequestBody body: JsonNode,
+        principal: Principal?,
+    ): Map<String, Any?> {
+        val written =
+            documents.restoreBlock(
+                RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body),
+                DocumentId(id),
+                BlockRestore(
+                    requiredInt(body, "revision"),
+                    BlockId(Wire.required(body, "blockId")),
+                    requiredInt(body, "baseVersion"),
+                ),
+            )
+        recorder.human(CallerAccess.write(principal, null, null), written, body)
+        val access = CallerAccess.of(principal)
+        if (access.actor.isAgent) recorder.agent(access, written.document.id)
+        return mapOf(
+            "version" to written.document.version,
+            "revision" to written.revision,
+            "changedBlockIds" to written.changedBlocks.map { it.value },
+        )
+    }
+
+    private fun requiredInt(
+        body: JsonNode,
+        field: String,
+    ): Int =
+        body.get(field)?.takeIf { it.isInt }?.intValue()
+            ?: throw InvalidRequestException("$field is required and must be an integer")
+
     private fun entry(entry: RevisionEntry): Map<String, Any?> {
         val change = entry.revision.change
         return mapOf(
+            "name" to entry.revision.name,
             "revision" to entry.revision.number,
             "title" to entry.revision.title,
             "actor" to WorkspaceJson.actor(change.origin.actor),
@@ -97,7 +156,7 @@ class HistoryController(
             "createdAt" to change.period.createdAt,
             "updatedAt" to change.period.updatedAt,
             "threadIds" to entry.threads.map { it.value },
-        )
+        ) + RevisionMetadataJson.fields(change.origin)
     }
 
     private fun diffOf(diff: RevisionDiff): Map<String, Any?> =
@@ -123,10 +182,4 @@ data class RevisionListQuery(
     val actor: String?,
     val from: Instant?,
     val to: Instant?,
-)
-
-data class RestoreRequest(
-    val revision: Int,
-    val opId: String?,
-    val baseVersion: Int,
 )

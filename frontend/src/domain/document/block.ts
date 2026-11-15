@@ -38,6 +38,7 @@ export type CodeBlock = {
   readonly type: 'code';
   readonly language: string;
   readonly code: string;
+  readonly displayMath?: boolean;
 };
 export type TableBlock = {
   readonly id: string;

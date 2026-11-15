@@ -19,6 +19,8 @@ class VersionRevisionMigrationTest {
         oldRows.forEach(database::execute)
 
         database.migrate(target = "10")
+        // Current adapters also read the nullable metadata added after the version migration.
+        database.migrate()
 
         val id = DocumentId(UUID.fromString(DOCUMENT))
         val current = database.inTransaction { ExposedDocumentRepository().findById(id) }

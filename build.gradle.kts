@@ -30,6 +30,10 @@ kotlin {
     }
 }
 
+springBoot {
+    mainClass.set("xyz.robinjoon.agentdocs.AgentDocsApplicationKt")
+}
+
 val exposedVersion = "1.5.0"
 
 // Spring AI 2.0.1's WebMVC transport is built against the 2.0 line of the MCP Java SDK; 2.1 renamed a class it uses.
@@ -104,7 +108,7 @@ tasks.named<Detekt>("detekt") {
 }
 
 tasks.check {
-    dependsOn("detektMain", "detektTest", ":quality-rules:test", "frontendCheck")
+    dependsOn("detektMain", "detektTest", ":quality-rules:test", ":cli:check", "frontendCheck")
 }
 
 // The web app is built with a pinned Node and pnpm that Gradle downloads, so CI and local builds need no Node install.

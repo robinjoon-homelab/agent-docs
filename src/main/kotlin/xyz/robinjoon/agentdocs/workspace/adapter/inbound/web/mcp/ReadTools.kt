@@ -7,10 +7,13 @@ import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownFormat
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
+import xyz.robinjoon.agentdocs.workspace.application.model.SpaceGuide
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SearchUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
@@ -94,9 +97,12 @@ class DocsListTool(
     }
 }
 
-// The main way an agent reads. Annotated markdown names every block's id and hash, which docs_edit needs.
+// The main way an agent reads. Annotated markdown names every block's id and hash, which docs_edit needs. The first
+// chunk of a document whose space names an agent guide carries a second text block pointing to it; the document
+// markdown itself stays byte for byte what the version serializes to.
 class DocsReadTool(
     private val queries: DocumentQueryUseCase,
+    private val spaces: SpaceUseCase,
 ) : McpTool {
     override val definition =
         ToolDefinition(
@@ -136,6 +142,20 @@ class DocsReadTool(
             chunk.nextCursor
                 ?.let { "\n<!-- more blocks follow (${chunk.totalBlocks} in total): call docs_read again with cursor $it -->\n" }
                 .orEmpty()
-        return McpToolResult.markdown(chunk.text + more)
+        val notes = if (request.cursor == 0) guideNotes(context, chunk.document) else emptyList()
+        return McpToolResult.markdown(chunk.text + more, notes)
     }
+
+    // Reading the guide itself needs no pointer to it.
+    private fun guideNotes(
+        context: WriteContext,
+        document: Document,
+    ): List<String> {
+        val guide = spaces.agentGuide(context.access, document.spaceId) ?: return emptyList()
+        return if (guide.documentId == document.id) emptyList() else listOf(noteOf(guide))
+    }
+
+    private fun noteOf(guide: SpaceGuide.Offered): String =
+        "This space's agent guide is [${guide.title}](doc:${guide.documentId}). Read it with docs_read before you write in this " +
+            "space, and follow its writing rules, terms, and templates."
 }

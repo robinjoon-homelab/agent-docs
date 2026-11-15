@@ -1,0 +1,27 @@
+.mobile-memo {
+  max-width: 38rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+.mobile-memo label {
+  display: grid;
+  gap: 0.4rem;
+  margin: 1rem 0;
+}
+.mobile-memo input,
+.mobile-memo select,
+.mobile-memo textarea {
+  width: 100%;
+  min-height: 44px;
+  font: inherit;
+}
+.mobile-memo textarea {
+  resize: vertical;
+}
+.mobile-memo button {
+  min-height: 44px;
+  width: 100%;
+}
+.mobile-memo strong {
+  overflow-wrap: anywhere;
+}

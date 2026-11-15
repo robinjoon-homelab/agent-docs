@@ -3,10 +3,14 @@ import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap
 import { useEffect, useState } from 'react';
 import { MermaidPreview } from '../blocks/MermaidPreview';
 import { CodeBlockNode, ImageNode } from './schema';
+import { HtmlMockup } from './HtmlMockup';
+import type { MockupOptions } from './HtmlMockup';
+import { MathPreview } from '../common/InlineText';
 
 export const CODE_LANGUAGES: readonly { value: string; label: string }[] = [
   { value: '', label: '일반 텍스트' },
   { value: 'mermaid', label: '다이어그램 (mermaid)' },
+  { value: 'math', label: '수식 ($$)' },
   { value: 'bash', label: 'Bash' },
   { value: 'kotlin', label: 'Kotlin' },
   { value: 'java', label: 'Java' },
@@ -39,11 +43,12 @@ const DIAGRAM_VIEWS: readonly { value: DiagramView; label: string }[] = [
 function CodeBlockView({ node, updateAttributes, editor, getPos }: ReactNodeViewProps) {
   const language = String(node.attrs.language ?? '');
   const mermaid = language === 'mermaid';
+  const math = language === 'math';
   const editable = editor.isEditable;
   // A written diagram is read far more often than edited, so it opens on the picture; an empty one opens ready to type.
   const [view, setView] = useState<DiagramView>(() => (node.textContent.trim() === '' ? 'split' : 'preview'));
   const codeVisible = !mermaid || view !== 'preview';
-  const previewVisible = mermaid && view !== 'code';
+  const previewVisible = (mermaid || math) && view !== 'code';
   const label = languageOptions(language).find((option) => option.value === language)?.label ?? language;
 
   // The code stays in the document while hidden, so a caret arriving there by keyboard would type blind.
@@ -74,7 +79,7 @@ function CodeBlockView({ node, updateAttributes, editor, getPos }: ReactNodeView
             onChange={(event) => {
               // Code that just became a diagram is being worked on, so it stays in sight next to its picture.
               if (event.target.value === 'mermaid') setView('split');
-              updateAttributes({ language: event.target.value });
+              updateAttributes({ language: event.target.value, displayMath: event.target.value === 'math' });
             }}
           >
             {languageOptions(language).map((option) => (
@@ -107,7 +112,11 @@ function CodeBlockView({ node, updateAttributes, editor, getPos }: ReactNodeView
         </pre>
         {previewVisible ? (
           <div className="code-block-preview" contentEditable={false}>
-            <MermaidPreview code={node.textContent} />
+            {math ? (
+              <MathPreview source={node.textContent} display />
+            ) : (
+              <MermaidPreview code={node.textContent} />
+            )}
           </div>
         ) : null}
       </div>
@@ -115,7 +124,7 @@ function CodeBlockView({ node, updateAttributes, editor, getPos }: ReactNodeView
   );
 }
 
-export type ImageOptions = { contentUrl: (assetId: string) => string };
+export type ImageOptions = { contentUrl: (assetId: string) => string } & MockupOptions;
 
 // A node view gets its new attributes a microtask after the change. Bound to them directly, React would put the old
 // value back when the input event ends, which cancels the IME composition and splits Korean into separate letters.
@@ -165,17 +174,27 @@ function ImageView({ node, updateAttributes, editor, extension, selected }: Reac
       className={`image-block${selected ? ' is-selected' : ''}`}
       data-block-id={node.attrs.id as string}
     >
-      <div className="image-frame" data-drag-handle="">
-        <img src={options.contentUrl(assetId)} alt={alt} draggable={false} />
-        {editable && alt.trim() === '' ? (
-          <span
-            className="badge badge-warning image-alt-warning"
-            title="화면 낭독기 사용자를 위해 대체 텍스트를 적어 주세요"
-          >
-            대체 텍스트 없음
-          </span>
-        ) : null}
-      </div>
+      {caption === 'mockup' ? (
+        <HtmlMockup
+          assetId={assetId}
+          blockId={String(node.attrs.id)}
+          title={alt}
+          editable={editable}
+          options={options}
+        />
+      ) : (
+        <div className="image-frame" data-drag-handle="">
+          <img src={options.contentUrl(assetId)} alt={alt} draggable={false} />
+          {editable && alt.trim() === '' ? (
+            <span
+              className="badge badge-warning image-alt-warning"
+              title="화면 낭독기 사용자를 위해 대체 텍스트를 적어 주세요"
+            >
+              대체 텍스트 없음
+            </span>
+          ) : null}
+        </div>
+      )}
       {editable ? (
         <div className="image-fields" contentEditable={false}>
           <ImageField
@@ -185,13 +204,15 @@ function ImageView({ node, updateAttributes, editor, extension, selected }: Reac
             value={alt}
             onChange={(text) => updateAttributes({ alt: text })}
           />
-          <ImageField
-            className="image-caption"
-            label="캡션"
-            placeholder="캡션"
-            value={caption}
-            onChange={(text) => updateAttributes({ caption: text })}
-          />
+          {caption === 'mockup' ? null : (
+            <ImageField
+              className="image-caption"
+              label="캡션"
+              placeholder="캡션"
+              value={caption}
+              onChange={(text) => updateAttributes({ caption: text })}
+            />
+          )}
         </div>
       ) : caption === '' ? null : (
         <figcaption>{caption}</figcaption>
@@ -211,6 +232,10 @@ export const CodeBlockWithView = CodeBlockNode.extend({
 
 export const ImageWithView = ImageNode.extend<ImageOptions>({
   // The real URL comes from the asset use case (configured in DocumentEditor); the editor knows no routes.
-  addOptions: () => ({ contentUrl: () => '' }),
+  addOptions: () => ({
+    contentUrl: () => '',
+    htmlSource: () => Promise.reject(new Error('원문 읽기 미설정')),
+    replaceHtml: () => Promise.reject(new Error('교체 미설정')),
+  }),
   addNodeView: () => ReactNodeViewRenderer(ImageView),
 });

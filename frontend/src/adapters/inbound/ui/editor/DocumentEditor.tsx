@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router';
 import { UPLOAD_ERROR_TEXT } from '../../../../application/asset/assetUseCases';
 import type { DocumentEditorSession, SaveOutcome } from '../../../../application/document/editorSession';
 import type { Asset } from '../../../../domain/asset/asset';
-import { IMAGE_MEDIA_TYPES, isExternalImageUrl, isImageMediaType } from '../../../../domain/asset/asset';
+import { isExternalImageUrl, isImageMediaType } from '../../../../domain/asset/asset';
 import { recentAgentChanges, AGENT_MARKER_VISIBLE_MS } from '../../../../domain/document/agentChanges';
 import type { Block } from '../../../../domain/document/block';
 import type { AgentDocument } from '../../../../domain/document/document';
@@ -38,7 +38,7 @@ import { unmergePastedTables } from './plugins/tableSpans';
 import { pastedImageUrls } from './pastedImages';
 import { pasteStructuredText } from './paste';
 import { threadMarksInput, threadMarksKey } from './plugins/threadMarks';
-import { anchorForSelection, blockAtPos } from './positions';
+import { anchorForSelection, blockAtPos, findBlock } from './positions';
 import {
   BlockDocument,
   CalloutNode,
@@ -63,6 +63,8 @@ import Italic from '@tiptap/extension-italic';
 import Strike from '@tiptap/extension-strike';
 import Text from '@tiptap/extension-text';
 import './editor.css';
+import type { GitHubContext } from '../../../../domain/document/githubReferences';
+import { ContentDecorations } from './contentDecorations';
 
 export const AUTOSAVE_DELAY_MS = 1_000;
 
@@ -87,6 +89,7 @@ export type DocumentEditorProps = {
   readonly document: AgentDocument;
   readonly session: DocumentEditorSession;
   readonly editable: boolean;
+  readonly github?: GitHubContext;
   readonly threads: readonly Thread[];
   readonly activeThreadId: string | null;
   readonly reanchoring: boolean;
@@ -94,6 +97,7 @@ export type DocumentEditorProps = {
   readonly onActivateThread: (threadId: string) => void;
   readonly onRequestComment: (anchor: Anchor) => void;
   readonly onReanchor: (anchor: Anchor) => void;
+  readonly onInput?: () => void;
   readonly onContentChange: () => void;
   readonly onMessage: (message: string) => void;
 };
@@ -128,7 +132,18 @@ function savableBlocks(editor: Editor, session: DocumentEditorSession): Block[] 
  */
 class EditorBridge {
   mentionLogins: readonly string[] = [];
+  github: GitHubContext = { repositories: [] };
+  replaceHtml: (blockId: string, previousAsset: string, file: File) => Promise<void> = () =>
+    Promise.reject(new Error('시안 교체 준비 중'));
   private pick: () => void = () => undefined;
+
+  setGithub(github?: GitHubContext): void {
+    this.github = github ?? { repositories: [] };
+  }
+
+  setReplaceHtml(replace: (blockId: string, previousAsset: string, file: File) => Promise<void>): void {
+    this.replaceHtml = replace;
+  }
 
   readonly pickImage = (): void => {
     this.pick();
@@ -136,6 +151,7 @@ class EditorBridge {
 
   sync(props: DocumentEditorProps, pick: () => void): void {
     this.mentionLogins = props.mentionLogins;
+    this.github = props.github ?? { repositories: [] };
     this.pick = pick;
   }
 }
@@ -175,6 +191,7 @@ function buildExtensions(services: Services, store: SuggestionStore, bridge: Edi
     }));
   return [
     TableRoles,
+    ContentDecorations.configure({ github: () => bridge.github }),
     BlockDocument,
     Text,
     ParagraphNode,
@@ -186,7 +203,12 @@ function buildExtensions(services: Services, store: SuggestionStore, bridge: Edi
     TableNode,
     TableRowNode,
     TableCellNode,
-    ImageWithView.configure({ contentUrl: (assetId: string) => services.assets.contentUrl(assetId) }),
+    ImageWithView.configure({
+      contentUrl: (assetId: string) => services.assets.contentUrl(assetId),
+      htmlSource: (assetId: string) => services.assets.htmlSource(assetId),
+      replaceHtml: (blockId: string, previousAsset: string, file: File) =>
+        bridge.replaceHtml(blockId, previousAsset, file),
+    }),
     DividerNode,
     HardBreak,
     Bold,
@@ -243,6 +265,38 @@ export function DocumentEditor(props: DocumentEditorProps) {
   useEffect(() => {
     latest.current = props;
     bridge.sync(props, () => fileInput.current?.click());
+    bridge.setReplaceHtml(async (blockId, previousAsset, file) => {
+      const editor = editorRef.current;
+      if (editor === null || !editor.isEditable) throw new Error('편집할 수 없습니다.');
+      if ((await session.saveContent(savableBlocks(editor, session))) !== 'saved')
+        throw new Error('먼저 현재 입력을 저장해 주세요.');
+      await session.finalize();
+      if (session.getState().errorMessage !== null) throw new Error('기존 입력 기록을 확정하지 못했습니다.');
+      const uploaded = await services.assets.upload(document.space.slug, {
+        name: file.name,
+        type: file.type || 'text/html',
+        size: file.size,
+        data: file,
+      });
+      if (!uploaded.ok) throw new Error(UPLOAD_ERROR_TEXT[uploaded.error]);
+      if (uploaded.value.mediaType !== 'text/html') throw new Error('HTML 파일을 선택해 주세요.');
+      const found = findBlock(editor.state.doc, blockId);
+      if (found === null || found.node.attrs.assetId !== previousAsset)
+        throw new Error('시안이 바뀌었습니다. 다시 읽어 주세요.');
+      const { node, pos: position } = found;
+      editor.view.dispatch(
+        editor.state.tr.setNodeMarkup(position, undefined, {
+          ...node.attrs,
+          assetId: uploaded.value.id,
+          caption: 'mockup',
+        }),
+      );
+      if ((await session.saveContent(savableBlocks(editor, session))) !== 'saved')
+        throw new Error('시안 변경을 저장하지 못했습니다.');
+      await session.finalize();
+      if (session.getState().errorMessage !== null)
+        throw new Error(session.getState().errorMessage ?? '시안 기록을 확정하지 못했습니다.');
+    });
   });
 
   const save = (): void => {
@@ -256,10 +310,30 @@ export function DocumentEditor(props: DocumentEditorProps) {
     const editor = editorRef.current;
     if (editor === null) return;
     if (at !== null) editor.commands.setTextSelection(Math.min(at, editor.state.doc.content.size));
-    insertBlock(editor, {
-      type: 'image',
-      attrs: { id: randomBlockId(), assetId: asset.id, alt: '', caption: '' },
-    });
+    if (isImageMediaType(asset.mediaType) || asset.mediaType === 'text/html') {
+      insertBlock(editor, {
+        type: 'image',
+        attrs: {
+          id: randomBlockId(),
+          assetId: asset.id,
+          alt: asset.mediaType === 'text/html' ? asset.fileName : '',
+          caption: asset.mediaType === 'text/html' ? 'mockup' : '',
+        },
+      });
+    } else {
+      editor
+        .chain()
+        .focus()
+        .insertContent([
+          {
+            type: 'text',
+            text: asset.fileName,
+            marks: [{ type: 'link', attrs: { href: `asset:${asset.id}` } }],
+          },
+          { type: 'text', text: ' ' },
+        ])
+        .run();
+    }
   };
 
   const uploadFiles = async (files: readonly File[], at: number | null): Promise<void> => {
@@ -297,7 +371,12 @@ export function DocumentEditor(props: DocumentEditorProps) {
     if (href === null) return;
     const internal = docLinkHref(href);
     if (internal !== null) void navigate(internal);
-    else window.open(href, '_blank', 'noopener,noreferrer');
+    else
+      window.open(
+        href.startsWith('asset:') ? services.assets.contentUrl(href.slice(6)) : href,
+        '_blank',
+        'noopener,noreferrer',
+      );
   };
 
   const requestComment = (forReanchor: boolean): void => {
@@ -379,9 +458,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
         },
         handleDrop: (view, event, _slice, moved) => {
           if (moved || !view.editable) return false;
-          const files = Array.from(event.dataTransfer?.files ?? []).filter((file) =>
-            isImageMediaType(file.type),
-          );
+          const files = Array.from(event.dataTransfer?.files ?? []);
           if (files.length === 0) return false;
           event.preventDefault();
           const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
@@ -391,6 +468,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
         },
       },
       onUpdate: ({ editor }) => {
+        latest.current.onInput?.();
         session.markEdited(savableBlocks(editor, session));
         autosave.call();
         latest.current.onContentChange();
@@ -402,6 +480,11 @@ export function DocumentEditor(props: DocumentEditorProps) {
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
+
+  useEffect(() => {
+    bridge.setGithub(props.github);
+    editor.view.dispatch(editor.state.tr);
+  }, [editor, bridge, props.github]);
 
   useEffect(() => {
     if (editor.isEditable !== editable) editor.setEditable(editable);
@@ -508,7 +591,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
       <input
         ref={fileInput}
         type="file"
-        accept={IMAGE_MEDIA_TYPES.join(',')}
+        accept="*/*"
         hidden
         onChange={(event) => {
           const files = Array.from(event.target.files ?? []);

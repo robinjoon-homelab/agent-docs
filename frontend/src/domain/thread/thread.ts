@@ -40,7 +40,29 @@ export type Comment = {
   readonly deleted: boolean;
 };
 
+export type ThreadClaim = { readonly actor: Actor; readonly acquiredAt: string; readonly expiresAt: string };
+export type ThreadReaction = { readonly actor: Actor; readonly emoji: string };
+export type SuggestionInput = {
+  readonly anchor: Anchor;
+  readonly hash?: string;
+  readonly before: string;
+  readonly after: string;
+};
+export type Suggestion = SuggestionInput & {
+  readonly commentId: string;
+  readonly hash: string;
+  readonly decision: {
+    readonly actor: Actor;
+    readonly at: string;
+    readonly accepted: boolean;
+    readonly revision: number | null;
+  } | null;
+};
+
 export type Thread = {
+  readonly claim?: ThreadClaim | null;
+  readonly reactions?: readonly ThreadReaction[];
+  readonly suggestions?: readonly Suggestion[];
   readonly id: string;
   readonly documentId: string;
   readonly anchor: Anchor;

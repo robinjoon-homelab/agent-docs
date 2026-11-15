@@ -22,12 +22,40 @@ object ThreadJson {
             "status" to thread.status.name.lowercase(),
             "author" to WorkspaceJson.actor(thread.author),
             "comments" to thread.comments.map(::comment),
+            "claim" to
+                thread.collaboration.claim?.let {
+                    mapOf(
+                        "actor" to WorkspaceJson.actor(it.actor),
+                        "acquiredAt" to it.acquiredAt,
+                        "expiresAt" to it.expiresAt,
+                    )
+                },
+            "reactions" to thread.collaboration.reactions.map { mapOf("actor" to WorkspaceJson.actor(it.actor), "emoji" to it.emoji) },
+            "suggestions" to thread.collaboration.suggestions.map(::suggestion),
             "linkedRevisions" to thread.progress.linkedRevisions,
             "createdAt" to timeline.createdAt,
             "updatedAt" to timeline.updatedAt,
             "resolvedAt" to timeline.resolvedAt,
         ) + contextOf(view)
     }
+
+    private fun suggestion(value: xyz.robinjoon.agentdocs.workspace.domain.thread.Suggestion): Map<String, Any?> =
+        mapOf(
+            "commentId" to value.comment.value,
+            "anchor" to anchor(value.basis.anchor),
+            "hash" to value.basis.hash,
+            "before" to value.basis.before,
+            "after" to value.basis.after,
+            "decision" to
+                value.decision?.let {
+                    mapOf(
+                        "actor" to WorkspaceJson.actor(it.actor),
+                        "at" to it.at,
+                        "accepted" to it.accepted,
+                        "revision" to it.revision,
+                    )
+                },
+        )
 
     fun comment(comment: Comment): Map<String, Any?> =
         mapOf(

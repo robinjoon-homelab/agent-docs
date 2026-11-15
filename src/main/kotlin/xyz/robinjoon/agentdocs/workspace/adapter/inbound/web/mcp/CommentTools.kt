@@ -68,6 +68,7 @@ class CommentsQueryTool(
 
 class CommentsWriteTool(
     private val threads: ThreadUseCase,
+    private val suggestions: xyz.robinjoon.agentdocs.workspace.application.port.input.SuggestionUseCase? = null,
 ) : McpTool {
     override val definition =
         ToolDefinition(
@@ -79,13 +80,36 @@ class CommentsWriteTool(
                     "action reply: reply to thread with body; markAnswered true when you handled the request. action answered or " +
                     "reopen: change status. " +
                     "action link: link revision to thread. action move: put thread on a new anchor. action edit or delete: change " +
-                    "or remove your own comment. You cannot resolve a thread a person opened; mark it answered instead.",
+                    "or remove your own comment. You cannot resolve a thread a person opened; mark it answered instead. " +
+                    "react_add/react_remove sets an emoji reaction. claim acquires for 15 minutes; " +
+                    "renew/release needs the same connection. " +
+                    "suggest stores anchor, hash, before and after without applying. " +
+                    "Only the current human owner may accept/reject a comment. " +
+                    "A live claim blocks another agent replying, answering, linking, or suggesting; open queries still include claimed threads.",
             properties =
                 mapOf(
                     "action" to
                         Schemas.choice(
                             "What to do",
-                            listOf("open", "reply", "answered", "reopen", "resolve", "link", "move", "edit", "delete"),
+                            listOf(
+                                "open",
+                                "reply",
+                                "answered",
+                                "reopen",
+                                "resolve",
+                                "link",
+                                "move",
+                                "edit",
+                                "delete",
+                                "react_add",
+                                "react_remove",
+                                "claim",
+                                "renew",
+                                "release",
+                                "suggest",
+                                "accept",
+                                "reject",
+                            ),
                         ),
                     "document" to Schemas.string("open: document id"),
                     "anchor" to Schemas.obj("open, move: where the thread goes"),
@@ -94,6 +118,10 @@ class CommentsWriteTool(
                     "body" to Schemas.string("Comment markdown; @login mentions a person"),
                     "markAnswered" to Schemas.boolean("reply: also mark the thread answered"),
                     "revision" to Schemas.integer("link: revision number"),
+                    "emoji" to Schemas.string("react_add/react_remove: emoji, up to 32 characters"),
+                    "hash" to Schemas.string("suggest: current block hash"),
+                    "before" to Schemas.string("suggest: current range markdown"),
+                    "after" to Schemas.string("suggest: replacement markdown"),
                     "opId" to Schemas.operationId,
                 ),
             required = listOf("action"),
@@ -105,9 +133,46 @@ class CommentsWriteTool(
         context: WriteContext,
     ): McpToolResult {
         val action = arguments.string("action")
-        val view = statusChange(action, arguments, context) ?: write(action, arguments, context)
+        val view =
+            collaboration(action, arguments, context) ?: statusChange(action, arguments, context) ?: write(action, arguments, context)
         return McpToolResult.data(mapOf("thread" to ThreadJson.thread(view)))
     }
+
+    private fun collaboration(
+        action: String,
+        arguments: Arguments,
+        context: WriteContext,
+    ): ThreadView? =
+        when (action) {
+            "react_add", "react_remove" -> {
+                threads.react(context, thread(arguments), arguments.string("emoji"), action == "react_add")
+            }
+
+            "claim", "renew", "release" -> {
+                threads.claim(context, thread(arguments), if (action == "claim") "acquire" else action)
+            }
+
+            "suggest" -> {
+                requireNotNull(suggestions).suggest(
+                    context,
+                    thread(arguments),
+                    xyz.robinjoon.agentdocs.workspace.application.model.SuggestionRequest(
+                        ThreadJson.anchorRequest(arguments.node.get("anchor")),
+                        arguments.string("hash"),
+                        arguments.string("before"),
+                        arguments.string("after"),
+                    ),
+                )
+            }
+
+            "accept", "reject" -> {
+                requireNotNull(suggestions).decide(context, CommentId(arguments.uuid("comment")), action == "accept")
+            }
+
+            else -> {
+                null
+            }
+        }
 
     private fun write(
         action: String,

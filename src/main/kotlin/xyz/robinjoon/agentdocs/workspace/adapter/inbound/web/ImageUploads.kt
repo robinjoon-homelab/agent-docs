@@ -1,8 +1,9 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web
 
 import xyz.robinjoon.agentdocs.workspace.domain.asset.Asset
+import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
 
-// What an agent gets back for an uploaded image, the same from docs_upload and from an upload command.
+// All clients use the same asset references; HTML replacement never mutates old bytes.
 internal object ImageUploads {
     fun resultOf(
         asset: Asset,
@@ -11,6 +12,19 @@ internal object ImageUploads {
         mapOf(
             "assetId" to asset.id.value,
             "mediaType" to asset.content.mediaType.mime,
-            "markdown" to "![${alt.replace("]", "\\]")}](asset:${asset.id})",
+            "markdown" to markdown(asset, if (asset.content.mediaType.isImage) alt else alt.ifBlank { asset.origin.fileName }),
         )
+
+    private fun markdown(
+        asset: Asset,
+        label: String,
+    ): String {
+        val text = label.replace("\\", "\\\\").replace("]", "\\]")
+        val target = "asset:${asset.id}"
+        return when {
+            asset.content.mediaType == AssetMediaType.HTML -> "![$text]($target \"mockup\")"
+            asset.content.mediaType.isImage -> "![$text]($target)"
+            else -> "[$text]($target)"
+        }
+    }
 }

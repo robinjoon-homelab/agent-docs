@@ -33,6 +33,7 @@ internal object ThreadRows {
         statement: UpdateBuilder<*>,
         thread: CommentThread,
     ) {
+        statement[ThreadsTable.collaboration] = ThreadCollaborationCodec.serialize(thread.collaboration)
         val location = thread.location
         statement[ThreadsTable.spaceId] = location.spaceId.value
         statement[ThreadsTable.documentId] = location.documentId.value
@@ -86,7 +87,13 @@ internal object ThreadRows {
                 .where { ThreadRevisionsTable.threadId eq id.value }
                 .orderBy(ThreadRevisionsTable.revision to SortOrder.ASC)
                 .map { it[ThreadRevisionsTable.revision] }
-        return CommentThread.restore(id, location, ThreadProgress.restore(row[ThreadsTable.status], revisions, timeline), comments(id))
+        return CommentThread
+            .restore(
+                id,
+                location,
+                ThreadProgress.restore(row[ThreadsTable.status], revisions, timeline),
+                comments(id),
+            ).restoreCollaboration(ThreadCollaborationCodec.deserialize(row[ThreadsTable.collaboration]))
     }
 
     private fun comments(id: ThreadId): List<Comment> =

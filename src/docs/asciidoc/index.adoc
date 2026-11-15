@@ -618,3 +618,415 @@ include::{snippets}/connections-regrant/response-fields.adoc[]
 
 include::{snippets}/connections-revoke/http-request.adoc[]
 include::{snippets}/connections-revoke/http-response.adoc[]
+
+== P1 확장 API
+
+문서 저장·머리 정보·생성·편집·복원의 선택 `inputTrace`는 실제 전경 입력 구간이다. 통계는 문서 트랜잭션 성공 후 별도로 기록하며 잘못된 trace나 통계 장애는 저장 성공을 바꾸지 않는다.
+`codeReferences`는 최대 20개이며 각 항목에 전체 40자리 commit SHA 또는 양의 PR 번호가 필요하다. repository 생략은 연결 레포가 정확히 하나일 때만 허용한다. 임의 URL이나 GitHub 토큰을 받지 않는다.
+REST markdown은 별도 `agentGuide`를 반환하고 MCP는 원본 markdown 뒤의 별도 text content로 지침을 안내한다. 문서 markdown과 머리말은 바꾸지 않는다.
+스페이스 변경의 `agentGuideDocumentId`, `defaultRepository`는 null이면 해제하고 생략하면 유지한다.
+통계 응답은 human, agentExplicit, agentEstimated 각각 milliseconds와 count, 열린 구간 openCount를 제공한다. 통계는 편집 점유와 독립이다.
+SSE는 현재 인증과 문서 가시성을 재검사하고 1초 조회, 15회 무변경 heartbeat, 300초 정상 종료 후 다시 연결한다. 응답 캐시와 proxy buffering을 끄고 proxy read timeout은 15초보다 길게 설정한다.
+
+공개 `GET /oauth/clients/adocs`는 기존 사용자 승인, PKCE S256, scope와 resource 검증을 사용한다. 클라이언트 비밀은 없다.
+비상 로그인은 발급 후 정확히 10분인 단회 허가를 CSRF 보호 POST로 소비한다. GET은 확인 화면만 제공하며 발급 REST/MCP는 없다.
+
+=== navigation-view
+
+include::{snippets}/navigation-view/http-request.adoc[]
+
+include::{snippets}/navigation-view/http-response.adoc[]
+
+include::{snippets}/navigation-view/path-parameters.adoc[]
+
+
+=== navigation-favorite
+
+include::{snippets}/navigation-favorite/http-request.adoc[]
+
+include::{snippets}/navigation-favorite/http-response.adoc[]
+
+include::{snippets}/navigation-favorite/request-fields.adoc[]
+
+include::{snippets}/navigation-favorite/path-parameters.adoc[]
+
+
+=== navigation-backlinks
+
+include::{snippets}/navigation-backlinks/http-request.adoc[]
+
+include::{snippets}/navigation-backlinks/http-response.adoc[]
+
+include::{snippets}/navigation-backlinks/response-fields.adoc[]
+
+include::{snippets}/navigation-backlinks/path-parameters.adoc[]
+
+
+=== navigation-mobile-target
+
+include::{snippets}/navigation-mobile-target/http-request.adoc[]
+
+include::{snippets}/navigation-mobile-target/http-response.adoc[]
+
+include::{snippets}/navigation-mobile-target/response-fields.adoc[]
+
+
+=== navigation-favorite-status
+
+include::{snippets}/navigation-favorite-status/http-request.adoc[]
+
+include::{snippets}/navigation-favorite-status/http-response.adoc[]
+
+include::{snippets}/navigation-favorite-status/response-fields.adoc[]
+
+
+=== navigation-backlinks-not-found
+
+include::{snippets}/navigation-backlinks-not-found/http-request.adoc[]
+
+include::{snippets}/navigation-backlinks-not-found/http-response.adoc[]
+
+include::{snippets}/navigation-backlinks-not-found/response-fields.adoc[]
+
+
+=== edit-statistics-get
+
+include::{snippets}/edit-statistics-get/http-request.adoc[]
+
+include::{snippets}/edit-statistics-get/http-response.adoc[]
+
+include::{snippets}/edit-statistics-get/response-fields.adoc[]
+
+include::{snippets}/edit-statistics-get/path-parameters.adoc[]
+
+
+=== edit-statistics-close
+
+include::{snippets}/edit-statistics-close/http-request.adoc[]
+
+include::{snippets}/edit-statistics-close/http-response.adoc[]
+
+include::{snippets}/edit-statistics-close/path-parameters.adoc[]
+
+include::{snippets}/edit-statistics-close/query-parameters.adoc[]
+
+
+=== edit-statistics-start
+
+include::{snippets}/edit-statistics-start/http-request.adoc[]
+
+include::{snippets}/edit-statistics-start/http-response.adoc[]
+
+include::{snippets}/edit-statistics-start/request-fields.adoc[]
+
+include::{snippets}/edit-statistics-start/response-fields.adoc[]
+
+include::{snippets}/edit-statistics-start/path-parameters.adoc[]
+
+
+=== edit-statistics-end
+
+include::{snippets}/edit-statistics-end/http-request.adoc[]
+
+include::{snippets}/edit-statistics-end/http-response.adoc[]
+
+include::{snippets}/edit-statistics-end/request-fields.adoc[]
+
+include::{snippets}/edit-statistics-end/response-fields.adoc[]
+
+include::{snippets}/edit-statistics-end/path-parameters.adoc[]
+
+
+=== edit-statistics-not-found
+
+include::{snippets}/edit-statistics-not-found/http-request.adoc[]
+
+include::{snippets}/edit-statistics-not-found/http-response.adoc[]
+
+include::{snippets}/edit-statistics-not-found/response-fields.adoc[]
+
+
+=== document-events
+
+include::{snippets}/document-events/http-request.adoc[]
+
+include::{snippets}/document-events/http-response.adoc[]
+
+include::{snippets}/document-events/path-parameters.adoc[]
+
+
+=== portability-import
+
+include::{snippets}/portability-import/http-request.adoc[]
+
+include::{snippets}/portability-import/http-response.adoc[]
+
+include::{snippets}/portability-import/response-fields.adoc[]
+
+include::{snippets}/portability-import/path-parameters.adoc[]
+
+
+include::{snippets}/portability-import/request-parts.adoc[]
+
+
+=== portability-export-workspace
+
+include::{snippets}/portability-export-workspace/http-request.adoc[]
+
+include::{snippets}/portability-export-workspace/http-response.adoc[]
+
+
+=== portability-export-space
+
+include::{snippets}/portability-export-space/http-request.adoc[]
+
+include::{snippets}/portability-export-space/http-response.adoc[]
+
+include::{snippets}/portability-export-space/path-parameters.adoc[]
+
+
+=== history-name
+
+include::{snippets}/history-name/http-request.adoc[]
+
+include::{snippets}/history-name/http-response.adoc[]
+
+include::{snippets}/history-name/request-fields.adoc[]
+
+include::{snippets}/history-name/response-fields.adoc[]
+
+include::{snippets}/history-name/path-parameters.adoc[]
+
+
+=== history-restore-block
+
+include::{snippets}/history-restore-block/http-request.adoc[]
+
+include::{snippets}/history-restore-block/http-response.adoc[]
+
+include::{snippets}/history-restore-block/request-fields.adoc[]
+
+include::{snippets}/history-restore-block/response-fields.adoc[]
+
+include::{snippets}/history-restore-block/path-parameters.adoc[]
+
+
+=== emergency-login-confirm
+
+include::{snippets}/emergency-login-confirm/http-request.adoc[]
+
+include::{snippets}/emergency-login-confirm/http-response.adoc[]
+
+
+=== emergency-login-consume
+
+include::{snippets}/emergency-login-consume/http-request.adoc[]
+
+include::{snippets}/emergency-login-consume/http-response.adoc[]
+
+include::{snippets}/emergency-login-consume/form-parameters.adoc[]
+
+
+=== emergency-login-unavailable
+
+include::{snippets}/emergency-login-unavailable/http-request.adoc[]
+
+include::{snippets}/emergency-login-unavailable/http-response.adoc[]
+
+
+=== adocs-client-metadata
+
+include::{snippets}/adocs-client-metadata/http-request.adoc[]
+
+include::{snippets}/adocs-client-metadata/http-response.adoc[]
+
+include::{snippets}/adocs-client-metadata/response-fields.adoc[]
+
+
+=== threads-react
+
+include::{snippets}/threads-react/http-request.adoc[]
+
+include::{snippets}/threads-react/http-response.adoc[]
+
+include::{snippets}/threads-react/request-fields.adoc[]
+
+include::{snippets}/threads-react/response-fields.adoc[]
+
+
+=== threads-claim
+
+include::{snippets}/threads-claim/http-request.adoc[]
+
+include::{snippets}/threads-claim/http-response.adoc[]
+
+include::{snippets}/threads-claim/request-fields.adoc[]
+
+include::{snippets}/threads-claim/response-fields.adoc[]
+
+
+=== threads-suggest
+
+include::{snippets}/threads-suggest/http-request.adoc[]
+
+include::{snippets}/threads-suggest/http-response.adoc[]
+
+include::{snippets}/threads-suggest/request-fields.adoc[]
+
+include::{snippets}/threads-suggest/response-fields.adoc[]
+
+
+=== threads-suggestion-decision
+
+include::{snippets}/threads-suggestion-decision/http-request.adoc[]
+
+include::{snippets}/threads-suggestion-decision/http-response.adoc[]
+
+include::{snippets}/threads-suggestion-decision/request-fields.adoc[]
+
+include::{snippets}/threads-suggestion-decision/response-fields.adoc[]
+
+
+=== mcp-tools-call-guide
+
+include::{snippets}/mcp-tools-call-guide/http-request.adoc[]
+
+include::{snippets}/mcp-tools-call-guide/http-response.adoc[]
+
+include::{snippets}/mcp-tools-call-guide/response-fields.adoc[]
+
+
+=== assets-source
+
+include::{snippets}/assets-source/http-request.adoc[]
+
+include::{snippets}/assets-source/http-response.adoc[]
+
+include::{snippets}/assets-source/response-fields.adoc[]
+
+
+=== webhooks-list
+
+include::{snippets}/webhooks-list/http-request.adoc[]
+
+include::{snippets}/webhooks-list/http-response.adoc[]
+
+include::{snippets}/webhooks-list/response-fields.adoc[]
+
+
+=== webhooks-register
+
+include::{snippets}/webhooks-register/http-request.adoc[]
+
+include::{snippets}/webhooks-register/http-response.adoc[]
+
+include::{snippets}/webhooks-register/request-fields.adoc[]
+
+include::{snippets}/webhooks-register/response-fields.adoc[]
+
+
+=== webhooks-stop
+
+include::{snippets}/webhooks-stop/http-request.adoc[]
+
+include::{snippets}/webhooks-stop/http-response.adoc[]
+
+include::{snippets}/webhooks-stop/response-fields.adoc[]
+
+include::{snippets}/webhooks-stop/path-parameters.adoc[]
+
+
+=== webhooks-rotate-secret
+
+include::{snippets}/webhooks-rotate-secret/http-request.adoc[]
+
+include::{snippets}/webhooks-rotate-secret/http-response.adoc[]
+
+include::{snippets}/webhooks-rotate-secret/response-fields.adoc[]
+
+
+=== webhooks-deliveries
+
+include::{snippets}/webhooks-deliveries/http-request.adoc[]
+
+include::{snippets}/webhooks-deliveries/http-response.adoc[]
+
+include::{snippets}/webhooks-deliveries/response-fields.adoc[]
+
+include::{snippets}/webhooks-deliveries/query-parameters.adoc[]
+
+
+=== webhooks-forbidden
+
+include::{snippets}/webhooks-forbidden/http-request.adoc[]
+
+include::{snippets}/webhooks-forbidden/http-response.adoc[]
+
+include::{snippets}/webhooks-forbidden/response-fields.adoc[]
+
+=== navigation-recent
+
+include::{snippets}/navigation-recent/http-request.adoc[]
+
+include::{snippets}/navigation-recent/http-response.adoc[]
+
+include::{snippets}/navigation-recent/response-fields.adoc[]
+
+
+=== navigation-favorites
+
+include::{snippets}/navigation-favorites/http-request.adoc[]
+
+include::{snippets}/navigation-favorites/http-response.adoc[]
+
+include::{snippets}/navigation-favorites/response-fields.adoc[]
+
+=== 문서 문맥에서 MCP HTML 원문 읽기
+
+`docs_upload`의 `assetId`와 선택 `document` UUID를 함께 보내면 문서의 논리 첨부 ID를 현재 바인딩으로 해석한다. 현재 문서 읽기 권한과 실제 참조 여부를 검사하므로 이사 뒤 목적 스페이스만 허용된 연결도 해당 HTML을 읽을 수 있다. document 없이 읽거나 업로드할 때는 기존 스페이스·첨부 권한을 유지한다.
+
+include::{snippets}/mcp-upload-document-source/http-request.adoc[]
+
+include::{snippets}/mcp-upload-document-source/http-response.adoc[]
+
+include::{snippets}/mcp-upload-document-source/request-fields.adoc[]
+
+include::{snippets}/mcp-upload-document-source/response-fields.adoc[]
+
+=== 입력 통계 구간
+
+선택 `inputTrace`의 새 형식은 `{batchId, traces:[{tabId,batchId,intervals:[{firstInputAt,lastInputAt}]}]}`다. 전체 요청 batchId는 재시도에도 고정한다. 서로 다른 foreground의 입력도 한 성공 version의 원자 batch로 채택하며, 잘못된 child나 기록 실패는 전체 통계 batch를 롤백하고 문서 성공은 유지한다.
+
+기존 단일 `{tabId,batchId,intervals:[...]}` 형식도 child 한 개로 정규화하며 전체 batchId는 그 child batchId를 사용한다. 구간의 120초 이상 입력 공백은 별도로 보낸다. 호환 firstInputAt/lastInputAt 파생값은 intervals를 대신하지 않는다. no-op이나 이미 채택한 version·batch는 통계를 중복 기록하지 않는다.
+
+=== documents-transfer
+
+include::{snippets}/documents-transfer/http-request.adoc[]
+
+include::{snippets}/documents-transfer/http-response.adoc[]
+
+include::{snippets}/documents-transfer/path-parameters.adoc[]
+
+include::{snippets}/documents-transfer/request-fields.adoc[]
+
+include::{snippets}/documents-transfer/response-fields.adoc[]
+
+
+=== document-assets-content
+
+include::{snippets}/document-assets-content/http-request.adoc[]
+
+include::{snippets}/document-assets-content/http-response.adoc[]
+
+include::{snippets}/document-assets-content/path-parameters.adoc[]
+
+
+=== document-assets-source
+
+include::{snippets}/document-assets-source/http-request.adoc[]
+
+include::{snippets}/document-assets-source/http-response.adoc[]
+
+include::{snippets}/document-assets-source/path-parameters.adoc[]
+
+include::{snippets}/document-assets-source/response-fields.adoc[]

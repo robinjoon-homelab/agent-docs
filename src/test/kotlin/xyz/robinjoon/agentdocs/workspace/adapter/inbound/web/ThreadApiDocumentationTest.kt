@@ -55,7 +55,9 @@ import java.util.UUID
 
 class ThreadApiDocumentationTest : RestDocsWebTest() {
     private val threads = mockk<ThreadUseCase>()
+    private val suggestions = mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.SuggestionUseCase>()
     private val mockMvc = restDocsMockMvc(ThreadController(threads), WorkspaceExceptionHandler())
+    private val suggestionMvc = restDocsMockMvc(SuggestionController(suggestions), WorkspaceExceptionHandler())
     private val threadId = ThreadId(UUID.fromString("66666666-6666-4666-8666-666666666666"))
     private val commentId = CommentId(UUID.fromString("77777777-7777-4777-8777-777777777777"))
     private val anchor = Anchor.Text(body.id, 5, 8, "30초")
@@ -277,6 +279,98 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
             )
     }
 
+    @Test
+    fun `explicit reaction add preserves the thread response contract`() {
+        every { threads.react(webContext, threadId, "👍", true) } returns view
+        mockMvc
+            .perform(
+                post("/api/threads/{id}/reactions", threadId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"emoji":"👍","action":"add"}"""),
+            ).andExpect(status().isOk)
+            .andDo(
+                documented(
+                    "threads-react",
+                    requestFields(
+                        fieldWithPath("emoji").description("1~32자 반응"),
+                        fieldWithPath("action").description("add 또는 remove. 토글이 아니다"),
+                        fieldWithPath("opId").optional().type(JsonFieldType.STRING).description("최초 응답 재생 키"),
+                    ),
+                    responseFields(*threadFields("")),
+                ),
+            )
+    }
+
+    @Test
+    fun `an agent explicitly acquires a fifteen minute claim`() {
+        every { threads.claim(any(), threadId, "acquire") } returns view
+        mockMvc
+            .perform(
+                post("/api/threads/{id}/claim", threadId)
+                    .principal(agent)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"action":"acquire"}"""),
+            ).andExpect(status().isOk)
+            .andDo(
+                documented(
+                    "threads-claim",
+                    requestFields(
+                        fieldWithPath("action").description("acquire, renew, release. 동일 연결만 연장·해제, 15분 만료"),
+                        fieldWithPath("opId").optional().type(JsonFieldType.STRING).description("최초 응답과 시각 재생 키"),
+                    ),
+                    responseFields(*threadFields("")),
+                ),
+            )
+    }
+
+    @Test
+    fun `a range suggestion receives current and replacement markdown`() {
+        every { suggestions.suggest(webContext, threadId, any()) } returns view
+        suggestionMvc
+            .perform(
+                post("/api/threads/{id}/suggestions", threadId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"anchor":{"kind":"text","blockId":"para01","quote":"30초","start":5},"before":"30초","after":"60초"}"""),
+            ).andExpect(status().isOk)
+            .andDo(
+                documented(
+                    "threads-suggest",
+                    requestFields(
+                        subsectionWithPath("anchor").description("text/cell/block 범위. document 전체는 불가"),
+                        fieldWithPath("hash").optional().type(JsonFieldType.STRING).description("현재 블록 hash. 생략하면 검증된 현재 범위에서 보관"),
+                        fieldWithPath("before").description("현재 범위 마크다운"),
+                        fieldWithPath("after").description("교체 마크다운. 빈 문자열 허용"),
+                        fieldWithPath("opId").optional().type(JsonFieldType.STRING).description("멱등 키"),
+                    ),
+                    responseFields(*threadFields("")),
+                ),
+            )
+    }
+
+    @Test
+    fun `the current human owner decides a suggestion`() {
+        every { suggestions.decide(webContext, commentId, true) } returns view
+        suggestionMvc
+            .perform(
+                post("/api/comments/{id}/suggestion-decision", commentId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"action":"accept"}"""),
+            ).andExpect(status().isOk)
+            .andDo(
+                documented(
+                    "threads-suggestion-decision",
+                    requestFields(
+                        fieldWithPath("action").description("accept 또는 reject. 수락은 기준 검증 후 원자적 본문·revision·판정 저장"),
+                        fieldWithPath("opId").optional().type(JsonFieldType.STRING).description("멱등 키"),
+                    ),
+                    responseFields(*threadFields("")),
+                ),
+            )
+    }
+
     private fun threadFields(prefix: String): Array<FieldDescriptor> =
         arrayOf(
             fieldWithPath("${prefix}id").description("스레드 ID"),
@@ -290,6 +384,11 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
             *actorFields("${prefix}author"),
             fieldWithPath("${prefix}comments").description("댓글. 첫 댓글이 스레드를 연 댓글"),
             *commentFields("${prefix}comments[].").map { it.optional() }.toTypedArray(),
+            subsectionWithPath(
+                "${prefix}claim",
+            ).type(JsonFieldType.OBJECT).optional().description("에이전트 연결 점유와 최초 획득·만료 시각. 15분, 만료해도 시각 보존"),
+            subsectionWithPath("${prefix}reactions").description("actor와 emoji 반응 집합"),
+            subsectionWithPath("${prefix}suggestions").description("제안 원문·대체문·앵커·기준 hash·사람 소유자 판정과 적용 revision"),
             fieldWithPath("${prefix}linkedRevisions").description("이 스레드에 답한 리비전"),
             fieldWithPath("${prefix}createdAt").description("연 시각"),
             fieldWithPath("${prefix}updatedAt").description("마지막 변화 시각"),

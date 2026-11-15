@@ -79,6 +79,7 @@ internal class DocumentTree(
         val document = Document.create(DocumentId(UUID.randomUUID()), header, emptyList(), now)
         val change = RevisionChange.of(originOf(context), summary, emptyList(), now)
         val saved = documents.add(document, Revision.of(document, change))
+        journal.confirmed(saved, change)
         journal.record(context, "document.created", subjectOf(saved), "${saved.header.title}: $summary")
         return saved
     }
@@ -98,15 +99,50 @@ internal class DocumentTree(
         return moves
     }
 
+    fun planTransfer(
+        document: Document,
+        space: SpaceId,
+        to: DocumentPath,
+    ): List<Pair<Document, DocumentPath>> {
+        if (document.isTrashed) throw InvalidRequestException("a document in the trash cannot move", "restore it first")
+        if (space == document.spaceId && to.isWithin(document.header.path) && to != document.header.path) {
+            throw InvalidRequestException("a document cannot move under itself", "pick a path outside it")
+        }
+        val moves =
+            documents
+                .lockLiveUnder(
+                    document.spaceId,
+                    document.header.path,
+                ).map {
+                    it to
+                        it.header.path.movedFrom(
+                            document.header.path,
+                            to,
+                        )
+                }
+        val all = listOf(document to to) + moves
+        requireFree(space, all.map { it.second }, all.map { it.first.id }.toSet())
+        return all
+    }
+
     fun moveAlong(
         context: WriteContext,
         moves: List<Pair<Document, DocumentPath>>,
     ): List<RelatedWrite> =
         moves.map { (document, target) ->
             val now = journal.now()
-            val revised = PendingEdits(documents).confirm(document).revise(document.header.copy(path = target), document.blocks, now)
+            val revised =
+                PendingEdits(
+                    documents,
+                    journal,
+                ).confirm(document).revise(
+                    document.header.copy(path = target),
+                    document.blocks,
+                    now,
+                )
             val change = RevisionChange.of(originOf(context), MOVED_ALONG, emptyList(), now)
             val saved = documents.update(revised, Revision.of(revised, change), amended = false)
+            journal.confirmed(saved, change)
             journal.record(context, "document.revised", subjectOf(saved), "${saved.header.title}: $MOVED_ALONG")
             RelatedWrite(saved, RelatedChange.MOVED)
         }
@@ -182,9 +218,10 @@ internal class DocumentTree(
         along: Along,
         at: Instant,
     ): Document {
-        val moved = along.transition.apply(PendingEdits(documents).confirm(document), at) ?: return document
+        val moved = along.transition.apply(PendingEdits(documents, journal).confirm(document), at) ?: return document
         val change = RevisionChange.of(originOf(context), along.summary, emptyList(), at).withKind(RevisionKind.TRANSITION)
         val saved = documents.update(moved, Revision.of(moved, change), amended = false)
+        journal.confirmed(saved, change)
         journal.record(context, along.transition.kind, subjectOf(saved), "${saved.header.title}: ${along.summary}")
         return saved
     }

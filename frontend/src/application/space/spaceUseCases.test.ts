@@ -30,10 +30,21 @@ function fakeServer(initial: Space[] = []): SpaceGateway & { spaces: Space[] } {
     },
     get: (slug: string) => Promise.resolve(server.spaces.find((s) => s.slug === slug) ?? space({ slug })),
     update: (slug: string, patch: SpacePatch) => {
-      const { archived, ...settings } = patch;
+      const { archived, agentGuideDocumentId, defaultRepository, ...settings } = patch;
       const found = server.spaces.find((s) => s.slug === slug) ?? space({});
       const archivedAt = archived === undefined ? found.archivedAt : archived ? '2026-10-20T00:00:00Z' : null;
-      const updated = { ...found, ...settings, archivedAt };
+      const guide =
+        agentGuideDocumentId === undefined
+          ? {}
+          : {
+              agentGuide:
+                agentGuideDocumentId === null
+                  ? null
+                  : { documentId: agentGuideDocumentId, title: '지침', path: 'guide' },
+              agentGuideIssue: null,
+            };
+      const repository = defaultRepository === undefined ? {} : { defaultRepository };
+      const updated: Space = { ...found, ...settings, archivedAt, ...guide, ...repository };
       server.spaces = server.spaces.map((s) => (s.slug === slug ? updated : s));
       return Promise.resolve(updated);
     },
@@ -93,5 +104,39 @@ describe('space use cases', () => {
     expect(archived.archivedAt).toBe('2026-10-20T00:00:00Z');
     expect(await useCases.setArchived(archived, true)).toBe(archived);
     expect((await useCases.setArchived(archived, false)).archivedAt).toBeNull();
+  });
+
+  it('names an agent guide, answers an offered guide chosen again as is, and clears it', async () => {
+    const current = space({ slug: 'team' });
+    const server = fakeServer([current]);
+    const useCases = createSpaceUseCases(server);
+
+    const guided = await useCases.setAgentGuide(current, 'doc-1');
+    expect(guided.agentGuide).toEqual({ documentId: 'doc-1', title: '지침', path: 'guide' });
+    expect(await useCases.setAgentGuide(guided, 'doc-1')).toBe(guided);
+    expect((await useCases.setAgentGuide(guided, null)).agentGuide).toBeNull();
+    expect(server.spaces[0]?.agentGuide).toBeNull();
+  });
+
+  it('clears a withheld guide even though no guide is offered', async () => {
+    const withheld = space({ slug: 'team', agentGuide: null, agentGuideIssue: 'trashed' });
+    const server = fakeServer([withheld]);
+
+    const cleared = await createSpaceUseCases(server).setAgentGuide(withheld, null);
+
+    expect(cleared.agentGuideIssue).toBeNull();
+    expect(server.spaces[0]?.agentGuideIssue).toBeNull();
+  });
+
+  it('chooses a trimmed default repository and treats a blank choice as clearing it', async () => {
+    const current = space({ slug: 'team', defaultRepository: null });
+    const server = fakeServer([current]);
+    const useCases = createSpaceUseCases(server);
+
+    const chosen = await useCases.setDefaultRepository(current, ' homelab/infra ');
+    expect(chosen.defaultRepository).toBe('homelab/infra');
+    expect(await useCases.setDefaultRepository(chosen, 'homelab/infra')).toBe(chosen);
+    expect((await useCases.setDefaultRepository(chosen, ' ')).defaultRepository).toBeNull();
+    expect(server.spaces[0]?.defaultRepository).toBeNull();
   });
 });

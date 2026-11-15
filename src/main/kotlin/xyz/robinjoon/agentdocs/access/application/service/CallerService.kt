@@ -20,6 +20,7 @@ class CallerService(
     private val users: UserRepository,
     private val clock: Clock,
     private val allowlist: Allowlist,
+    private val cliClientId: String? = null,
 ) : CallerUseCase {
     @Transactional
     override fun callerFor(token: String): Caller? {
@@ -29,7 +30,7 @@ class CallerService(
         val user = users.findById(connection.owner.userId) ?: return null
         if (allowlist.roleOf(user.account.login) != UserRole.OWNER) return null
         connection.used(now)?.let(connections::update)
-        return Callers.agent(connection, user.account.login)
+        return Callers.agent(connection, user.account.login, cliClientId)
     }
 
     override fun callerForUpload(token: String): Caller? {
@@ -37,6 +38,6 @@ class CallerService(
         val connection = connections.findById(ConnectionId(id))?.takeIf { it.isActiveAt(clock.instant()) } ?: return null
         val user = users.findById(connection.owner.userId) ?: return null
         if (allowlist.roleOf(user.account.login) != UserRole.OWNER) return null
-        return Callers.agent(connection, user.account.login)
+        return Callers.agent(connection, user.account.login, cliClientId)
     }
 }

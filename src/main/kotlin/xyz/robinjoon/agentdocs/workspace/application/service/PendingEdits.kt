@@ -9,8 +9,14 @@ import java.time.Instant
 // Called with the document locked, inside the caller's write transaction.
 class PendingEdits(
     private val documents: DocumentRepository,
+    private val journal: WriteJournal,
 ) {
-    fun confirm(document: Document): Document = documents.confirmPending(document)
+    fun confirm(document: Document): Document {
+        val edit = documents.pending(document.id)
+        val confirmed = documents.confirmPending(document)
+        if (edit != null && confirmed.revision > document.revision) journal.confirmed(confirmed, edit.change)
+        return confirmed
+    }
 
     fun continues(
         edit: Revision,

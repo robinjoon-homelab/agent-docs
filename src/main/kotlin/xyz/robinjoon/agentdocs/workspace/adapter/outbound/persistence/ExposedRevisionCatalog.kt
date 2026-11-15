@@ -46,7 +46,14 @@ class ExposedRevisionCatalog : RevisionCatalog {
         filter.to?.let { to -> query.andWhere { DocumentRevisionsTable.createdAt lessEq to.utc() } }
         return query
             .orderBy(DocumentRevisionsTable.revision to SortOrder.DESC)
-            .map { RevisionSummary(it[DocumentRevisionsTable.revision], it[DocumentRevisionsTable.title], RevisionRows.change(it)) }
+            .map {
+                RevisionSummary(
+                    it[DocumentRevisionsTable.revision],
+                    it[DocumentRevisionsTable.title],
+                    RevisionRows.change(it),
+                    RevisionRows.name(document, it[DocumentRevisionsTable.revision]),
+                )
+            }
     }
 
     // Agent revisions carry the person who connected the agent, so they name that person as well.

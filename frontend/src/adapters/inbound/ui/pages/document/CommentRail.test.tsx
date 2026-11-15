@@ -2,36 +2,51 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { Thread, ThreadFilter } from '../../../../../domain/thread/thread';
 import { thread } from '../../../../../test-support/fixtures';
+import { SessionProvider } from '../../app/SessionContext';
 import { CommentRail } from './CommentRail';
 
 function rail(threads: readonly Thread[], filter: ThreadFilter, onCollapse?: () => void): string {
   return renderToStaticMarkup(
-    <CommentRail
-      threads={threads}
-      filter={filter}
-      onFilter={() => undefined}
-      pending={null}
-      activeThreadId={null}
-      login="robin"
-      mentionLogins={['robin']}
-      spaceSlug="team"
-      actions={{
-        reply: () => Promise.resolve(true),
-        resolve: () => Promise.resolve(),
-        reopen: () => Promise.resolve(),
-        editComment: () => Promise.resolve(true),
-        deleteComment: () => Promise.resolve(),
-        startReanchor: () => undefined,
+    <SessionProvider
+      session={{
+        me: {
+          userId: '11111111-1111-4111-8111-111111111111',
+          login: 'robin',
+          name: 'Robin',
+          avatarUrl: '/test-avatar.png',
+          owner: true,
+        },
+        inboxVersion: 0,
+        refreshInbox: () => undefined,
       }}
-      aligned={false}
-      measure={{ threadTop: () => null, anchorTop: () => null }}
-      layoutVersion={0}
-      onActivate={() => undefined}
-      onStart={() => Promise.resolve(true)}
-      onCancelPending={() => undefined}
-      onDocumentComment={() => undefined}
-      onCollapse={onCollapse}
-    />,
+    >
+      <CommentRail
+        threads={threads}
+        filter={filter}
+        onFilter={() => undefined}
+        pending={null}
+        activeThreadId={null}
+        login="robin"
+        mentionLogins={['robin']}
+        spaceSlug="team"
+        actions={{
+          reply: () => Promise.resolve(true),
+          resolve: () => Promise.resolve(),
+          reopen: () => Promise.resolve(),
+          editComment: () => Promise.resolve(true),
+          deleteComment: () => Promise.resolve(),
+          startReanchor: () => undefined,
+        }}
+        aligned={false}
+        measure={{ threadTop: () => null, anchorTop: () => null }}
+        layoutVersion={0}
+        onActivate={() => undefined}
+        onStart={() => Promise.resolve(true)}
+        onCancelPending={() => undefined}
+        onDocumentComment={() => undefined}
+        onCollapse={onCollapse}
+      />
+    </SessionProvider>,
   );
 }
 

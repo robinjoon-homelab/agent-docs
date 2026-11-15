@@ -7,7 +7,9 @@ import xyz.robinjoon.agentdocs.application.model.ActivityActor
 import xyz.robinjoon.agentdocs.application.model.ActivityActorKind
 import xyz.robinjoon.agentdocs.application.model.ActivityQuery
 import xyz.robinjoon.agentdocs.application.model.ActivityRecord
+import xyz.robinjoon.agentdocs.application.model.ActivityScan
 import xyz.robinjoon.agentdocs.application.model.ActivitySubject
+import xyz.robinjoon.agentdocs.application.model.CreatedComment
 import xyz.robinjoon.agentdocs.support.persistence.MigratedH2Database
 import java.time.Instant
 import java.util.UUID
@@ -65,6 +67,58 @@ class ExposedActivityLogTest {
         assertThat((first + second).map { it.record.subject.spaceId }).containsOnly(space)
         assertThat(end).isEmpty()
     }
+
+    @Test
+    fun `an entry that created a comment keeps the comment id and its mentions`() {
+        val commented = comment(0, setOf("alice", "bob"))
+        val quiet = comment(1, emptySet())
+        val plain = record(space, 2)
+        database.inTransaction { listOf(commented, quiet, plain).forEach(log::record) }
+
+        val read = database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = true)) }
+
+        assertThat(read.map { it.record }).containsExactly(commented, quiet, plain)
+        assertThat(read[0].record.createdComment?.mentions).containsExactlyInAnyOrder("alice", "bob")
+        assertThat(read[2].record.createdComment).isNull()
+    }
+
+    @Test
+    fun `a scan rereads listed kinds and created comments from a moment on in id order`() {
+        val confirmed = record(space, 0).copy(kind = "document.revision_confirmed")
+        val before = record(space, -10).copy(kind = "document.revision_confirmed")
+        val commented = comment(5, setOf("alice"))
+        database.inTransaction { listOf(before, confirmed, record(space, 1), commented).forEach(log::record) }
+        val scan = ActivityScan(at, setOf("document.revision_confirmed"), createdComments = true, afterId = null, limit = 10)
+
+        val all = database.inTransaction { log.scan(scan) }
+        val after = database.inTransaction { log.scan(scan.copy(afterId = all.first().id)) }
+        val kindsOnly = database.inTransaction { log.scan(scan.copy(createdComments = false)) }
+
+        assertThat(all.map { it.record }).containsExactly(confirmed, commented)
+        assertThat(after.map { it.record }).containsExactly(commented)
+        assertThat(kindsOnly.map { it.record }).containsExactly(confirmed)
+    }
+
+    @Test
+    fun `pruning an entry also drops its mentions`() {
+        database.inTransaction { log.record(comment(0, setOf("alice"))) }
+
+        assertThat(database.inTransaction { log.pruneBefore(at.plusSeconds(1)) }).isEqualTo(1)
+        assertThat(database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = true)) }).isEmpty()
+    }
+
+    private fun comment(
+        offset: Long,
+        mentions: Set<String>,
+    ): ActivityRecord =
+        ActivityRecord(
+            "comment.added",
+            agent,
+            ActivitySubject(space, UUID.randomUUID(), UUID.randomUUID(), null),
+            "문서: 댓글",
+            at.plusSeconds(offset),
+            CreatedComment(UUID.randomUUID(), mentions),
+        )
 
     private fun record(
         spaceId: UUID?,

@@ -1,0 +1,54 @@
+.webhook-notes ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.webhook-notes li + li {
+  margin-top: 6px;
+}
+
+.webhook-endpoints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.webhook-endpoint-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.webhook-endpoint-head strong {
+  word-break: break-all;
+}
+
+.webhook-endpoint .connections-table-wrap {
+  margin-top: 12px;
+}
+
+.webhook-event-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.webhook-status-ok {
+  color: var(--status-confirmed);
+}
+
+.webhook-status-waiting {
+  color: var(--warning);
+}
+
+.webhook-status-failed {
+  color: var(--danger);
+}
+
+.webhook-status-idle {
+  color: var(--text-faint);
+}

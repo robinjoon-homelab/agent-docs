@@ -1,5 +1,13 @@
 import type { ThreadGateway, ThreadPatch } from '../../../../application/thread/ports/ThreadGateway';
-import type { Anchor, Comment, Resolution, Thread, ThreadStatus } from '../../../../domain/thread/thread';
+import type {
+  Anchor,
+  Comment,
+  Resolution,
+  Thread,
+  ThreadStatus,
+  SuggestionInput,
+  Suggestion,
+} from '../../../../domain/thread/thread';
 import type { HttpClient } from '../shared/httpClient';
 import { query, segment } from '../shared/httpClient';
 import { bool, list, num, numbers, obj, oneOf, optNum, optStr, str } from '../shared/json';
@@ -55,9 +63,48 @@ export function toComment(value: unknown): Comment {
   };
 }
 
+function toClaim(value: unknown) {
+  const source = obj(value, 'claim');
+  return {
+    actor: toActor(source.actor),
+    acquiredAt: str(source, 'acquiredAt'),
+    expiresAt: str(source, 'expiresAt'),
+  };
+}
+
+function toSuggestion(value: unknown): Suggestion {
+  const source = obj(value, 'suggestion');
+  const decision = source.decision == null ? null : obj(source.decision, 'decision');
+  return {
+    commentId: str(source, 'commentId'),
+    anchor: toAnchor(source.anchor),
+    hash: str(source, 'hash'),
+    before: str(source, 'before'),
+    after: str(source, 'after'),
+    decision:
+      decision === null
+        ? null
+        : {
+            actor: toActor(decision.actor),
+            at: str(decision, 'at'),
+            accepted: bool(decision, 'accepted'),
+            revision: optNum(decision, 'revision'),
+          },
+  };
+}
+
 export function toThread(value: unknown): Thread {
   const source = obj(value, 'thread');
   return {
+    claim: source.claim == null ? null : toClaim(source.claim),
+    reactions:
+      source.reactions == null
+        ? []
+        : list(source.reactions, (value) => {
+            const item = obj(value, 'reaction');
+            return { actor: toActor(item.actor), emoji: str(item, 'emoji') };
+          }),
+    suggestions: source.suggestions == null ? [] : list(source.suggestions, toSuggestion),
     id: str(source, 'id'),
     documentId: str(source, 'documentId'),
     anchor: toAnchor(source.anchor),
@@ -76,6 +123,28 @@ export class HttpThreadGateway implements ThreadGateway {
 
   constructor(http: HttpClient) {
     this.http = http;
+  }
+
+  async react(threadId: string, emoji: string, add: boolean): Promise<Thread> {
+    return toThread(
+      await this.http.post(`/api/threads/${segment(threadId)}/reactions`, {
+        emoji,
+        action: add ? 'add' : 'remove',
+      }),
+    );
+  }
+  async claim(threadId: string, action: 'acquire' | 'renew' | 'release'): Promise<Thread> {
+    return toThread(await this.http.post(`/api/threads/${segment(threadId)}/claim`, { action }));
+  }
+  async suggest(threadId: string, input: SuggestionInput): Promise<Thread> {
+    return toThread(await this.http.post(`/api/threads/${segment(threadId)}/suggestions`, input));
+  }
+  async decide(commentId: string, accept: boolean): Promise<Thread> {
+    return toThread(
+      await this.http.post(`/api/comments/${segment(commentId)}/suggestion-decision`, {
+        action: accept ? 'accept' : 'reject',
+      }),
+    );
   }
 
   async list(documentId: string, status?: ThreadStatus): Promise<Thread[]> {

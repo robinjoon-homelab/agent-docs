@@ -349,6 +349,10 @@ export function Sidebar({
           인박스
           <UnreadCount />
         </NavLink>
+        <NavLink className={navClass} to="/m">
+          <Icon name="doc" />
+          빠른 메모
+        </NavLink>
         {currentSlug === null ? null : (
           <>
             <div className="nav-section" style={{ display: 'flex', alignItems: 'center' }}>
@@ -380,6 +384,16 @@ export function Sidebar({
           <Icon name="agent" />
           에이전트 연결
         </NavLink>
+        <NavLink className={navClass} to="/settings/data">
+          <Icon name="folder" />
+          데이터
+        </NavLink>
+        {me.owner ? (
+          <NavLink className={navClass} to="/settings/webhooks">
+            <Icon name="link" />
+            Webhook
+          </NavLink>
+        ) : null}
       </div>
       <div className="sidebar-footer">
         <ActorChip actor={{ kind: 'human', login: me.login, agent: null }} />

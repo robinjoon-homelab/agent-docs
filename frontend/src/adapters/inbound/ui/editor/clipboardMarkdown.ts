@@ -32,6 +32,7 @@ function paragraphMarkdown(text: string): string {
   const indentation = /^ {0,3}/.exec(text)?.[0] ?? '';
   const body = text.slice(indentation.length);
   if (/^\d+[.)]\s/.test(body)) return indentation + body.replace(/^(\d+)([.)])/, '$1\\$2');
+  if (body === '$$') return `${indentation}\\${body}`;
   const startsBlock = /^(#{1,6}(\s|$)|>|[-*+]\s|`{3,}|~{3,}|\||<!--|(-{3,}|\*{3,}|_{3,})\s*$)/.test(body);
   return indentation + (startsBlock ? `\\${body}` : body);
 }
@@ -45,6 +46,7 @@ function listMarkdown(block: Extract<DraftBlock, { type: 'listItem' }>, baseDept
 }
 
 function codeMarkdown(block: Extract<DraftBlock, { type: 'code' }>): string {
+  if (block.displayMath) return `$$\n${block.code}\n$$`;
   const longest = Math.max(0, ...Array.from(block.code.matchAll(/`+/g), (match) => match[0].length));
   const fence = '`'.repeat(Math.max(3, longest + 1));
   return `${fence}${block.language}\n${block.code}${block.code.endsWith('\n') ? '' : '\n'}${fence}`;

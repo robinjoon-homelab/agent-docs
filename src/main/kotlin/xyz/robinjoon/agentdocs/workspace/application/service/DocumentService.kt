@@ -2,12 +2,14 @@ package xyz.robinjoon.agentdocs.workspace.application.service
 
 import org.springframework.transaction.annotation.Transactional
 import xyz.robinjoon.agentdocs.application.model.ActivitySubject
+import xyz.robinjoon.agentdocs.workspace.application.model.BlockRestore
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
+import xyz.robinjoon.agentdocs.workspace.application.model.RevisionLabel
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceReference
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
@@ -37,11 +39,13 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.DocumentEditor
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.BlockDiff
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.BlockRestoration
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.ChangeOrigin
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.ChangeSummary
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.Revision
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionChange
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionName
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentThread
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
@@ -58,7 +62,7 @@ class DocumentService(
     private val journal: WriteJournal,
 ) : DocumentUseCase {
     private val tree = DocumentTree(documents, journal)
-    private val pending = PendingEdits(documents)
+    private val pending = PendingEdits(documents, journal)
 
     @Transactional
     override fun create(
@@ -74,8 +78,9 @@ class DocumentService(
         val now = journal.now()
         val header = DocumentHeader(target.id, draft.path, draft.title.trim(), draft.properties)
         val document = Document.create(DocumentId(UUID.randomUUID()), header, draft.blocks, now)
-        val change = RevisionChange.of(originOf(context), context.summary ?: "문서 생성", document.blocks.map { it.id }, now)
+        val change = RevisionChange.of(originOf(context, target.id), context.summary ?: "문서 생성", document.blocks.map { it.id }, now)
         val saved = documents.add(document, Revision.of(document, change))
+        journal.confirmed(saved, change)
         journal.record(context, "document.created", subjectOf(saved), "${saved.header.title}: ${change.summary}")
         val written =
             DocumentWrite(
@@ -114,6 +119,7 @@ class DocumentService(
         journal.replayed(context, EDIT)?.let { return replay(context.access, it) }
         val document = lockForEdit(context.access, id)
         val thread = answering?.let { lockThreadOf(document, it) }
+        thread?.requireAvailable(context.access.actor, journal.now())
         val result =
             write(context, document, Content(document.header, DocumentEditor.apply(document.blocks, operations)), WriteMode.EDIT)
         if (thread != null && !result.unchanged) linkAnswer(context, thread, result)
@@ -212,6 +218,63 @@ class DocumentService(
     }
 
     @Transactional
+    override fun nameRevision(
+        context: WriteContext,
+        id: DocumentId,
+        revision: Int,
+        name: String,
+    ): RevisionLabel {
+        val recorded = journal.replayed(context, LABEL)
+        val document = lockForEdit(context.access, recorded?.let { DocumentId(it.target) } ?: id)
+        if (recorded != null) {
+            if (recorded.state == OperationResultState.REMOVED) throw ResultRemovedException(recorded)
+            return recorded.revisionLabel ?: throw LegacyOperationException(recorded)
+        }
+        val target = revisions.find(id, revision) ?: throw RevisionNotFoundException("$id rev $revision")
+        val normalized =
+            RevisionName
+                .normalize(name)
+        if (target.name != normalized) {
+            documents.nameRevision(id, revision, normalized)
+            journal.record(
+                context,
+                "revision.named",
+                ActivitySubject(
+                    document.spaceId.value,
+                    document.id.value,
+                    null,
+                    revision,
+                ),
+                "rev $revision 이름 변경",
+            )
+        }
+        val label =
+            RevisionLabel(id, revision, normalized)
+        journal.remember(context, OperationRecord(LABEL, id.value, revision, state = OperationResultState.AVAILABLE, revisionLabel = label))
+        return label
+    }
+
+    @Transactional
+    override fun restoreBlock(
+        context: WriteContext,
+        id: DocumentId,
+        request: BlockRestore,
+    ): DocumentWrite {
+        journal.replayed(context, RESTORE_BLOCK)?.let { return replay(context.access, it) }
+        val document = lockForEdit(context.access, id)
+        requireVersion(document, request.baseVersion)
+        val target = revisions.find(id, request.revision) ?: throw RevisionNotFoundException("$id rev ${request.revision}")
+        val blocks =
+            BlockRestoration.restore(
+                document.blocks,
+                target.content.blocks,
+                request.blockId,
+            )
+        val restoring = context.copy(summary = context.summary ?: "rev ${request.revision} 블록 ${request.blockId} 복원")
+        return remember(context, RESTORE_BLOCK, write(restoring, document, Content(document.header, blocks), WriteMode.RESTORE))
+    }
+
+    @Transactional
     override fun purgeExpiredTrash(): Int {
         val cutoff = journal.now().minus(trashRetention)
         val expired = documents.trashedBefore(cutoff)
@@ -246,8 +309,16 @@ class DocumentService(
         now: Instant,
     ): DocumentWrite {
         val moved = transition.apply(pending.confirm(document), now) ?: return unchanged(document)
-        val change = RevisionChange.of(originOf(context), transition.summary, emptyList(), now).withKind(RevisionKind.TRANSITION)
+        val change =
+            RevisionChange
+                .of(
+                    originOf(context, document.spaceId),
+                    transition.summary,
+                    emptyList(),
+                    now,
+                ).withKind(RevisionKind.TRANSITION)
         val saved = documents.update(moved, Revision.of(moved, change), amended = false)
+        journal.confirmed(saved, change)
         journal.record(context, transition.kind, subjectOf(saved), "${saved.header.title}: ${transition.summary}")
         return DocumentWrite(saved, saved.revision, emptyList(), amended = false, unchanged = false)
     }
@@ -271,8 +342,9 @@ class DocumentService(
         val revised = current.revise(next.header, next.blocks, now)
         val summary =
             context.summary ?: ChangeSummary.of(document.header, next.header, changes, BlockDiff.reordered(document.blocks, next.blocks))
-        val change = RevisionChange.of(originOf(context), summary, changes.map { it.blockId }, now).withKind(mode.kind)
+        val change = RevisionChange.of(originOf(context, document.spaceId), summary, changes.map { it.blockId }, now).withKind(mode.kind)
         val saved = documents.update(revised, Revision.of(revised, change), amended = false)
+        journal.confirmed(saved, change)
         journal.record(context, "document.revised", subjectOf(saved), "${saved.header.title}: ${change.summary}")
         return DocumentWrite(saved, saved.revision, change.changedBlocks, amended = false, unchanged = false)
     }
@@ -288,7 +360,7 @@ class DocumentService(
         val before = revisions.find(document.id, document.revision)
         val changes = BlockDiff.between(before?.content?.blocks.orEmpty(), next.blocks)
         val summary = context.summary ?: ChangeSummary.of(document.header, next.header, changes, false)
-        val incoming = RevisionChange.of(originOf(context), summary, changes.map { it.blockId }, now)
+        val incoming = RevisionChange.of(originOf(context, document.spaceId), summary, changes.map { it.blockId }, now)
         val change = latest?.change?.amendedWith(incoming, summary) ?: incoming
         val revision = Revision.of(edited, change).copy(number = document.revision + 1)
         val saved = documents.savePending(edited, revision)
@@ -394,18 +466,24 @@ class DocumentService(
     private fun replay(
         access: Access,
         record: OperationRecord,
-    ): DocumentWrite {
-        val id = DocumentId(record.target)
-        val document = documents.findById(id)?.takeIf { access.sees(it.spaceId) } ?: throw DocumentNotFoundException(id)
-        Permissions.require(access, document.spaceId, Permission.EDIT, "editing a document")
-        if (record.state == OperationResultState.REMOVED) throw ResultRemovedException(record)
-        return record.documentWrite ?: throw LegacyOperationException(record)
-    }
+    ): DocumentWrite = DocumentReplay(documents).result(access, record)
 
     private fun unchanged(document: Document): DocumentWrite =
         DocumentWrite(document, document.revision, emptyList(), amended = false, unchanged = true)
 
-    private fun originOf(context: WriteContext): ChangeOrigin = ChangeOrigin(context.access.actor, context.source)
+    private fun originOf(
+        context: WriteContext,
+        spaceId: SpaceId,
+    ): ChangeOrigin {
+        val references =
+            if (context.codeReferences.isEmpty()) {
+                emptyList()
+            } else {
+                val space = spaces.findById(spaceId) ?: throw DocumentNotFoundException(spaceId)
+                CodeReferences.resolve(context.codeReferences, space.profile.links)
+            }
+        return ChangeOrigin(context.access.actor, context.source, references, context.importProvenance)
+    }
 
     private fun subjectOf(document: Document): ActivitySubject =
         ActivitySubject(document.spaceId.value, document.id.value, null, document.revision)
@@ -420,6 +498,8 @@ class DocumentService(
         const val SAVE = "document.save"
         const val EDIT = "document.edit"
         const val HEADER = "document.header"
+        const val LABEL = "revision.name"
+        const val RESTORE_BLOCK = "document.restore_block"
         const val RESTORE = "document.restore"
         const val PURGE = "document.purge"
         const val FINALIZE = "document.finalize"

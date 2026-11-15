@@ -25,13 +25,16 @@ function MetaInput({
   placeholder,
   disabled,
   onCommit,
+  onInput,
 }: {
   label: string;
   value: string;
   placeholder: string;
   disabled: boolean;
   onCommit: (value: string) => void;
+  onInput: (value: string) => void;
 }) {
+  const dirty = useRef(false);
   const [draft, setDraft] = useState(value);
   const [source, setSource] = useState(value);
   if (source !== value) {
@@ -46,9 +49,16 @@ function MetaInput({
         value={draft}
         placeholder={placeholder}
         disabled={disabled}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => {
+          dirty.current = true;
+          setDraft(event.target.value);
+          onInput(event.target.value);
+        }}
         onBlur={() => {
-          if (draft !== value) onCommit(draft);
+          if (dirty.current) {
+            dirty.current = false;
+            onCommit(draft);
+          }
         }}
         onKeyDown={(event) => {
           if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
@@ -65,6 +75,9 @@ export function DocumentHeader({
   state,
   editable,
   onPatch,
+  onInput,
+  onTransfer,
+  onCancelInput,
   onTrash,
   onRetrySave,
 }: {
@@ -73,6 +86,9 @@ export function DocumentHeader({
   state: EditorSessionState;
   editable: boolean;
   onPatch: (patch: MetaPatch) => void;
+  onInput: (patch: MetaPatch) => void;
+  onTransfer: () => void;
+  onCancelInput: (key: keyof MetaPatch) => void;
   onTrash: () => void;
   onRetrySave: () => void;
 }) {
@@ -89,7 +105,7 @@ export function DocumentHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const saveTitle = useDebouncedCallback((value: string) => {
-    if (value.trim() === '' || value.trim() === meta.title) return;
+    if (value.trim() === '') return;
     setSentTitle(value.trim());
     onPatch({ title: value.trim() });
   }, 800);
@@ -138,7 +154,14 @@ export function DocumentHeader({
           )}
         </nav>
         <div className="doc-topbar-actions">
-          <StatusSelect value={meta.status} disabled={!editable} onChange={(status) => onPatch({ status })} />
+          <StatusSelect
+            value={meta.status}
+            disabled={!editable}
+            onChange={(status) => {
+              onInput({ status });
+              onPatch({ status });
+            }}
+          />
           <span className={`save-state save-${state.status}`} title={state.errorMessage ?? undefined}>
             rev {state.revision} · {SAVE_LABEL[state.status]}
           </span>
@@ -184,6 +207,18 @@ export function DocumentHeader({
                   <button
                     type="button"
                     role="menuitem"
+                    className="menu-item"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      saveTitle.flush();
+                      onTransfer();
+                    }}
+                  >
+                    다른 스페이스로 이사
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
                     className="menu-item danger"
                     onClick={() => {
                       setMenuOpen(false);
@@ -210,6 +245,7 @@ export function DocumentHeader({
         readOnly={!editable}
         onChange={(event) => {
           setTitle(event.target.value);
+          onInput({ title: event.target.value });
           saveTitle.call(event.target.value);
         }}
         onBlur={() => saveTitle.flush()}
@@ -220,6 +256,7 @@ export function DocumentHeader({
           value={meta.tags.join(', ')}
           placeholder="쉼표로 구분"
           disabled={!editable}
+          onInput={(value) => onInput({ tags: parseTags(value) })}
           onCommit={(value) => onPatch({ tags: parseTags(value) })}
         />
         <MetaInput
@@ -227,6 +264,7 @@ export function DocumentHeader({
           value={meta.assignee ?? ''}
           placeholder="GitHub 로그인"
           disabled={!editable}
+          onInput={(value) => onInput({ assignee: value.trim().replace(/^@/, '') || null })}
           onCommit={(value) =>
             onPatch({
               assignee: value.trim().replace(/^@/, '') === '' ? null : value.trim().replace(/^@/, ''),
@@ -238,7 +276,11 @@ export function DocumentHeader({
         <PathDialog
           path={meta.path}
           onClose={() => setPathOpen(false)}
-          onSave={(path) => onPatch({ path })}
+          onCancel={() => onCancelInput('path')}
+          onInput={(path) => onInput({ path })}
+          onSave={(path) => {
+            onPatch({ path });
+          }}
         />
       ) : null}
     </header>

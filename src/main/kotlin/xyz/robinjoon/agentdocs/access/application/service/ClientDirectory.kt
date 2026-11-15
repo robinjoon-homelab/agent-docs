@@ -1,5 +1,6 @@
 package xyz.robinjoon.agentdocs.access.application.service
 
+import xyz.robinjoon.agentdocs.access.application.model.ClientMetadataDocument
 import xyz.robinjoon.agentdocs.access.application.model.ClientRegistration
 import xyz.robinjoon.agentdocs.access.application.model.OAuthException
 import xyz.robinjoon.agentdocs.access.application.port.output.ClientMetadataSource
@@ -20,6 +21,7 @@ class ClientDirectory(
     private val documents: ClientMetadataSource,
     private val secrets: SecretSource,
     private val clock: Clock,
+    private val issuer: String? = null,
 ) {
     fun resolve(clientId: String): OAuthClient {
         if (!clientId.startsWith("https://")) {
@@ -27,7 +29,7 @@ class ClientDirectory(
                 ?: throw OAuthException("invalid_client", "unknown client_id")
         }
         requireDocumentUrl(clientId)
-        val document = documents.fetch(clientId)
+        val document = firstParty(clientId) ?: documents.fetch(clientId)
         if (document.clientId != clientId) throw OAuthException("invalid_client", "the metadata document names another client_id")
         requirePublic(document.tokenEndpointAuthMethod)
         val metadata = metadataOf(document.clientName ?: hostOf(clientId), document.redirectUris)
@@ -35,6 +37,12 @@ class ClientDirectory(
             clients.find(clientId)?.refreshed(metadata)
                 ?: OAuthClient.register(clientId, ClientKind.METADATA_DOCUMENT, metadata, Instant.now(clock))
         return clients.save(client)
+    }
+
+    private fun firstParty(clientId: String): ClientMetadataDocument? {
+        val ownId = issuer?.trimEnd('/')?.plus("/oauth/clients/adocs") ?: return null
+        if (clientId != ownId) return null
+        return ClientMetadataDocument(ownId, "adocs", listOf("http://127.0.0.1/callback"), "none")
     }
 
     fun register(registration: ClientRegistration): OAuthClient {

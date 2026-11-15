@@ -18,6 +18,7 @@ import {
 import { blocksToDoc, tableFromJSON, tableToJSON } from './convert';
 import type { LocatedBlock } from './positions';
 import { blockAtPos, cellAt, findBlock } from './positions';
+import { restoreSelection } from './restoreSelection';
 
 /*
  * Editor commands that keep block ids stable: converting a block changes its type but never its id,
@@ -30,7 +31,7 @@ export type TextBlockType =
   | { readonly type: 'listItem'; readonly style: 'bullet' | 'numbered' | 'task'; readonly checked?: boolean }
   | { readonly type: 'quote' }
   | { readonly type: 'callout'; readonly kind: string }
-  | { readonly type: 'codeBlock'; readonly language: string };
+  | { readonly type: 'codeBlock'; readonly language: string; readonly displayMath?: boolean };
 
 export function currentBlock(editor: Editor): LocatedBlock | null {
   return blockAtPos(editor.state.doc, editor.state.selection.from);
@@ -225,7 +226,7 @@ function sameOrder(a: readonly Block[], b: readonly Block[]): boolean {
 /**
  * Brings the editor from `current` (its blocks as they would be saved) to `target`. When only block
  * contents differ, just those blocks are replaced, so the cursor and the blocks the user is editing
- * stay put; when blocks were added, removed or reordered the whole body is replaced.
+ * stay put. Both replacement paths restore touched selections by stable block and table cell IDs.
  * Not added to undo history: undoing must not bring back another writer's old text.
  */
 export function applyBlocks(
@@ -236,6 +237,7 @@ export function applyBlocks(
 ): void {
   const { state } = editor;
   const tr = state.tr;
+  const replaced = new Set<string>();
   if (sameOrder(current, target)) {
     const changed = target.filter((block, index) => !blocksEqual(block, current[index] as Block));
     const located = changed
@@ -246,11 +248,16 @@ export function applyBlocks(
       if (at === null) continue;
       const node = state.schema.nodeFromJSON(blocksToDoc([block], newId).content?.[0] ?? {});
       tr.replaceWith(at.pos, at.pos + at.node.nodeSize, node);
+      replaced.add(block.id);
     }
   } else {
     const doc = state.schema.nodeFromJSON(blocksToDoc(target, newId));
     tr.replaceWith(0, state.doc.content.size, doc.content);
+    state.doc.forEach((node) => {
+      if (typeof node.attrs.id === 'string') replaced.add(node.attrs.id);
+    });
   }
   if (!tr.docChanged) return;
+  restoreSelection(state, tr, replaced);
   editor.view.dispatch(tr.setMeta('addToHistory', false).setMeta('preventUpdate', true));
 }

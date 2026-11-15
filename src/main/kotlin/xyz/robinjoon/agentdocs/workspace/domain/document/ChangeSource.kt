@@ -5,6 +5,7 @@ enum class ChangeSource {
     WEB,
     MCP,
     REST,
+    CLI,
 
     // A change the application makes on its own, such as turning folders into documents when it starts.
     SYSTEM,

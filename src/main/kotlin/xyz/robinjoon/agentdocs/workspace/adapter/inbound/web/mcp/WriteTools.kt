@@ -2,7 +2,9 @@ package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp
 
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.BlockJson
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.EditJson
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.EditStatisticsRecorder
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.McpToolResult
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.RevisionMetadataJson
 import xyz.robinjoon.agentdocs.workspace.application.model.AssigneeChange
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
@@ -21,6 +23,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 
 class DocsCreateTool(
     private val documents: DocumentUseCase,
+    private val recorder: EditStatisticsRecorder,
 ) : McpTool {
     override val definition =
         ToolDefinition(
@@ -40,6 +43,10 @@ class DocsCreateTool(
                     "tags" to Schemas.strings("Tags"),
                     "assignee" to Schemas.string("GitHub login of the assignee"),
                     "summary" to Schemas.string("One-line change summary for history"),
+                    "codeReferences" to
+                        Schemas.objects(
+                            "Related code: repository (required when ambiguous), commit (full SHA), pullRequest (positive number)",
+                        ),
                     "opId" to Schemas.operationId,
                 ),
             required = listOf("space", "path", "title", "markdown"),
@@ -58,13 +65,22 @@ class DocsCreateTool(
             )
         val blocks = MarkdownReader.readBlocks(arguments.string("markdown")).map { it.block }
         val draft = DocumentDraft(DocumentPath(arguments.string("path")), arguments.string("title"), properties, blocks)
-        return WriteResults.of(documents.create(context, SpaceSlug(arguments.string("space")), draft), all = true)
+        val written =
+            documents.create(
+                RevisionMetadataJson
+                    .context(context, arguments.node),
+                SpaceSlug(arguments.string("space")),
+                draft,
+            )
+        recorder.agent(context.access, written.document.id)
+        return WriteResults.of(written, all = true)
     }
 }
 
 // The way agents change documents: small guarded operations, applied together or not at all.
 class DocsEditTool(
     private val documents: DocumentUseCase,
+    private val recorder: EditStatisticsRecorder,
 ) : McpTool {
     override val definition =
         ToolDefinition(
@@ -85,6 +101,10 @@ class DocsEditTool(
                     "operations" to Schemas.objects("Operations, applied in order"),
                     "answering" to Schemas.string("Thread id this edit answers"),
                     "summary" to Schemas.string("One-line change summary for history"),
+                    "codeReferences" to
+                        Schemas.objects(
+                            "Related code: repository (required when ambiguous), commit (full SHA), pullRequest (positive number)",
+                        ),
                     "opId" to Schemas.operationId,
                 ),
             required = listOf("document", "operations"),
@@ -98,17 +118,20 @@ class DocsEditTool(
         val answering = arguments.optionalUuid("answering")?.let(::ThreadId)
         val written =
             documents.edit(
-                context,
+                RevisionMetadataJson
+                    .context(context, arguments.node),
                 DocumentId(arguments.uuid("document")),
                 EditJson.operations(arguments.node.get("operations")),
                 answering,
             )
+        recorder.agent(context.access, written.document.id)
         return WriteResults.of(written, all = false)
     }
 }
 
 class DocsMoveTool(
     private val documents: DocumentUseCase,
+    private val recorder: EditStatisticsRecorder,
 ) : McpTool {
     override val definition =
         ToolDefinition(
@@ -128,6 +151,10 @@ class DocsMoveTool(
                     "tags" to Schemas.strings("Replace the tags"),
                     "assignee" to Schemas.string("GitHub login of the assignee; empty string clears"),
                     "baseVersion" to Schemas.integer("The content version you last read; any later change is a conflict"),
+                    "codeReferences" to
+                        Schemas.objects(
+                            "Related code: repository (required when ambiguous), commit (full SHA), pullRequest (positive number)",
+                        ),
                     "opId" to Schemas.operationId,
                 ),
             required = listOf("document", "baseVersion"),
@@ -148,7 +175,15 @@ class DocsMoveTool(
                 assignee,
                 arguments.optionalInt("baseVersion") ?: throw InvalidRequestException("docs_move needs baseVersion", READ_FIRST),
             )
-        return WriteResults.of(documents.changeHeader(context, DocumentId(arguments.uuid("document")), change), all = false)
+        val written =
+            documents.changeHeader(
+                RevisionMetadataJson
+                    .context(context, arguments.node),
+                DocumentId(arguments.uuid("document")),
+                change,
+            )
+        recorder.agent(context.access, written.document.id)
+        return WriteResults.of(written, all = false)
     }
 }
 

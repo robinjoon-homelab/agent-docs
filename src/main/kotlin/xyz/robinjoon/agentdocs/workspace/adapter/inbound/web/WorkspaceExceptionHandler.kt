@@ -40,6 +40,8 @@ import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadActionException
     assignableTypes = [
         SpaceController::class, DocumentController::class, HistoryController::class, ThreadController::class, AssetController::class,
         SearchController::class, InboxController::class, ActivityController::class,
+        DocumentTransferController::class, DocumentAssetController::class, NavigationController::class,
+        PortabilityController::class, SuggestionController::class, EditStatisticsController::class,
     ],
 )
 @Order(Ordered.HIGHEST_PRECEDENCE)

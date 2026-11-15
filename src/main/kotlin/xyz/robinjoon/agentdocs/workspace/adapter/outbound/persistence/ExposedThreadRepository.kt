@@ -14,13 +14,33 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadCriteria
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepository
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentThread
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 
 class ExposedThreadRepository : ThreadRepository {
+    override fun lockByDocuments(documents: Set<DocumentId>): List<CommentThread> {
+        if (documents.isEmpty()) return emptyList()
+        return ThreadsTable
+            .selectAll()
+            .where { ThreadsTable.documentId inList documents.map { it.value } }
+            .orderBy(ThreadsTable.id to SortOrder.ASC)
+            .forUpdate()
+            .map(ThreadRows::thread)
+    }
+
+    override fun moveDocuments(
+        documents: Set<DocumentId>,
+        space: SpaceId,
+    ) {
+        if (documents.isEmpty()) return
+        ThreadsTable.update({ ThreadsTable.documentId inList documents.map { it.value } }) { it[spaceId] = space.value }
+    }
+
     override fun add(thread: CommentThread): CommentThread {
+        DocumentAssetWriteGuard.thread(thread)
         ThreadsTable.insert {
             it[id] = thread.id.value
             it[createdAt] =
@@ -33,6 +53,7 @@ class ExposedThreadRepository : ThreadRepository {
     }
 
     override fun update(thread: CommentThread): CommentThread {
+        DocumentAssetWriteGuard.thread(thread)
         val updated = ThreadsTable.update({ ThreadsTable.id eq thread.id.value }) { ThreadRows.write(it, thread) }
         check(updated == 1) { "Thread to update does not exist: ${thread.id}" }
         ThreadRows.writeChildren(thread)
@@ -42,6 +63,11 @@ class ExposedThreadRepository : ThreadRepository {
     override fun findById(id: ThreadId): CommentThread? = selectById(id).singleOrNull()?.let(ThreadRows::thread)
 
     override fun findByIdForUpdate(id: ThreadId): CommentThread? = selectById(id).forUpdate().singleOrNull()?.let(ThreadRows::thread)
+
+    override fun findByComment(id: CommentId): CommentThread? {
+        val row = ThreadCommentsTable.select(ThreadCommentsTable.threadId).where { ThreadCommentsTable.id eq id.value }.singleOrNull()
+        return row?.let { findById(ThreadId(it[ThreadCommentsTable.threadId])) }
+    }
 
     override fun findByCommentForUpdate(id: CommentId): CommentThread? {
         val thread = ThreadCommentsTable.select(ThreadCommentsTable.threadId).where { ThreadCommentsTable.id eq id.value }.singleOrNull()

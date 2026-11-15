@@ -10,8 +10,8 @@ import org.springframework.http.MediaType
 import org.springframework.restdocs.mockmvc.RestDocumentationRequestBuilders.get
 import org.springframework.restdocs.mockmvc.RestDocumentationRequestBuilders.post
 import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
-import org.springframework.restdocs.payload.PayloadDocumentation.relaxedResponseFields
 import org.springframework.restdocs.payload.PayloadDocumentation.requestFields
+import org.springframework.restdocs.payload.PayloadDocumentation.responseFields
 import org.springframework.restdocs.payload.PayloadDocumentation.subsectionWithPath
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
@@ -51,6 +51,10 @@ import java.util.UUID
 // The SDK server and transport as McpConfig wires them, with two real tools against strict use case mocks; tool rules
 // belong to the use case tests. This test checks the JSON-RPC shapes the endpoint answers and how tool failures return.
 class McpApiDocumentationTest : RestDocsWebTest() {
+    private val spaces =
+        mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase> {
+            every { agentGuide(any(), any()) } returns null
+        }
     private val queries = mockk<DocumentQueryUseCase>()
     private val documents = mockk<DocumentUseCase>()
     private val json = JsonMapper.builder().build()
@@ -59,7 +63,12 @@ class McpApiDocumentationTest : RestDocsWebTest() {
     private val mapper = config.mcpJsonMapper(json)
     private val settings = McpSettings(setOf("https://docs.example.com"))
 
-    private val tools = listOf(DocsReadTool(queries), DocsEditTool(documents), DocsMoveTool(documents))
+    private val tools =
+        listOf(
+            DocsReadTool(queries, spaces),
+            DocsEditTool(documents, mockk(relaxed = true)),
+            DocsMoveTool(documents, mockk(relaxed = true)),
+        )
 
     // Building the server installs it as the transport's handler.
     private val transport =
@@ -87,7 +96,9 @@ class McpApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("method").description("initialize"),
                         subsectionWithPath("params").description("protocolVersion, capabilities, clientInfo"),
                     ),
-                    relaxedResponseFields(
+                    responseFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
                         fieldWithPath("result.protocolVersion")
                             .description("2025-11-25, 2025-06-18, 2025-03-26 중 요청한 버전. 지원하지 않는 버전이면 2025-11-25"),
                         fieldWithPath("result.capabilities.tools.listChanged").description("false. 도구 목록은 바뀌지 않는다"),
@@ -118,8 +129,39 @@ class McpApiDocumentationTest : RestDocsWebTest() {
             .andDo(
                 documented(
                     "mcp-tools-list",
-                    relaxedResponseFields(
+                    responseFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
                         subsectionWithPath("result.tools").description("name, title, description, inputSchema, annotations"),
+                    ),
+                ),
+            )
+    }
+
+    @Test
+    fun `agent guide follows unchanged markdown as a separate text content`() {
+        val markdown = "---\nversion: 3\n---\n\n본문\n"
+        every { queries.markdown(agentAccess, documentId, any()) } returns MarkdownChunk(document(), markdown, null, 2)
+        every { spaces.agentGuide(agentAccess, any()) } returns
+            xyz.robinjoon.agentdocs.workspace.application.model.SpaceGuide.Offered(
+                xyz.robinjoon.agentdocs.workspace.domain.document
+                    .DocumentId(UUID.randomUUID()),
+                "지침",
+                "guide",
+            )
+        call("""{"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"docs_read","arguments":{"document":"$documentId"}}}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.content[0].text").value(markdown))
+            .andExpect(jsonPath("$.result.content[1].type").value("text"))
+            .andDo(
+                documented(
+                    "mcp-tools-call-guide",
+                    responseFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
+                        fieldWithPath("result.content[].type").description("text"),
+                        fieldWithPath("result.content[].text").description("첫 항목은 원본 markdown 바이트. 다음 항목은 쓰기 전 지침 읽기 안내"),
+                        fieldWithPath("result.isError").description("false"),
                     ),
                 ),
             )
@@ -140,7 +182,9 @@ class McpApiDocumentationTest : RestDocsWebTest() {
             .andDo(
                 documented(
                     "mcp-tools-call",
-                    relaxedResponseFields(
+                    responseFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
                         fieldWithPath("result.content[].type").description("text"),
                         fieldWithPath("result.content[].text")
                             .description("모델이 읽을 결과. docs_read와 docs_history diff는 마크다운, 나머지는 JSON"),

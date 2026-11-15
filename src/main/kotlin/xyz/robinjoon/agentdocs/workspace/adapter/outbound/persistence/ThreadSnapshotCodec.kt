@@ -41,6 +41,7 @@ internal object ThreadSnapshotCodec {
             "resolvedAt" to timeline.resolvedAt?.toString(),
             "resolvedBy" to timeline.resolvedBy?.let(OperationActorSnapshotCodec::encode),
             "comments" to thread.comments.map(::comment),
+            "collaboration" to ThreadCollaborationCodec.encode(thread.collaboration),
             "attached" to (attached != null),
             "start" to attached?.start,
             "end" to attached?.end,
@@ -78,8 +79,19 @@ internal object ThreadSnapshotCodec {
                 node.path("linked").values().map { it.intValue() },
                 timeline,
             )
-        return CommentThread.restore(ThreadId(node.uuid("id")), location, progress, node.path("comments").values().map(::readComment))
+        return CommentThread
+            .restore(
+                ThreadId(node.uuid("id")),
+                location,
+                progress,
+                node.path("comments").values().map(::readComment),
+            ).restoreCollaboration(readCollaboration(node))
     }
+
+    private fun readCollaboration(node: JsonNode) =
+        node.fieldNode("collaboration")?.let(ThreadCollaborationCodec::decode)
+            ?: xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadCollaboration
+                .empty()
 
     private fun readResolution(node: JsonNode): AnchorResolution {
         if (!node.path("attached").booleanValue()) return AnchorResolution.Detached
@@ -102,7 +114,7 @@ internal object ThreadSnapshotCodec {
         return Comment(CommentId(node.uuid("id")), OperationActorSnapshotCodec.decode(node.path("author")), node.text("body"), history)
     }
 
-    private fun anchor(anchor: Anchor): Map<String, Any?> =
+    fun anchor(anchor: Anchor): Map<String, Any?> =
         when (anchor) {
             Anchor.Document -> {
                 mapOf("kind" to "document")
@@ -133,7 +145,7 @@ internal object ThreadSnapshotCodec {
             }
         }
 
-    private fun readAnchor(node: JsonNode): Anchor =
+    fun readAnchor(node: JsonNode): Anchor =
         when (node.text("kind")) {
             "document" -> {
                 Anchor.Document

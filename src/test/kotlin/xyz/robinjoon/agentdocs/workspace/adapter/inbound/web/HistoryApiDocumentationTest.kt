@@ -53,7 +53,7 @@ import java.util.UUID
 class HistoryApiDocumentationTest : RestDocsWebTest() {
     private val queries = mockk<DocumentQueryUseCase>()
     private val documents = mockk<DocumentUseCase>()
-    private val mockMvc = restDocsMockMvc(HistoryController(queries, documents), WorkspaceExceptionHandler())
+    private val mockMvc = restDocsMockMvc(HistoryController(queries, documents, mockk(relaxed = true)), WorkspaceExceptionHandler())
     private val change =
         RevisionChange.restore(
             ChangeOrigin(agentActor, ChangeSource.MCP),
@@ -83,9 +83,11 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
                     ),
                     responseFields(
                         fieldWithPath("[].revision").description("리비전 번호"),
+                        *WebFixtures.revisionMetadataFields("[]."),
+                        fieldWithPath("[].name").type(JsonFieldType.STRING).optional().description("내용과 별도로 붙인 이름, 없으면 null"),
                         fieldWithPath("[].title").description("그 리비전의 제목"),
                         *actorFields("[].actor"),
-                        fieldWithPath("[].source").description("web, mcp, rest, system(앱이 스스로 바꾼 것)"),
+                        fieldWithPath("[].source").description("web, mcp, rest, cli, system(앱이 스스로 바꾼 것)"),
                         fieldWithPath("[].summary").description("변경 요약. 비워 보내면 '블록 1개 수정'처럼 채운다"),
                         fieldWithPath("[].changedBlockIds").description("바뀐 블록 ID"),
                         fieldWithPath("[].createdAt").description("리비전이 생긴 시각"),
@@ -110,6 +112,8 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
                     pathParameters(parameterWithName("id").description("문서 ID"), parameterWithName("number").description("리비전 번호")),
                     responseFields(
                         fieldWithPath("revision").description("리비전 번호"),
+                        *WebFixtures.revisionMetadataFields(""),
+                        fieldWithPath("name").type(JsonFieldType.STRING).optional().description("내용과 별도로 붙인 이름, 없으면 null"),
                         fieldWithPath("version").description("이 리비전이 확정한 내용 버전"),
                         fieldWithPath("title").description("제목"),
                         fieldWithPath("path").description("경로"),
@@ -195,6 +199,7 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
                 documented(
                     "history-restore",
                     requestFields(
+                        *WebFixtures.writeMetadataFields(),
                         fieldWithPath("revision").description("되돌릴 리비전. 이력은 되감지 않고 새 리비전을 만든다"),
                         fieldWithPath(
                             "baseVersion",

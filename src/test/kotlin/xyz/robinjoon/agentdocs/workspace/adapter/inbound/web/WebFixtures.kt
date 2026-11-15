@@ -82,6 +82,25 @@ object WebFixtures {
             DocumentLifecycle(revision, at.minusSeconds(3_600), at, null),
         )
 
+    val inputTraceJson =
+        """
+        {
+          "batchId":"22222222-2222-4222-8222-222222222222",
+          "traces":[
+            {
+              "tabId":"11111111-1111-4111-8111-111111111111",
+              "batchId":"33333333-3333-4333-8333-333333333333",
+              "intervals":[{"firstInputAt":"2026-10-18T08:59:00Z","lastInputAt":"2026-10-18T08:59:10Z"}]
+            },
+            {
+              "tabId":"44444444-4444-4444-8444-444444444444",
+              "batchId":"55555555-5555-4555-8555-555555555555",
+              "intervals":[{"firstInputAt":"2026-10-18T09:02:00Z","lastInputAt":"2026-10-18T09:02:10Z"}]
+            }
+          ]
+        }
+        """.trimIndent()
+
     fun actorFields(prefix: String): Array<FieldDescriptor> =
         arrayOf(
             fieldWithPath("$prefix.kind").type(JsonFieldType.STRING).description("human 또는 agent"),
@@ -129,6 +148,103 @@ object WebFixtures {
             fieldWithPath("${prefix}createdAt").description("생성 시각"),
             fieldWithPath("${prefix}updatedAt").description("마지막 변경 시각"),
             fieldWithPath("${prefix}trashedAt").type(JsonFieldType.STRING).optional().description("휴지통에 넣은 시각. 휴지통 밖이면 null"),
+        )
+
+    fun guideFields(prefix: String): Array<FieldDescriptor> =
+        arrayOf(
+            fieldWithPath(prefix).type(JsonFieldType.OBJECT).optional().description("스페이스 에이전트 지침. 없거나 현재 읽는 문서 자신이면 null. 쓰기 전에 읽는다"),
+            fieldWithPath("$prefix.documentId").type(JsonFieldType.STRING).optional().description("지침 문서 ID"),
+            fieldWithPath("$prefix.title").type(JsonFieldType.STRING).optional().description("지침 제목"),
+            fieldWithPath("$prefix.path").type(JsonFieldType.STRING).optional().description("지침 경로"),
+        )
+
+    fun revisionMetadataFields(prefix: String): Array<FieldDescriptor> =
+        arrayOf(
+            fieldWithPath("${prefix}codeReferences").type(JsonFieldType.ARRAY).description("관련 코드 참조"),
+            fieldWithPath("${prefix}codeReferences[].repository").type(JsonFieldType.STRING).optional().description("정규화한 owner/repo"),
+            fieldWithPath(
+                "${prefix}codeReferences[].commit",
+            ).type(JsonFieldType.STRING).optional().description("전체 40자리 SHA, PR만 있으면 null"),
+            fieldWithPath(
+                "${prefix}codeReferences[].pullRequest",
+            ).type(JsonFieldType.NUMBER).optional().description("양의 PR 번호, commit만 있으면 null"),
+            fieldWithPath(
+                "${prefix}codeReferences[].commitUrl",
+            ).type(JsonFieldType.STRING).optional().description("서버가 만든 GitHub commit URL"),
+            fieldWithPath(
+                "${prefix}codeReferences[].pullRequestUrl",
+            ).type(JsonFieldType.STRING).optional().description("서버가 만든 GitHub PR URL"),
+            fieldWithPath("${prefix}importProvenance").type(JsonFieldType.OBJECT).optional().description("가져오기 출처, 없으면 null"),
+            fieldWithPath("${prefix}importProvenance.tool").type(JsonFieldType.STRING).optional().description("원본 도구, 최대 100자"),
+            fieldWithPath(
+                "${prefix}importProvenance.originalPath",
+            ).type(JsonFieldType.STRING).optional().description("원래 상대 경로, 최대 1000자. 절대·상위 경로 불가"),
+        )
+
+    fun writeMetadataFields(): Array<FieldDescriptor> =
+        arrayOf(
+            fieldWithPath("inputTrace").type(JsonFieldType.OBJECT).optional().description("실제 사람 입력 구간. 검증·통계 실패는 문서 성공 응답에 영향을 주지 않는다"),
+            fieldWithPath(
+                "inputTrace.tabId",
+            ).type(JsonFieldType.STRING).optional().description("legacy 단일 형식의 전경 편집 세그먼트 UUID. 새 형식은 traces에 보낸다"),
+            fieldWithPath(
+                "inputTrace.batchId",
+            ).type(JsonFieldType.STRING).optional().description("전체 성공 version의 안정 배치 UUID. legacy 단일 형식에서는 child batchId도 겸한다"),
+            fieldWithPath(
+                "inputTrace.intervals",
+            ).type(JsonFieldType.ARRAY).optional().description("legacy 단일 형식의 필수 구간 목록. 새 형식은 traces[].intervals에 보낸다"),
+            fieldWithPath(
+                "inputTrace.intervals[].firstInputAt",
+            ).type(JsonFieldType.STRING).optional().description("구간 첫 실제 입력 ISO-8601 시각"),
+            fieldWithPath("inputTrace.intervals[].lastInputAt").type(JsonFieldType.STRING).optional().description("마지막 실제 입력 ISO-8601 시각"),
+            fieldWithPath("inputTrace.traces")
+                .type(JsonFieldType.ARRAY)
+                .optional()
+                .description("새 형식의 foreground 입력 trace 목록. 한 version과 전체 batchId로 원자 채택, 빈 목록 불가"),
+            fieldWithPath("inputTrace.traces[].tabId")
+                .type(JsonFieldType.STRING)
+                .optional()
+                .description("child 필수 전경 편집 세그먼트 UUID"),
+            fieldWithPath("inputTrace.traces[].batchId")
+                .type(JsonFieldType.STRING)
+                .optional()
+                .description("child 필수 snapshot 안정 UUID"),
+            fieldWithPath("inputTrace.traces[].intervals")
+                .type(JsonFieldType.ARRAY)
+                .optional()
+                .description("child 필수 실제 입력 구간 목록. 120초 이상 공백은 별도 구간"),
+            fieldWithPath("inputTrace.traces[].intervals[].firstInputAt")
+                .type(JsonFieldType.STRING)
+                .optional()
+                .description("구간 첫 실제 입력 ISO-8601 시각"),
+            fieldWithPath("inputTrace.traces[].intervals[].lastInputAt")
+                .type(JsonFieldType.STRING)
+                .optional()
+                .description("구간 마지막 실제 입력 ISO-8601 시각"),
+            fieldWithPath("inputTrace.traces[].firstInputAt")
+                .type(JsonFieldType.STRING)
+                .optional()
+                .description("호환 파생값. 서버는 intervals를 사용한다"),
+            fieldWithPath("inputTrace.traces[].lastInputAt")
+                .type(JsonFieldType.STRING)
+                .optional()
+                .description("호환 파생값. 서버는 intervals를 사용한다"),
+            fieldWithPath("inputTrace.firstInputAt")
+                .type(JsonFieldType.STRING)
+                .optional()
+                .description("legacy 호환 파생값. intervals를 대신하지 않는다"),
+            fieldWithPath("inputTrace.lastInputAt")
+                .type(JsonFieldType.STRING)
+                .optional()
+                .description("legacy 호환 파생값. intervals를 대신하지 않는다"),
+            fieldWithPath(
+                "codeReferences",
+            ).type(JsonFieldType.ARRAY).optional().description("관련 코드 참조, 최대 20개. 각 참조에 commit 또는 pullRequest 필요"),
+            fieldWithPath(
+                "codeReferences[].repository",
+            ).type(JsonFieldType.STRING).optional().description("owner/repo. 연결 레포가 정확히 하나일 때만 생략 가능"),
+            fieldWithPath("codeReferences[].commit").type(JsonFieldType.STRING).optional().description("전체 40자리 commit SHA"),
+            fieldWithPath("codeReferences[].pullRequest").type(JsonFieldType.NUMBER).optional().description("양의 PR 번호. 임의 URL은 받지 않는다"),
         )
 
     fun blocksSubsection(path: String): FieldDescriptor =

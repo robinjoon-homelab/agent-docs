@@ -9,10 +9,13 @@ import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestExcepti
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationKey
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
+import xyz.robinjoon.agentdocs.workspace.application.model.WorkspaceActivity
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.output.OperationStore
 import xyz.robinjoon.agentdocs.workspace.domain.Actor
+import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionChange
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
 import java.time.Clock
 import java.time.Instant
@@ -46,7 +49,13 @@ class WriteJournal(
         record: OperationRecord,
     ) {
         val remembered =
-            if (record.documentWrite != null || record.threadView != null) record.copy(state = OperationResultState.AVAILABLE) else record
+            if (record.documentWrite != null || record.threadView != null ||
+                record.revisionLabel != null
+            ) {
+                record.copy(state = OperationResultState.AVAILABLE)
+            } else {
+                record
+            }
         keyOf(context)?.let { operations.save(it, remembered, now()) }
     }
 
@@ -60,7 +69,23 @@ class WriteJournal(
         subject: ActivitySubject,
         summary: String,
     ) {
-        activity.record(ActivityRecord(kind, actorOf(context.access.actor), subject, summary.take(SUMMARY_LENGTH), now()))
+        record(context, WorkspaceActivity(kind, subject, summary))
+    }
+
+    fun record(
+        context: WriteContext,
+        event: WorkspaceActivity,
+    ) {
+        activity.record(
+            ActivityRecord(
+                event.kind,
+                actorOf(context.access.actor),
+                event.subject,
+                event.summary.take(SUMMARY_LENGTH),
+                now(),
+                event.createdComment,
+            ),
+        )
     }
 
     fun recordBySystem(
@@ -69,6 +94,22 @@ class WriteJournal(
         summary: String,
     ) {
         activity.record(ActivityRecord(kind, ActivityActor.system, subject, summary.take(SUMMARY_LENGTH), now()))
+    }
+
+    fun confirmed(
+        document: Document,
+        change: RevisionChange,
+    ) {
+        val subject = ActivitySubject(document.spaceId.value, document.id.value, null, document.revision)
+        activity.record(
+            ActivityRecord(
+                "document.revision_confirmed",
+                actorOf(change.origin.actor),
+                subject,
+                change.summary.take(SUMMARY_LENGTH),
+                now(),
+            ),
+        )
     }
 
     private fun keyOf(context: WriteContext): OperationKey? {

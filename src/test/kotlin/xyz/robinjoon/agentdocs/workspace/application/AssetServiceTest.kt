@@ -83,12 +83,12 @@ class AssetServiceTest {
     }
 
     @Test
-    fun `bytes that are not a supported image are refused`() {
+    fun `a claimed PDF without its signature is rejected`() {
         every { verifier.verify(png) } returns null
 
         assertThatThrownBy { service.upload(context(ownerAccess), space.slug, UploadedFile("notes.pdf", "application/pdf", png)) }
             .isInstanceOf(InvalidAssetException::class.java)
-            .hasMessage("only PNG, JPEG, GIF, WebP, and SVG images can be uploaded")
+            .hasMessage("PDF content must start with %PDF-")
     }
 
     @Test

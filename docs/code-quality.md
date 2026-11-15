@@ -44,10 +44,17 @@
 - `public`·`protected` 프로퍼티, 함수 인자·반환값·확장 수신자에 `MutableCollection`·`MutableList`·`MutableMap`·`MutableSet` 등 변경 가능한 컬렉션을 노출하지 않는다. 추론 타입·중첩 제네릭·상속·타입 매개변수 상한·공개 타입 별칭·클래스·인터페이스 선언과 `ArrayList`·사용자 정의 하위 타입으로 감춘 경우도 실패한다. `private`·`internal` 구현은 허용하되 외부 공유를 리뷰한다.
 - 외부에서 받은 컬렉션을 보관하면 방어적 복사와 요소의 변경 가능성을 확인한다.
 - 운영 코드에서 `TODO()`, `NotImplementedError`, `printStackTrace`, 직접 표준 출력을 쓰지 않는다. Kotlin과 Java `PrintStream`의 `print`·`println`·`printf`·`write` 사용도 확인한다. 로거에 맥락을 남기고 민감한 값은 출력하지 않는다.
-- `System.exit`, `Runtime.exit`·`halt`, `exitProcess`를 쓰지 않고 Spring 정상 종료 흐름을 쓴다.
+- 서버는 `System.exit`, `Runtime.exit`·`halt`, `exitProcess`를 쓰지 않고 Spring 정상 종료 흐름을 쓴다. CLI의 출력·종료는 아래 정확한 프로토콜 경계에만 허용한다.
 - 빈 `catch`, 원인을 잃는 예외 변환, 무분별한 `catch (Exception)`·`catch (Throwable)`, `finally` 안의 반환을 쓰지 않는다. HTTP 최종 오류 처리는 [허용 예외](#허용-예외)의 위치에만 둔다.
 - 예외 변수를 `ignored`로 바꾸거나 `InterruptedException`을 삼키지 않는다. 재전파하거나 필요한 정리 후 중단 상태를 복구한다. 로그만 남기고 끝내지 않는다.
 - `else`, `when`, `for`, 조기 `return`, 필요한 `var`·`as`, 도메인 `data class`의 비즈니스 함수, `runCatching`을 일괄 금지하지 않는다. 성공할 수 없는 캐스트는 쓰지 않고, `runCatching`은 잡는 실패 범위와 인터럽트 전파를 확인한다.
+
+## CLI 콘솔 프로토콜 경계
+
+- `ConsoleProtocolBoundary`는 `java.io.PrintStream.println`·`kotlin.system.exitProcess` 호출과 메서드 참조를 타입 분석으로 금지한다. 재정의된 `println`도 검사한다. 나머지 금지 호출은 `ForbiddenMethodCall`에 유지한다.
+- CLI `cli/src/main/kotlin/xyz/robinjoon/adocs/adapter/inbound/console/Console.kt`의 `xyz.robinjoon.adocs.adapter.inbound.console.Console`에 직접 선언한 단일 인자 함수만 예외다. `output(String)`은 실제 `System.out.println`, `error(String)`·`instruction(String)`은 실제 `System.err.println`, `finish(Int)`는 `kotlin.system.exitProcess`를 직접 호출할 수 있다. JSON·일반 출력, 오류·인증 안내, 오류 종료코드라는 외부 CLI 계약을 위한 경계다.
+- 다른 함수·오버로드·확장 함수·수신자 별칭 변수·다른 스트림·지역 함수·DSL·람다·메서드 참조에는 예외가 없다. `MainKt.main`과 서버 코드도 직접 출력·종료 금지를 그대로 적용한다. Kotlin `print`·`println`, Java `print`, `System.exit`·`Runtime.exit`·`halt`는 이 경계에서도 기존 금지를 유지한다.
+- 이 예외는 억제로 적용하지 않는다. 새 규칙도 `ForbiddenSuppress` 목록에 포함한다.
 
 ## 예외와 억제
 

@@ -47,6 +47,37 @@ class WebSessionServiceTest {
         )
 
     @Test
+    fun `read only session authentication returns the current role at a cookie renewal boundary`() {
+        every { sessions.findByTokenHash(TokenHash.of("adt_w_yesterday")) } returns session("adt_w_yesterday", Duration.ofDays(2))
+        every { users.findById(UserId(ownerId)) } returns owner
+        val caller = requireNotNull(service().currentCaller("adt_w_yesterday"))
+        assertThat(caller.login).isEqualTo("robinjoon")
+        assertThat(caller.scope).isEqualTo(CallerScope.OWNER)
+        assertThat(service(Allowlist("new-owner", setOf("robinjoon"))).currentCaller("adt_w_yesterday")?.owner).isFalse()
+    }
+
+    @Test
+    fun `read only authentication rejects expired missing foreign and removed sessions`() {
+        every { sessions.findByTokenHash(TokenHash.of("adt_w_unknown")) } returns null
+        every { sessions.findByTokenHash(TokenHash.of("adt_w_expired")) } returns session("adt_w_expired", Duration.ofDays(30))
+        every { sessions.findByTokenHash(TokenHash.of("adt_w_removed")) } returns session("adt_w_removed", Duration.ofHours(1))
+        every { users.findById(UserId(ownerId)) } returns owner
+        assertThat(service().currentCaller("adt_w_unknown")).isNull()
+        assertThat(service().currentCaller("adt_a_agent")).isNull()
+        assertThat(service().currentCaller("adt_w_expired")).isNull()
+        assertThat(service(Allowlist("other-owner", emptySet())).currentCaller("adt_w_removed")).isNull()
+    }
+
+    @Test
+    fun `read only authentication preserves storage failure causes`() {
+        val failure = org.springframework.dao.DataAccessResourceFailureException("unavailable")
+        every { sessions.findByTokenHash(TokenHash.of("adt_w_token")) } throws failure
+        org.assertj.core.api.Assertions
+            .assertThatThrownBy { service().currentCaller("adt_w_token") }
+            .isSameAs(failure)
+    }
+
+    @Test
     fun `a new sign-in hands the browser a token marked as a web sign-in`() {
         every { secrets.next() } returns "random"
         every { sessions.deleteUnusedBefore(any()) } just runs

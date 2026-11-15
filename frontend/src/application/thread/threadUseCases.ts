@@ -1,5 +1,5 @@
 import type { DocumentSummary } from '../../domain/document/document';
-import type { Anchor, Comment, Thread } from '../../domain/thread/thread';
+import type { Anchor, Comment, Thread, SuggestionInput } from '../../domain/thread/thread';
 import { withReply } from '../../domain/thread/thread';
 import type { Result } from '../shared/result';
 import { failure, ok } from '../shared/result';
@@ -10,6 +10,11 @@ export type CommentError = 'body_required';
 export type OpenThreadSummary = { readonly document: DocumentSummary; readonly threads: readonly Thread[] };
 
 export interface ThreadUseCases {
+  react(threadId: string, emoji: string, add: boolean): Promise<Thread>;
+  claim(threadId: string, action: 'acquire' | 'renew' | 'release'): Promise<Thread>;
+  suggest(threadId: string, input: SuggestionInput): Promise<Thread>;
+  decide(commentId: string, accept: boolean): Promise<Thread>;
+
   list(documentId: string): Promise<Thread[]>;
   start(documentId: string, anchor: Anchor, body: string): Promise<Result<Thread, CommentError>>;
   reply(thread: Thread, body: string): Promise<Result<Thread, CommentError>>;
@@ -32,6 +37,10 @@ function replaceComment(thread: Thread, comment: Comment): Thread {
 
 export function createThreadUseCases(gateway: ThreadGateway): ThreadUseCases {
   return {
+    react: (threadId, emoji, add) => gateway.react(threadId, emoji, add),
+    claim: (threadId, action) => gateway.claim(threadId, action),
+    suggest: (threadId, input) => gateway.suggest(threadId, input),
+    decide: (commentId, accept) => gateway.decide(commentId, accept),
     list: (documentId) => gateway.list(documentId),
     async start(documentId, anchor, rawBody) {
       const body = rawBody.trim();
@@ -55,8 +64,9 @@ export function createThreadUseCases(gateway: ThreadGateway): ThreadUseCases {
       await gateway.deleteComment(commentId);
       return {
         ...thread,
+        suggestions: thread.suggestions?.filter((s) => s.commentId !== commentId),
         comments: thread.comments.map((comment) =>
-          comment.id === commentId ? { ...comment, deleted: true } : comment,
+          comment.id === commentId ? { ...comment, body: '', deleted: true } : comment,
         ),
       };
     },
