@@ -24,12 +24,18 @@ class DocumentTest {
     }
 
     @Test
-    fun `a revision counts up and an amendment keeps the number`() {
+    fun `each content change increments version and confirmation alone increments the pending revision`() {
         val revised = document.revise(header, listOf(intro, detail), later)
         val amended = revised.amend(header, listOf(detail), later.plusSeconds(10))
 
         assertThat(revised.revision).isEqualTo(2)
         assertThat(amended.revision).isEqualTo(2)
+        assertThat(revised.version).isEqualTo(2)
+        assertThat(amended.version).isEqualTo(3)
+        val confirmed = amended.confirmRevision()
+        assertThat(confirmed.revision).isEqualTo(3)
+        assertThat(confirmed.version).isEqualTo(3)
+        assertThat(confirmed.blocks).isEqualTo(amended.blocks)
         assertThat(amended.blocks).containsExactly(detail)
         assertThat(amended.lifecycle.updatedAt).isEqualTo(later.plusSeconds(10))
     }

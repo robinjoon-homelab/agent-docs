@@ -1,9 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.application
 
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
-import io.mockk.runs
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -24,7 +22,6 @@ import xyz.robinjoon.agentdocs.workspace.application.model.RevisionFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionSummary
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
-import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentViewReporter
 import xyz.robinjoon.agentdocs.workspace.application.port.output.RevisionCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepository
@@ -37,7 +34,6 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.BlockChangeKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.ChangeOrigin
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
-import java.time.LocalDate
 import java.util.UUID
 
 class DocumentQueryServiceTest {
@@ -45,8 +41,7 @@ class DocumentQueryServiceTest {
     private val revisions = mockk<RevisionCatalog>()
     private val spaces = mockk<SpaceRepository>()
     private val threads = mockk<ThreadRepository>()
-    private val views = mockk<DocumentViewReporter>()
-    private val service = DocumentQueryService(documents, revisions, spaces, threads, views, WorkspaceFixtures.clock)
+    private val service = DocumentQueryService(documents, revisions, spaces, threads)
     private val intro = Heading(BlockId("head01"), 1, InlineText("Intro"))
     private val details = Heading(BlockId("head02"), 2, InlineText("Details"))
     private val next = Heading(BlockId("head03"), 1, InlineText("Next"))
@@ -61,6 +56,7 @@ class DocumentQueryServiceTest {
 
         assertThat(chunk.text).endsWith("# Intro\n\na\n\n## Details\n\nb\n")
         assertThat(chunk.text).startsWith("---\nid: $documentId\nspace: agent-docs\n")
+        assertThat(chunk.text).contains("version: 2\n")
         assertThat(chunk.nextCursor).isNull()
     }
 
@@ -101,11 +97,10 @@ class DocumentQueryServiceTest {
     }
 
     @Test
-    fun `opening a document remembers the day a person opened it but not an agent`() {
+    fun `opening a document returns its space and content for people and agents`() {
         every { documents.findById(documentId) } returns document(blocks, revision = 2)
         every { spaces.findById(spaceId) } returns space
         every { revisions.marks(documentId) } returns emptyList()
-        every { views.record(documentId, "robin", LocalDate.of(2026, 10, 18)) } just runs
 
         val byPerson = service.open(ownerAccess, documentId)
         val byAgent = service.open(agentAccess(Permission.READ, setOf(spaceId)), documentId)

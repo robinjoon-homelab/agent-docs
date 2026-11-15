@@ -62,7 +62,7 @@ class RateLimitFilter(
         response.setHeader("Retry-After", retryAfter.toString())
         response.contentType = "application/problem+json"
         response.writer.write(
-            """{"title":"Too Many Requests","status":429,"code":"rate_limited","detail":"at most $limit requests a minute per connection"}""",
+            """{"title":"Too Many Requests","status":429,"code":"rate_limited","fix":"wait for Retry-After seconds before retrying","detail":"at most $limit requests a minute per connection"}""",
         )
     }
 

@@ -175,13 +175,22 @@ include::{snippets}/documents-markdown/response-fields.adoc[]
 
 === 본문 저장
 
-웹 편집기가 쓰는 전체 저장입니다. 같은 사람이 30초 안에 다시 저장하면 새 리비전을 만들지 않고 마지막 리비전에 이어 씁니다(`amended`). 오래된 `baseRevision`에 다른 쪽의 변경을 합쳤으면 `merged`가 true이고, 화면은 응답의 `blocks`로 맞춥니다.
+전체 저장은 `baseVersion`이 필수이며 현재 콘텐츠 버전과 다르면 현재 버전과 본문을 담아 409를 반환합니다. 웹은 자신의 기준·현재 내용·입력을 병합해 재시도합니다. 실제 변경마다 `version`이 증가합니다. 사람의 웹 입력은 대기 입력으로 저장하고, 입력 중단 30초·첫 입력부터 10분·문서 이탈·다른 작성자의 쓰기 전에 별도 `revision`으로 확정합니다. 확정은 콘텐츠 버전을 올리거나 기존 스냅샷을 덮어쓰지 않습니다.
 
 include::{snippets}/documents-save/http-request.adoc[]
 include::{snippets}/documents-save/path-parameters.adoc[]
 include::{snippets}/documents-save/request-fields.adoc[]
 include::{snippets}/documents-save/http-response.adoc[]
 include::{snippets}/documents-save/response-fields.adoc[]
+
+=== 대기 입력 자동 확정
+
+웹은 이 탭의 저장 성공 후 입력 중단과 문서 이탈 시 `POST /api/documents/{id}/finalize?baseVersion=마지막저장버전`을 자동 요청합니다. 대기 입력의 작성자와 버전이 일치할 때만 확정하여 다른 탭의 새 입력을 조기 확정하지 않습니다. 재시작 후 남은 대기 입력도 스케줄러가 만료 시 확정합니다.
+
+include::{snippets}/documents-finalize/http-request.adoc[]
+include::{snippets}/documents-finalize/query-parameters.adoc[]
+include::{snippets}/documents-finalize/http-response.adoc[]
+include::{snippets}/documents-finalize/response-fields.adoc[]
 
 === 블록 편집
 
@@ -192,7 +201,7 @@ include::{snippets}/documents-edit/response-fields.adoc[]
 
 === 제목·경로·상태 바꾸기
 
-본문과 머리 정보는 같은 리비전 번호를 씁니다. `baseRevision`이 오래됐어도 그 뒤 다른 쪽이 바꾼 필드를 바꾸려 할 때만 409입니다.
+머리 정보 변경도 `baseVersion`이 필수이며 현재 콘텐츠 버전과 다르면 409입니다. 웹은 변경하려는 필드가 다른 쪽에서 바뀌지 않았을 때 새 버전으로 재시도합니다.
 
 경로의 앞부분은 상위 문서입니다. 경로를 바꾸면 그 아래 문서도 함께 옮기고, 새 경로에 없는 상위 문서는 빈 문서로 만듭니다. 자기 아래로는 옮길 수 없고, 옮겨 갈 경로 중 하나라도 쓰이고 있으면 아무것도 옮기지 않습니다. 문서를 만들 때도 없는 상위 문서를 빈 문서로 만듭니다.
 
@@ -203,7 +212,7 @@ include::{snippets}/documents-change-header/response-fields.adoc[]
 
 === 휴지통으로 옮기기
 
-아래 문서도 함께 휴지통에 들어갑니다. 꺼내면 함께 들어갔던 문서가 함께 돌아오고, 휴지통에 있는 상위 문서도 꺼내며, 상위 문서가 아예 없으면 빈 문서로 만듭니다. 영구 삭제도 함께 들어갔던 문서와 함께입니다.
+아래 문서도 함께 휴지통에 들어갑니다. 꺼내면 함께 들어갔던 문서가 함께 돌아오고, 휴지통에 있는 상위 문서도 꺼내며, 상위 문서가 아예 없으면 빈 문서로 만듭니다. 영구 삭제는 휴지통에 들어간 시각과 관계없이 현재 휴지통에 있는 하위 문서를 모두 대상으로 합니다.
 
 include::{snippets}/documents-trash/http-request.adoc[]
 include::{snippets}/documents-trash/query-parameters.adoc[]
@@ -217,7 +226,7 @@ include::{snippets}/documents-untrash/http-response.adoc[]
 
 === 영구 삭제
 
-휴지통에 30일 있던 문서는 저절로 지워집니다.
+휴지통 보관 기간 30일이 지난 문서는 자기 `trashedAt`을 기준으로 저절로 지워집니다. 만료 정리는 다른 시각에 휴지통으로 들어간 하위 문서의 보관 기간을 줄이지 않습니다. 수동 영구 삭제는 현재 휴지통의 하위 문서를 모두 대상으로 합니다.
 
 include::{snippets}/documents-purge/http-request.adoc[]
 include::{snippets}/documents-purge/query-parameters.adoc[]
@@ -238,13 +247,25 @@ include::{snippets}/documents-recent/response-fields.adoc[]
 
 === 오류
 
+배포 전 `opId` 기록 중 최초 응답 스냅샷이 없는 키는 현재 권한을 확인한 뒤 `legacy_operation`(409)으로 거절합니다. 이미 성공한 기록이므로 원요청을 재전송하지 말고 대상과 이력을 확인합니다. 별도 변경이 실제 필요할 때만 새 작업과 새 `opId`를 사용합니다.
+
+include::{snippets}/documents-legacy-operation/http-request.adoc[]
+include::{snippets}/documents-legacy-operation/http-response.adoc[]
+include::{snippets}/documents-legacy-operation/response-fields.adoc[]
+
+삭제된 문서·댓글의 본문이나 수정 이력을 복사한 멱등 응답은 함께 제거하고 성공 기록만 유지합니다. 해당 키는 `result_removed`(409)로 거절하며 원요청을 재전송하지 않도록 안내합니다. 배포 전 최초 응답 정보가 없는 `legacy_operation`과 구분합니다.
+
+include::{snippets}/documents-result-removed/http-request.adoc[]
+include::{snippets}/documents-result-removed/http-response.adoc[]
+include::{snippets}/documents-result-removed/response-fields.adoc[]
+
 ==== 블록 충돌
 
 include::{snippets}/documents-conflict/http-request.adoc[]
 include::{snippets}/documents-conflict/http-response.adoc[]
 include::{snippets}/documents-conflict/response-fields.adoc[]
 
-==== 오래된 리비전
+==== 오래된 콘텐츠 버전
 
 include::{snippets}/documents-stale-revision/http-request.adoc[]
 include::{snippets}/documents-stale-revision/http-response.adoc[]
@@ -447,7 +468,7 @@ include::{snippets}/inbox-read/http-response.adoc[]
 include::{snippets}/inbox-read-all/http-request.adoc[]
 include::{snippets}/inbox-read-all/http-response.adoc[]
 
-== 활동과 지표
+== 활동
 
 === 활동
 
@@ -458,20 +479,12 @@ include::{snippets}/activity-list/response-fields.adoc[]
 
 === 변경 피드
 
-에이전트가 마지막으로 본 뒤 바뀐 것을 가져옵니다. 응답의 `nextSince`를 다음 `since`로 넘깁니다.
+에이전트가 마지막으로 본 뒤 바뀐 것을 가져옵니다. 응답의 `initialSince`를 다음 요청의 `since`로 유지하고 `nextCursor`를 `cursor`로 넘겨 연속 조회합니다. 기존 소비자를 위한 `nextSince`는 마지막 이벤트 시각입니다.
 
 include::{snippets}/activity-changes/http-request.adoc[]
 include::{snippets}/activity-changes/query-parameters.adoc[]
 include::{snippets}/activity-changes/http-response.adoc[]
 include::{snippets}/activity-changes/response-fields.adoc[]
-
-=== 사용 지표
-
-소유자만 볼 수 있습니다.
-
-include::{snippets}/metrics-usage/http-request.adoc[]
-include::{snippets}/metrics-usage/http-response.adoc[]
-include::{snippets}/metrics-usage/response-fields.adoc[]
 
 == MCP
 
@@ -511,6 +524,8 @@ include::{snippets}/mcp-invalid-argument/http-request.adoc[]
 include::{snippets}/mcp-invalid-argument/request-fields.adoc[]
 include::{snippets}/mcp-invalid-argument/http-response.adoc[]
 include::{snippets}/mcp-invalid-argument/response-fields.adoc[]
+
+include::{snippets}/mcp-changes-cursor/response-fields.adoc[]
 
 == 인증과 연결
 

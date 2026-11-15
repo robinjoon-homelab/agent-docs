@@ -14,10 +14,11 @@ interface ActivityUseCase {
         limit: Int,
     ): List<ActivityView>
 
-    // Entries after since in the caller's visible spaces, oldest first.
+    // Entries after the initial since and cursor ID in visible spaces, in insertion order. Keep since unchanged.
     fun changesSince(
         access: Access,
         since: Instant,
         limit: Int,
+        cursor: Long? = null,
     ): ChangeFeed
 }

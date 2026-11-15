@@ -33,6 +33,21 @@ describe('HttpClient', () => {
     });
   });
 
+  it('keeps a bodyless finalize request alive with its CSRF and session credentials', async () => {
+    const fetch: FetchLike = (_url, init) => {
+      const valid =
+        init?.method === 'POST' &&
+        init.keepalive === true &&
+        init.body === undefined &&
+        init.credentials === 'same-origin' &&
+        init.redirect === 'manual' &&
+        new Headers(init.headers).get('X-XSRF-TOKEN') === 'tok/en=';
+      return Promise.resolve(json(valid ? 200 : 403, valid ? { revision: 4 } : { code: 'forbidden' }));
+    };
+    const client = new HttpClient({ fetch, cookies: () => 'XSRF-TOKEN=tok%2Fen%3D' });
+    expect(await client.postKeepalive('/api/documents/d1/finalize')).toEqual({ revision: 4 });
+  });
+
   it('maps problem JSON to ApiError with detail and fix', async () => {
     const client = new HttpClient({
       fetch: () =>

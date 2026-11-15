@@ -24,8 +24,10 @@ class ExposedRevisionCatalog : RevisionCatalog {
     ): Revision? =
         DocumentRevisionsTable
             .selectAll()
-            .where { (DocumentRevisionsTable.documentId eq document.value) and (DocumentRevisionsTable.revision eq number) }
-            .singleOrNull()
+            .where {
+                (DocumentRevisionsTable.documentId eq document.value) and (DocumentRevisionsTable.revision eq number) and
+                    (DocumentRevisionsTable.pending eq false)
+            }.singleOrNull()
             ?.let(RevisionRows::revision)
 
     // The body is not read for the list.
@@ -34,7 +36,11 @@ class ExposedRevisionCatalog : RevisionCatalog {
         filter: RevisionFilter,
     ): List<RevisionSummary> {
         val columns = DocumentRevisionsTable.columns - DocumentRevisionsTable.body
-        val query = DocumentRevisionsTable.select(columns).where { DocumentRevisionsTable.documentId eq document.value }
+        val query =
+            DocumentRevisionsTable.select(columns).where {
+                (DocumentRevisionsTable.documentId eq document.value) and
+                    (DocumentRevisionsTable.pending eq false)
+            }
         filter.actorKind?.let { kind -> query.andWhere { DocumentRevisionsTable.actor.kind eq kind } }
         filter.from?.let { from -> query.andWhere { DocumentRevisionsTable.createdAt greaterEq from.utc() } }
         filter.to?.let { to -> query.andWhere { DocumentRevisionsTable.createdAt lessEq to.utc() } }

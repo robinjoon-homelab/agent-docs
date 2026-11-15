@@ -13,7 +13,9 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetNotFoundExc
 import xyz.robinjoon.agentdocs.workspace.application.port.input.CommentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.InboxItemNotFoundException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.LegacyOperationException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.RevisionNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotResolvedException
@@ -91,9 +93,36 @@ class WorkspaceExceptionHandler : ResponseEntityExceptionHandler() {
     fun handleInvalid(exception: IllegalArgumentException): ProblemDetail =
         problem(HttpStatus.BAD_REQUEST, "invalid", exception, ProblemFixes.INVALID)
 
+    @ExceptionHandler(ResultRemovedException::class)
+    fun handleRemovedResult(exception: ResultRemovedException): ProblemDetail {
+        val problem = problem(HttpStatus.CONFLICT, "result_removed", exception, exception.fix)
+        problem.setProperty("target", exception.record.target)
+        problem.setProperty("revision", exception.record.revision)
+        return problem
+    }
+
+    @ExceptionHandler(LegacyOperationException::class)
+    fun handleLegacy(exception: LegacyOperationException): ProblemDetail {
+        val problem = problem(HttpStatus.CONFLICT, "legacy_operation", exception, exception.fix)
+        problem.setProperty("target", exception.record.target)
+        problem.setProperty("revision", exception.record.revision)
+        return problem
+    }
+
     @ExceptionHandler(StaleRevisionException::class)
-    fun handleStale(exception: StaleRevisionException): ProblemDetail =
-        problem(HttpStatus.CONFLICT, "conflict", exception, "read the document again and resend the change against its current revision")
+    fun handleStale(exception: StaleRevisionException): ProblemDetail {
+        val problem = problem(HttpStatus.CONFLICT, "conflict", exception, "merge locally and retry with the current baseVersion")
+        exception.document?.let { document ->
+            problem.setProperty("currentVersion", document.version)
+            problem.setProperty(
+                "currentDocument",
+                mapOf("id" to document.id.value) +
+                    WorkspaceJson.header(document.header, document.lifecycle) +
+                    mapOf("blocks" to document.blocks.map(BlockJson::write)),
+            )
+        }
+        return problem
+    }
 
     @ExceptionHandler(SlugTakenException::class)
     fun handleTaken(exception: SlugTakenException): ProblemDetail = problem(HttpStatus.CONFLICT, "taken", exception, ProblemFixes.TAKEN)

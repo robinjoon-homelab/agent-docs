@@ -62,6 +62,7 @@ object WorkspaceJson {
             "tags" to header.properties.tags,
             "assignee" to header.properties.assignee,
             "revision" to lifecycle.revision,
+            "version" to lifecycle.version,
             "createdAt" to lifecycle.createdAt,
             "updatedAt" to lifecycle.updatedAt,
             "trashedAt" to lifecycle.trashedAt,

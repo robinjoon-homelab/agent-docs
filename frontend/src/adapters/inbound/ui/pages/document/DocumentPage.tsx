@@ -6,7 +6,7 @@ import type { AgentDocument, DocumentSummary } from '../../../../../domain/docum
 import { documentHref } from '../../../../../domain/document/document';
 import { breadcrumbOf, childrenOf } from '../../../../../domain/document/pathTree';
 import type { ConflictChoice } from '../../../../../domain/document/merge';
-import type { Anchor, Comment, Thread, ThreadFilter } from '../../../../../domain/thread/thread';
+import type { Anchor, Thread, ThreadFilter } from '../../../../../domain/thread/thread';
 import { filterThreads, isDetached } from '../../../../../domain/thread/thread';
 import { useServices } from '../../../../../config/ServicesContext';
 import { useSession } from '../../app/SessionContext';
@@ -22,7 +22,7 @@ import { usePageTitle } from '../../hooks/usePageTitle';
 import { CommentRail } from './CommentRail';
 import { ConflictPanel } from './ConflictPanel';
 import { DocumentHeader } from './DocumentHeader';
-import type { ThreadActions } from './ThreadCard';
+import { useThreadState } from './useThreadState';
 import './document.css';
 
 export function DocumentPage() {
@@ -51,68 +51,6 @@ export function DocumentPage() {
     return <Navigate to={`${documentHref(document.space.slug, document.id)}${location.hash}`} replace />;
   }
   return <DocumentWorkspace key={document.id} document={document} initialThreads={threads} />;
-}
-
-function replaceThread(threads: readonly Thread[], updated: Thread): Thread[] {
-  return threads.map((thread) => (thread.id === updated.id ? updated : thread));
-}
-
-function useThreadState(documentId: string, initial: readonly Thread[]) {
-  const services = useServices();
-  const toast = useToast();
-  const [threads, setThreads] = useState<readonly Thread[]>(initial);
-  const guard = useCallback(
-    async <T,>(work: () => Promise<T>): Promise<T | null> => {
-      try {
-        return await work();
-      } catch (error) {
-        toast(errorMessage(error));
-        return null;
-      }
-    },
-    [toast],
-  );
-
-  const start = async (anchor: Anchor, body: string): Promise<Thread | null> => {
-    const result = await guard(() => services.threads.start(documentId, anchor, body));
-    if (result === null || !result.ok) return null;
-    setThreads((current) => [...current, result.value]);
-    return result.value;
-  };
-
-  const update = async (work: () => Promise<Thread>): Promise<boolean> => {
-    const updated = await guard(work);
-    if (updated === null) return false;
-    setThreads((current) => replaceThread(current, updated));
-    return true;
-  };
-
-  const actions = (startReanchor: (thread: Thread) => void): ThreadActions => ({
-    reply: async (thread: Thread, body: string) => {
-      const result = await guard(() => services.threads.reply(thread, body));
-      if (result === null || !result.ok) return false;
-      setThreads((current) => replaceThread(current, result.value));
-      return true;
-    },
-    resolve: async (thread: Thread) => {
-      await update(() => services.threads.resolve(thread.id));
-    },
-    reopen: async (thread: Thread) => {
-      await update(() => services.threads.reopen(thread.id));
-    },
-    editComment: async (thread: Thread, comment: Comment, body: string) => {
-      const result = await guard(() => services.threads.editComment(thread, comment.id, body));
-      if (result === null || !result.ok) return false;
-      setThreads((current) => replaceThread(current, result.value));
-      return true;
-    },
-    deleteComment: async (thread: Thread, comment: Comment) => {
-      await update(() => services.threads.deleteComment(thread, comment.id));
-    },
-    startReanchor,
-  });
-
-  return { threads, start, update, actions };
 }
 
 /** The documents under this one, from their paths, with a way to add one when the document is editable. */
@@ -182,7 +120,13 @@ function DocumentWorkspace({
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const editorRef = useRef<DocumentEditorHandle>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
-  const { threads, start, update, actions } = useThreadState(document.id, initialThreads);
+  const {
+    threads,
+    start,
+    update,
+    actions,
+    reload: reloadThreads,
+  } = useThreadState(document.id, initialThreads, services.threads);
   const [filter, setFilter] = useState<ThreadFilter>('open');
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [pending, setPending] = useState<Anchor | null>(null);
@@ -209,6 +153,30 @@ function DocumentWorkspace({
   useEffect(() => {
     if (listedPath !== undefined && listedPath !== state.meta.path) void session.refreshMeta();
   }, [listedPath, state.meta.path, session]);
+
+  useEffect(() => {
+    if (state.lastSavedAt !== null) void reloadThreads();
+  }, [state.lastSavedAt, reloadThreads]);
+
+  useEffect(() => {
+    if (!editable || state.status !== 'saved' || !session.hasPendingRevision()) return;
+    const timer = window.setTimeout(() => void session.finalize(), session.finalizeDelay());
+    return () => window.clearTimeout(timer);
+  }, [editable, session, state.status, state.version, state.meta]);
+
+  useEffect(() => {
+    if (!editable) return;
+    const editor = editorRef.current;
+    const leave = (): void => {
+      void session.finalize();
+    };
+    window.addEventListener('pagehide', leave);
+    return () => {
+      window.removeEventListener('pagehide', leave);
+      const flush = editor?.flushSave();
+      void Promise.resolve(flush).then(() => session.finalize());
+    };
+  }, [editable, session]);
 
   usePageTitle(state.meta.title);
 
@@ -339,8 +307,7 @@ function DocumentWorkspace({
   };
 
   const resolveConflicts = async (choices: ReadonlyMap<string, ConflictChoice>): Promise<void> => {
-    const { blocks, outcome } = await session.resolveConflicts(choices);
-    editorRef.current?.setBlocks(blocks);
+    const { outcome } = await session.resolveConflicts(choices);
     if (outcome === 'saved') toast('선택한 내용으로 저장했습니다');
     else
       toast(

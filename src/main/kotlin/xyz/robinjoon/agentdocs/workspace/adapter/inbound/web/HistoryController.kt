@@ -45,6 +45,7 @@ class HistoryController(
         val revision = queries.revision(CallerAccess.of(principal), DocumentId(id), number)
         return mapOf(
             "revision" to revision.number,
+            "version" to revision.version,
             "title" to revision.content.header.title,
             "path" to revision.content.header.path.value,
             "blocks" to revision.content.blocks.map(BlockJson::write),
@@ -73,9 +74,13 @@ class HistoryController(
                 CallerAccess.write(principal, request.opId, null),
                 DocumentId(id),
                 request.revision,
-                request.baseRevision,
+                request.baseVersion,
             )
-        return mapOf("revision" to written.revision, "changedBlockIds" to written.changedBlocks.map { it.value })
+        return mapOf(
+            "version" to written.document.version,
+            "revision" to written.revision,
+            "changedBlockIds" to written.changedBlocks.map { it.value },
+        )
     }
 
     private fun entry(entry: RevisionEntry): Map<String, Any?> {
@@ -123,5 +128,5 @@ data class RevisionListQuery(
 data class RestoreRequest(
     val revision: Int,
     val opId: String?,
-    val baseRevision: Int? = null,
+    val baseVersion: Int,
 )

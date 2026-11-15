@@ -8,6 +8,8 @@ import xyz.robinjoon.agentdocs.access.application.port.output.ConnectionReposito
 import xyz.robinjoon.agentdocs.access.application.port.output.UserRepository
 import xyz.robinjoon.agentdocs.access.domain.TokenHash
 import xyz.robinjoon.agentdocs.access.domain.connection.ConnectionId
+import xyz.robinjoon.agentdocs.access.domain.user.Allowlist
+import xyz.robinjoon.agentdocs.access.domain.user.UserRole
 import java.time.Clock
 
 // Runs on every agent request, so the stored connection, not a cached copy, decides: a revoked or narrowed connection
@@ -17,6 +19,7 @@ class CallerService(
     private val connections: ConnectionRepository,
     private val users: UserRepository,
     private val clock: Clock,
+    private val allowlist: Allowlist,
 ) : CallerUseCase {
     @Transactional
     override fun callerFor(token: String): Caller? {
@@ -24,6 +27,7 @@ class CallerService(
         val now = clock.instant()
         val connection = connections.findByAccessHash(TokenHash.of(token))?.takeIf { it.acceptsAccessAt(now) } ?: return null
         val user = users.findById(connection.owner.userId) ?: return null
+        if (allowlist.roleOf(user.account.login) != UserRole.OWNER) return null
         connection.used(now)?.let(connections::update)
         return Callers.agent(connection, user.account.login)
     }
@@ -32,6 +36,7 @@ class CallerService(
         val id = UploadToken.connectionOf(token) ?: return null
         val connection = connections.findById(ConnectionId(id))?.takeIf { it.isActiveAt(clock.instant()) } ?: return null
         val user = users.findById(connection.owner.userId) ?: return null
+        if (allowlist.roleOf(user.account.login) != UserRole.OWNER) return null
         return Callers.agent(connection, user.account.login)
     }
 }

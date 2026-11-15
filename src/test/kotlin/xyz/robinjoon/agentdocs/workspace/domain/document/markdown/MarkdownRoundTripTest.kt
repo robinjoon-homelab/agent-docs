@@ -5,6 +5,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.ColumnAlignment
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
@@ -183,15 +184,29 @@ class MarkdownRoundTripTest {
     }
 
     @Test
+    fun `canonical front matter exposes content version while pending edits keep the confirmed revision`() {
+        val initial = WorkspaceFixtures.document(listOf(WorkspaceFixtures.paragraph("para01", "Before")), revision = 3)
+        val typed = initial.amend(initial.header, listOf(WorkspaceFixtures.paragraph("para01", "After")), WorkspaceFixtures.now)
+
+        val markdown = DocumentMarkdown.write(typed, WorkspaceFixtures.space.slug, annotated = true)
+        val read = MarkdownReader.read(markdown)
+
+        assertThat(typed.revision).isEqualTo(3)
+        assertThat(read.frontMatter.text("version")).isEqualTo("4")
+        assertThat(read.frontMatter.text("revision")).isNull()
+        assertThat(read.blocks.map { it.block }).isEqualTo(typed.blocks)
+    }
+
+    @Test
     fun `a whole document reads its front matter while a fragment reads a leading rule as a divider`() {
-        val markdown = "---\ntitle: \"Retry \\\"design\\\"\"\ntags: [payments, retry]\nrevision: 4\n---\n\nBody"
+        val markdown = "---\ntitle: \"Retry \\\"design\\\"\"\ntags: [payments, retry]\nversion: 4\n---\n\nBody"
 
         val document = MarkdownReader.read(markdown)
         val fragment = MarkdownReader.readBlocks("---\n\nBody")
 
         assertThat(document.frontMatter.text("title")).isEqualTo("Retry \"design\"")
         assertThat(document.frontMatter.list("tags")).containsExactly("payments", "retry")
-        assertThat(document.frontMatter.text("revision")).isEqualTo("4")
+        assertThat(document.frontMatter.text("version")).isEqualTo("4")
         assertThat(document.blocks.map { BlockMarkdown.of(it.block) }).containsExactly("Body")
         assertThat(fragment.map { BlockMarkdown.of(it.block) }).containsExactly("---", "Body")
     }

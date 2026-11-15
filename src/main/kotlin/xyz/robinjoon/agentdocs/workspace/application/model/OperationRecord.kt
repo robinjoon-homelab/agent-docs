@@ -8,4 +8,16 @@ data class OperationRecord(
     val kind: String,
     val target: UUID,
     val revision: Int?,
+    val documentWrite: DocumentWrite? = null,
+    val threadView: ThreadView? = null,
+    val state: OperationResultState =
+        if (documentWrite != null || threadView != null) OperationResultState.AVAILABLE else OperationResultState.LEGACY,
 )
+
+// Removal keeps proof of success without keeping deleted content or permitting the write again.
+enum class OperationResultState {
+    LEGACY,
+    AVAILABLE,
+    REMOVED,
+    COMPLETED,
+}

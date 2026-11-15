@@ -7,7 +7,9 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetNotFoundExc
 import xyz.robinjoon.agentdocs.workspace.application.port.input.CommentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.InboxItemNotFoundException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.LegacyOperationException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.RevisionNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotResolvedException
@@ -38,12 +40,47 @@ object McpToolExceptionHandler {
             is ThreadActionException -> McpToolResult.error("forbidden", message, exception.fix)
             is EditConflictException -> conflict(exception)
             is SpaceNotResolvedException -> unresolved(exception)
-            is StaleRevisionException -> McpToolResult.error("conflict", message, "read the document again with docs_read and retry")
+            is StaleRevisionException -> stale(exception)
+            is LegacyOperationException -> legacy(exception)
+            is ResultRemovedException -> removed(exception)
             is SlugTakenException, is PathTakenException -> McpToolResult.error("taken", message, ProblemFixes.TAKEN)
             is InvalidRequestException -> McpToolResult.error("invalid", message, exception.fix ?: ProblemFixes.INVALID)
             is IllegalArgumentException -> McpToolResult.error("invalid", message, ProblemFixes.INVALID)
             else -> null
         }
+    }
+
+    private fun removed(exception: ResultRemovedException): McpToolResult =
+        McpToolResult.error(
+            "result_removed",
+            exception.message.orEmpty(),
+            exception.fix,
+            mapOf("target" to exception.record.target, "revision" to exception.record.revision),
+        )
+
+    private fun legacy(exception: LegacyOperationException): McpToolResult =
+        McpToolResult.error(
+            "legacy_operation",
+            exception.message.orEmpty(),
+            exception.fix,
+            mapOf("target" to exception.record.target, "revision" to exception.record.revision),
+        )
+
+    private fun stale(exception: StaleRevisionException): McpToolResult {
+        val document = exception.document
+        val details =
+            document
+                ?.let {
+                    mapOf(
+                        "currentVersion" to it.version,
+                        "currentDocument" to
+                            (
+                                mapOf("id" to it.id.value) + WorkspaceJson.header(it.header, it.lifecycle) +
+                                    mapOf("blocks" to it.blocks.map(BlockJson::write))
+                            ),
+                    )
+                }.orEmpty()
+        return McpToolResult.error("conflict", exception.message.orEmpty(), "merge locally and retry with the current baseVersion", details)
     }
 
     private fun denied(exception: PermissionDeniedException): McpToolResult =

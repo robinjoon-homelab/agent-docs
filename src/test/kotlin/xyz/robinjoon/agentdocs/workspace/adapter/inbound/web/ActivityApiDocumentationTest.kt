@@ -12,6 +12,7 @@ import org.springframework.restdocs.request.RequestDocumentation.parameterWithNa
 import org.springframework.restdocs.request.RequestDocumentation.queryParameters
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import tools.jackson.databind.json.JsonMapper
 import xyz.robinjoon.agentdocs.application.model.ActivityActor
 import xyz.robinjoon.agentdocs.application.model.ActivityActorKind
 import xyz.robinjoon.agentdocs.application.model.ActivityEntry
@@ -33,18 +34,12 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.spaceRe
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.userId
 import xyz.robinjoon.agentdocs.workspace.application.model.ActivityView
 import xyz.robinjoon.agentdocs.workspace.application.model.ChangeFeed
-import xyz.robinjoon.agentdocs.workspace.application.model.UsageReport
-import xyz.robinjoon.agentdocs.workspace.application.model.WeeklyUsage
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ActivityUseCase
-import xyz.robinjoon.agentdocs.workspace.application.port.input.UsageUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
-import java.time.Duration
-import java.time.LocalDate
 
 class ActivityApiDocumentationTest : RestDocsWebTest() {
     private val activity = mockk<ActivityUseCase>()
-    private val usage = mockk<UsageUseCase>()
-    private val mockMvc = restDocsMockMvc(ActivityController(activity, usage), WorkspaceExceptionHandler())
+    private val mockMvc = restDocsMockMvc(ActivityController(activity), WorkspaceExceptionHandler())
     private val record =
         ActivityRecord(
             "document.revised",
@@ -75,50 +70,93 @@ class ActivityApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
-    fun `changes since a moment continue from nextSince`() {
-        every { activity.changesSince(agentAccess, at.minusSeconds(600), 100) } returns ChangeFeed(listOf(view), at)
+    fun `changes keep the original since and continue by unique cursor`() {
+        every { activity.changesSince(agentAccess, at.minusSeconds(600), 100) } returns
+            ChangeFeed(listOf(view), at, 41, at.minusSeconds(600))
 
         mockMvc
             .perform(get("/api/changes?since={since}", at.minusSeconds(600)).principal(agent))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.nextSince").value(at.toString()))
+            .andExpect(jsonPath("$.initialSince").value(at.minusSeconds(600).toString()))
             .andDo(
                 documented(
                     "activity-changes",
                     queryParameters(
-                        parameterWithName("since").description("이 시각 뒤의 변화만"),
+                        parameterWithName("since").description("이 시각 뒤의 변화만. 커서로 이어 읽을 때 응답 initialSince를 그대로 사용"),
+                        parameterWithName("cursor").optional().description("직전 응답 nextCursor. 이 ID 다음부터 이어 읽는다"),
                         parameterWithName("limit").optional().description("최대 개수, 기본 100"),
                     ),
-                    responseFields(*activityFields("entries[]."), fieldWithPath("nextSince").description("다음에 since로 넘길 시각")),
+                    responseFields(
+                        *activityFields("entries[]."),
+                        fieldWithPath("nextSince").description("레거시 시각 기반 진행용 마지막 스캔 이벤트 시각. 빈 페이지는 입력 since. 동일시각 경계에서 누락 가능"),
+                        fieldWithPath("initialSince").description("이번 조회의 입력 since. 커서로 이어 읽을 때 이 값을 since로 유지"),
+                        fieldWithPath(
+                            "nextCursor",
+                        ).type(JsonFieldType.NUMBER).optional().description("다음 요청 cursor. 동일시각 변경도 누락 없이 이어 읽는다"),
+                    ),
                 ),
             )
     }
 
     @Test
-    fun `usage metrics are counted per space and week`() {
-        every { usage.report(ownerAccess) } returns
-            UsageReport(listOf(WeeklyUsage(LocalDate.of(2026, 10, 12), spaceId, 14, 5)), listOf(space), Duration.ofMinutes(42), 3)
+    fun `cursor continues from the hundredth equal timestamp entry then preserves the cursor on an empty page`() {
+        val since = at.minusSeconds(1)
+        val first = (1L..100L).map { ActivityView(ActivityEntry(it, record), space, "재시도 설계") }
+        val last = ActivityView(ActivityEntry(101, record), space, "재시도 설계")
+        every { activity.changesSince(agentAccess, since, 100, null) } returns ChangeFeed(first, at, 100, since)
+        every { activity.changesSince(agentAccess, since, 100, 100) } returns ChangeFeed(listOf(last), at, 101, since)
+        every { activity.changesSince(agentAccess, since, 100, 101) } returns ChangeFeed(emptyList(), since, 101, since)
 
         mockMvc
-            .perform(get("/api/metrics/usage").principal(owner))
+            .perform(get("/api/changes").param("since", since.toString()).principal(agent))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.agentResponseMinutesMedian").value(42))
-            .andDo(
-                documented(
-                    "metrics-usage",
-                    responseFields(
-                        fieldWithPath("weeks[].weekStart").description("주의 시작 월요일(UTC)"),
-                        fieldWithPath("weeks[].spaces[].slug").description("스페이스 주소"),
-                        fieldWithPath("weeks[].spaces[].name").description("스페이스 이름"),
-                        fieldWithPath("weeks[].spaces[].documents").description("그 주에 쓰거나 고친 문서 수. 한 문서를 여러 번 고쳐도 하나"),
-                        fieldWithPath("weeks[].spaces[].comments").description("그 주의 댓글 수"),
-                        fieldWithPath(
-                            "agentResponseMinutesMedian",
-                        ).type(JsonFieldType.NUMBER).optional().description("사람이 연 스레드에 에이전트가 처음 답하기까지 걸린 시간의 중앙값(분)"),
-                        fieldWithPath("revisitedDocuments").description("사람이 다른 날 다시 연 문서 수"),
-                    ),
-                ),
-            )
+            .andExpect(jsonPath("$.entries.length()").value(100))
+            .andExpect(jsonPath("$.nextCursor").value(100))
+            .andExpect(jsonPath("$.nextSince").value(at.toString()))
+            .andExpect(jsonPath("$.initialSince").value(since.toString()))
+        mockMvc
+            .perform(get("/api/changes").param("since", since.toString()).param("cursor", "100").principal(agent))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.entries[0].id").value(101))
+            .andExpect(jsonPath("$.nextCursor").value(101))
+            .andExpect(jsonPath("$.nextSince").value(at.toString()))
+            .andExpect(jsonPath("$.initialSince").value(since.toString()))
+        mockMvc
+            .perform(get("/api/changes").param("since", since.toString()).param("cursor", "101").principal(agent))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.entries").isEmpty)
+            .andExpect(jsonPath("$.nextCursor").value(101))
+            .andExpect(jsonPath("$.nextSince").value(since.toString()))
+            .andExpect(jsonPath("$.initialSince").value(since.toString()))
+    }
+
+    @Test
+    fun `legacy REST consumers continue from nextSince without replaying the page`() {
+        val since = at.minusSeconds(10)
+        every { activity.changesSince(agentAccess, since, 100, null) } returns ChangeFeed(listOf(view), at, 41, since)
+        every { activity.changesSince(agentAccess, at, 100, null) } returns ChangeFeed(emptyList(), at, null, at)
+
+        val first =
+            mockMvc
+                .perform(get("/api/changes").param("since", since.toString()).principal(agent))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.entries[0].id").value(41))
+                .andExpect(jsonPath("$.nextSince").value(at.toString()))
+                .andReturn()
+        val nextSince =
+            JsonMapper
+                .builder()
+                .build()
+                .readTree(first.response.contentAsString)
+                .get("nextSince")
+                .stringValue()
+        mockMvc
+            .perform(get("/api/changes").param("since", nextSince).principal(agent))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.entries").isEmpty)
+            .andExpect(jsonPath("$.nextSince").value(at.toString()))
+            .andExpect(jsonPath("$.initialSince").value(at.toString()))
     }
 
     private fun activityFields(prefix: String): Array<FieldDescriptor> =

@@ -40,7 +40,7 @@ class DocsHistoryTool(
                     "since" to Schemas.string("list: only revisions at or after this ISO-8601 instant"),
                     "until" to Schemas.string("list: only revisions at or before this ISO-8601 instant"),
                     "revision" to Schemas.integer("restore: revision to bring back"),
-                    "baseRevision" to Schemas.integer("restore: the revision you last read; a person's later change makes it a conflict"),
+                    "baseVersion" to Schemas.integer("restore: the content version you last read; any later change is a conflict"),
                     "opId" to Schemas.operationId,
                 ),
             required = listOf("document", "action"),
@@ -63,7 +63,7 @@ class DocsHistoryTool(
 
             "restore" -> {
                 val revision = arguments.optionalInt("revision") ?: throw InvalidRequestException("restore needs revision")
-                val base = arguments.optionalInt("baseRevision") ?: throw InvalidRequestException("restore needs baseRevision", READ_FIRST)
+                val base = arguments.optionalInt("baseVersion") ?: throw InvalidRequestException("restore needs baseVersion", READ_FIRST)
                 WriteResults.of(documents.restore(context, document, revision, base), all = false)
             }
 

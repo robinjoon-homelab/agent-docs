@@ -1,4 +1,6 @@
 import type {
+  CurrentDocument,
+  SavedContent,
   DocumentFilter,
   DocumentGateway,
   MetaPatch,
@@ -6,6 +8,7 @@ import type {
   RevisionFilter,
   SaveContentResult,
 } from '../../../../application/document/ports/DocumentGateway';
+import { StaleDocumentError } from '../../../../application/document/ports/DocumentGateway';
 import { PathTakenError } from '../../../../application/shared/ports/errors';
 import type { Block } from '../../../../domain/document/block';
 import type {
@@ -17,7 +20,6 @@ import type {
   DocumentSummary,
   Revision,
   RevisionSnapshot,
-  SaveConflict,
   TrashedDocument,
 } from '../../../../domain/document/document';
 import type { HttpClient } from '../shared/httpClient';
@@ -42,21 +44,29 @@ function toBlockChange(value: unknown): BlockChange {
   };
 }
 
-export function toDocument(value: unknown): AgentDocument {
+function toCurrentDocument(value: unknown): CurrentDocument {
   const source = obj(value, 'document');
   return {
     id: str(source, 'id'),
-    space: toSpaceRef(source.space),
     path: str(source, 'path'),
     title: str(source, 'title'),
     status: toStatus(source),
     tags: strings(source, 'tags'),
     assignee: optStr(source, 'assignee'),
+    version: num(source, 'version'),
     revision: num(source, 'revision'),
     createdAt: str(source, 'createdAt'),
     updatedAt: str(source, 'updatedAt'),
     trashedAt: optStr(source, 'trashedAt'),
     blocks: list(source.blocks, toStoredBlock),
+  };
+}
+
+export function toDocument(value: unknown): AgentDocument {
+  const source = obj(value, 'document');
+  return {
+    ...toCurrentDocument(value),
+    space: toSpaceRef(source.space),
     blockChanges: source.blockChanges === undefined ? [] : list(source.blockChanges, toBlockChange),
   };
 }
@@ -131,23 +141,12 @@ export function toDiff(value: unknown): DocumentDiff {
   };
 }
 
-function toConflict(value: unknown): SaveConflict {
-  const source = obj(value, 'conflict');
-  return {
-    blockId: str(source, 'blockId'),
-    currentHash: optStr(source, 'currentHash'),
-    current: toOptionalBlock(source.current),
-    currentMarkdown: optStr(source, 'currentMarkdown'),
-  };
-}
-
-export function toSaveResult(value: unknown): SaveContentResult {
+export function toSaveResult(value: unknown): SavedContent {
   const source = obj(value, 'save');
   return {
     kind: 'saved',
     revision: num(source, 'revision'),
-    amended: source.amended === true,
-    merged: source.merged === true,
+    version: num(source, 'version'),
     blocks: list(source.blocks, toStoredBlock),
   };
 }
@@ -181,25 +180,51 @@ export class HttpDocumentGateway implements DocumentGateway {
 
   async saveContent(
     documentId: string,
-    baseRevision: number,
+    baseVersion: number,
     blocks: readonly Block[],
   ): Promise<SaveContentResult> {
     try {
       return toSaveResult(
-        await this.http.put(`/api/documents/${segment(documentId)}/content`, { baseRevision, blocks }),
+        await this.http.put(`/api/documents/${segment(documentId)}/content`, { baseVersion, blocks }),
       );
     } catch (error) {
-      if (error instanceof ProblemError && error.code === 'conflict' && Array.isArray(error.body.conflicts)) {
-        return { kind: 'conflict', conflicts: list(error.body.conflicts, toConflict) };
+      if (
+        error instanceof ProblemError &&
+        error.code === 'conflict' &&
+        error.body.currentDocument !== undefined
+      ) {
+        return {
+          kind: 'conflict',
+          currentVersion: num(error.body, 'currentVersion'),
+          currentDocument: toCurrentDocument(error.body.currentDocument),
+        };
       }
       throw error;
     }
   }
 
-  async patch(documentId: string, baseRevision: number, patch: MetaPatch): Promise<AgentDocument> {
-    return toDocument(
-      await namingTakenPath(
-        this.http.patch(`/api/documents/${segment(documentId)}`, { baseRevision, ...patch }),
+  async patch(documentId: string, baseVersion: number, patch: MetaPatch): Promise<AgentDocument> {
+    try {
+      return toDocument(
+        await namingTakenPath(
+          this.http.patch(`/api/documents/${segment(documentId)}`, { baseVersion, ...patch }),
+        ),
+      );
+    } catch (error) {
+      if (error instanceof ProblemError && error.body.currentDocument !== undefined) {
+        throw new StaleDocumentError(
+          num(error.body, 'currentVersion'),
+          toCurrentDocument(error.body.currentDocument),
+        );
+      }
+      throw error;
+    }
+  }
+
+  async finalize(documentId: string, baseVersion: number): Promise<SavedContent> {
+    return toSaveResult(
+      await this.http.postKeepalive(
+        `/api/documents/${segment(documentId)}/finalize?baseVersion=${baseVersion}`,
       ),
     );
   }
@@ -229,9 +254,9 @@ export class HttpDocumentGateway implements DocumentGateway {
     return toDiff(await this.http.get(`/api/documents/${segment(documentId)}/diff${query({ from, to })}`));
   }
 
-  async restore(documentId: string, revision: number, baseRevision: number): Promise<number> {
+  async restore(documentId: string, revision: number, baseVersion: number): Promise<number> {
     return num(
-      obj(await this.http.post(`/api/documents/${segment(documentId)}/restore`, { revision, baseRevision })),
+      obj(await this.http.post(`/api/documents/${segment(documentId)}/restore`, { revision, baseVersion })),
       'revision',
     );
   }

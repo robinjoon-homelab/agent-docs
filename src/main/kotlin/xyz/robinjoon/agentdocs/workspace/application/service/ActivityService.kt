@@ -42,15 +42,16 @@ class ActivityService(
         access: Access,
         since: Instant,
         limit: Int,
+        cursor: Long?,
     ): ChangeFeed {
         val listed = (access.spaces as? SpaceScope.Listed)?.spaces?.map { it.value }?.toSet()
-        val entries = catalog.find(ActivityQuery(listed, since, null, limit.coerceIn(1, MAX_LIMIT), oldestFirst = true))
+        val entries = catalog.find(ActivityQuery(listed, since, null, limit.coerceIn(1, MAX_LIMIT), oldestFirst = true, afterId = cursor))
         val visible =
             entries.filter { entry ->
                 entry.record.subject.spaceId
                     ?.let { access.sees(SpaceId(it)) } ?: access.isOwner
             }
-        return ChangeFeed(viewsOf(visible), entries.lastOrNull()?.record?.at ?: since)
+        return ChangeFeed(viewsOf(visible), entries.lastOrNull()?.record?.at ?: since, entries.lastOrNull()?.id ?: cursor, since)
     }
 
     private fun viewsOf(entries: List<ActivityEntry>): List<ActivityView> {

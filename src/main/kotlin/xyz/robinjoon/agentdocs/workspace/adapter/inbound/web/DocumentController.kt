@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController
 import tools.jackson.databind.JsonNode
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentView
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
@@ -81,7 +82,8 @@ class DocumentController(
                 SpaceSlug(slug),
                 draft,
             )
-        val created = WorkspaceJson.view(queries.open(CallerAccess.of(principal), written.document.id))
+        val space = queries.open(CallerAccess.of(principal), written.document.id).space
+        val created = responseView(written, space)
         return ResponseEntity.created(URI.create("/api/documents/${written.document.id}")).body(created)
     }
 
@@ -109,6 +111,7 @@ class DocumentController(
         return mapOf(
             "documentId" to chunk.document.id.value,
             "revision" to chunk.document.revision,
+            "version" to chunk.document.version,
             "markdown" to chunk.text,
             "nextCursor" to chunk.nextCursor,
             "totalBlocks" to chunk.totalBlocks,
@@ -122,10 +125,18 @@ class DocumentController(
         principal: Principal?,
     ): Map<String, Any?> {
         val base =
-            body.get("baseRevision")?.takeIf(JsonNode::isInt)?.intValue() ?: throw InvalidRequestException("baseRevision is required")
+            body.get("baseVersion")?.takeIf(JsonNode::isInt)?.intValue() ?: throw InvalidRequestException("baseVersion is required")
         val blocks = body.path("blocks").values().map(BlockJson::read)
         return writeResult(documents.save(CallerAccess.write(principal, Wire.optional(body, "opId"), null), DocumentId(id), base, blocks))
     }
+
+    @PostMapping("/api/documents/{id}/finalize")
+    fun finalizeEdits(
+        @PathVariable id: UUID,
+        @RequestParam baseVersion: Int,
+        @RequestParam(required = false) opId: String?,
+        principal: Principal?,
+    ): Map<String, Any?> = writeResult(documents.finalizeEdits(CallerAccess.write(principal, opId, null), DocumentId(id), baseVersion))
 
     @PostMapping("/api/documents/{id}/edits")
     fun edit(
@@ -145,8 +156,14 @@ class DocumentController(
         @RequestBody body: JsonNode,
         principal: Principal?,
     ): Map<String, Any?> {
-        documents.changeHeader(CallerAccess.write(principal, Wire.optional(body, "opId"), null), DocumentId(id), Wire.headerChange(body))
-        return WorkspaceJson.view(queries.open(CallerAccess.of(principal), DocumentId(id)))
+        val written =
+            documents.changeHeader(
+                CallerAccess.write(principal, Wire.optional(body, "opId"), null),
+                DocumentId(id),
+                Wire.headerChange(body),
+            )
+        val space = queries.open(CallerAccess.of(principal), DocumentId(id)).space
+        return responseView(written, space)
     }
 
     @PostMapping("/api/documents/{id}/trash")
@@ -179,6 +196,15 @@ class DocumentController(
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build()
     }
 
+    private fun responseView(
+        written: DocumentWrite,
+        space: xyz.robinjoon.agentdocs.workspace.domain.space.Space,
+    ): Map<String, Any?> {
+        val view = WorkspaceJson.view(DocumentView(written.document, space, written.marks))
+        val captured = written.space ?: return view
+        return view + mapOf("space" to mapOf("id" to captured.id.value, "slug" to captured.slug.value, "name" to captured.name))
+    }
+
     private fun blocksOf(body: JsonNode) =
         body.get("markdown")?.takeIf(JsonNode::isString)?.let { markdown ->
             MarkdownReader.readBlocks(markdown.stringValue()).map { it.block }
@@ -189,6 +215,7 @@ class DocumentController(
         mapOf(
             "id" to written.document.id.value,
             "revision" to written.revision,
+            "version" to written.document.version,
             "amended" to written.amended,
             "unchanged" to written.unchanged,
             "merged" to written.merged,

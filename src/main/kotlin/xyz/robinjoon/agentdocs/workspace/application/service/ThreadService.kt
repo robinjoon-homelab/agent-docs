@@ -5,6 +5,7 @@ import xyz.robinjoon.agentdocs.application.model.ActivitySubject
 import xyz.robinjoon.agentdocs.workspace.application.model.AnchorRequest
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadChange
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadContext
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadCriteria
@@ -13,6 +14,8 @@ import xyz.robinjoon.agentdocs.workspace.application.model.ThreadView
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.CommentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.LegacyOperationException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
@@ -39,6 +42,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.thread.AnchorResolver
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Comment
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentThread
+import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadActionException
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadLocation
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadStatus
@@ -62,16 +66,17 @@ class ThreadService(
         body: String,
     ): ThreadView {
         journal.replayed(context, OPEN)?.let { return replay(context.access, it) }
-        val target = documents.findById(document)?.takeIf { context.access.sees(it.spaceId) } ?: throw DocumentNotFoundException(document)
-        Permissions.require(context.access, target.spaceId, Permission.COMMENT, "commenting")
+        val locked =
+            documents.findByIdForUpdate(document)?.takeIf { context.access.sees(it.spaceId) } ?: throw DocumentNotFoundException(document)
+        Permissions.require(context.access, locked.spaceId, Permission.COMMENT, "commenting")
+        val target = PendingEdits(documents).confirm(locked)
         val now = journal.now()
         val location = ThreadLocation(target.spaceId, target.id, AnchorPlacement.place(anchor, target), target.revision)
         val comment = Comment.write(CommentId(UUID.randomUUID()), context.access.actor, body, now)
         val thread = threads.add(CommentThread.open(ThreadId(UUID.randomUUID()), location, comment, now))
         notify(thread, comment, target)
         journal.record(context, "thread.opened", subjectOf(thread), "${target.header.title}: ${comment.body.take(EXCERPT)}")
-        journal.remember(context, OperationRecord(OPEN, thread.id.value, null))
-        return viewOf(thread, target).copy(written = comment.id)
+        return remembered(context, OperationRecord(OPEN, thread.id.value, null), viewOf(thread, target).copy(written = comment.id))
     }
 
     @Transactional
@@ -89,8 +94,7 @@ class ThreadService(
         val saved = threads.update(replied)
         notify(saved, comment, document)
         journal.record(context, "comment.added", subjectOf(saved), "${document.header.title}: ${comment.body.take(EXCERPT)}")
-        journal.remember(context, OperationRecord(REPLY, comment.id.value, null))
-        return viewOf(saved, document).copy(written = comment.id)
+        return remembered(context, OperationRecord(REPLY, comment.id.value, null), viewOf(saved, document).copy(written = comment.id))
     }
 
     @Transactional
@@ -103,8 +107,7 @@ class ThreadService(
         val (current, document) = lockByComment(context.access, comment)
         val saved = threads.update(current.editComment(comment, context.access.actor, body, journal.now()))
         journal.record(context, "comment.edited", subjectOf(saved), "${document.header.title}: 댓글 수정")
-        journal.remember(context, OperationRecord(EDIT_COMMENT, comment.value, null))
-        return viewOf(saved, document)
+        return remembered(context, OperationRecord(EDIT_COMMENT, comment.value, null), viewOf(saved, document))
     }
 
     @Transactional
@@ -115,9 +118,9 @@ class ThreadService(
         journal.replayed(context, DELETE_COMMENT)?.let { return replay(context.access, it) }
         val (current, document) = lockByComment(context.access, comment)
         val saved = threads.update(current.deleteComment(comment, context.access.actor, journal.now()))
+        journal.removeCommentResults(comment)
         journal.record(context, "comment.deleted", subjectOf(saved), "${document.header.title}: 댓글 삭제")
-        journal.remember(context, OperationRecord(DELETE_COMMENT, comment.value, null))
-        return viewOf(saved, document)
+        return remembered(context, OperationRecord(DELETE_COMMENT, comment.value, null), viewOf(saved, document))
     }
 
     // Everything is applied to the thread before it is saved once, so a refused status keeps the old anchor too.
@@ -129,12 +132,13 @@ class ThreadService(
     ): ThreadView {
         if (change.isEmpty) throw InvalidRequestException("pass status, anchor, or linkRevision")
         journal.replayed(context, CHANGE)?.let { return replay(context.access, it) }
-        val (current, document) = lockThread(context.access, thread)
+        val (current, document) =
+            if (change.anchor == null) lockThread(context.access, thread) else lockForAnchor(context.access, thread)
         val now = journal.now()
         val moved = change.anchor?.let { current.moveTo(AnchorPlacement.place(it, document), document.revision, now) } ?: current
         val updated = change.status?.let { statusChanged(moved, it, context.access.actor, now) } ?: moved
         val linked = change.linkRevision?.let { linked(updated, it, document, now) } ?: updated
-        if (linked == current) return viewOf(current, document)
+        if (linked == current) return remembered(context, OperationRecord(CHANGE, thread.value, null), viewOf(current, document))
         val saved = threads.update(linked)
         val entries =
             listOfNotNull(
@@ -143,8 +147,7 @@ class ThreadService(
                 Entry("thread.linked", "rev ${change.linkRevision} 연결", change.linkRevision).takeIf { linked != updated },
             )
         entries.forEach { journal.record(context, it.kind, subjectOf(saved, it.revision), "${document.header.title}: ${it.summary}") }
-        journal.remember(context, OperationRecord(CHANGE, thread.value, null))
-        return viewOf(saved, document)
+        return remembered(context, OperationRecord(CHANGE, thread.value, null), viewOf(saved, document))
     }
 
     // One activity log entry for a part of a thread change.
@@ -214,6 +217,19 @@ class ThreadService(
         return thread to commentable(access, thread)
     }
 
+    // Read the immutable document identity first; acquire both write locks in document-to-thread order.
+    private fun lockForAnchor(
+        access: Access,
+        id: ThreadId,
+    ): Pair<CommentThread, Document> {
+        val known = threads.findById(id)?.takeIf { access.sees(it.location.spaceId) } ?: throw ThreadNotFoundException(id)
+        val document = documents.findByIdForUpdate(known.location.documentId) ?: throw ThreadNotFoundException(id)
+        if (!access.sees(document.spaceId)) throw ThreadNotFoundException(id)
+        Permissions.require(access, document.spaceId, Permission.COMMENT, "commenting")
+        val thread = threads.findByIdForUpdate(id)?.takeIf { access.sees(it.location.spaceId) } ?: throw ThreadNotFoundException(id)
+        return thread to PendingEdits(documents).confirm(document)
+    }
+
     private fun lockByComment(
         access: Access,
         id: CommentId,
@@ -250,9 +266,7 @@ class ThreadService(
         if (items.isNotEmpty()) inbox.addAll(items)
     }
 
-    // A retried write is not applied again: the answer is the thread as it is now, with the comment the first attempt
-    // wrote or changed, after the same visibility and permission checks a first attempt gets. Thread operations
-    // remember the thread and comment operations the comment.
+    // Recheck current access before replaying the first result. Legacy rows have no snapshot.
     private fun replay(
         access: Access,
         record: OperationRecord,
@@ -260,13 +274,31 @@ class ThreadService(
         val byThread = record.kind == OPEN || record.kind == CHANGE
         val found = if (byThread) threads.findById(ThreadId(record.target)) else threads.findByCommentForUpdate(CommentId(record.target))
         val thread = found?.takeIf { access.sees(it.location.spaceId) } ?: throw ThreadNotFoundException(record.target)
-        val written =
-            when (record.kind) {
-                OPEN -> thread.comments.first().id
-                CHANGE -> null
-                else -> CommentId(record.target)
-            }
-        return viewOf(thread, commentable(access, thread)).copy(written = written)
+        commentable(access, thread)
+        if (record.kind == EDIT_COMMENT || record.kind == DELETE_COMMENT) requireAuthor(access, thread, CommentId(record.target))
+        if (record.state == OperationResultState.REMOVED) throw ResultRemovedException(record)
+        return record.threadView ?: throw LegacyOperationException(record)
+    }
+
+    private fun remembered(
+        context: WriteContext,
+        record: OperationRecord,
+        view: ThreadView,
+    ): ThreadView {
+        journal.remember(context, record.copy(threadView = view))
+        return view
+    }
+
+    // A deleted comment still has an author; a successful delete retry must remain replayable.
+    private fun requireAuthor(
+        access: Access,
+        thread: CommentThread,
+        id: CommentId,
+    ) {
+        val comment = thread.comment(id) ?: throw CommentNotFoundException(id)
+        if (!comment.author.isSameAuthorAs(access.actor)) {
+            throw ThreadActionException("only the author can change a comment", "reply with a new comment instead")
+        }
     }
 
     private fun viewOf(

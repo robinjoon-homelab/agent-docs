@@ -42,7 +42,9 @@ class ActivityServiceTest {
 
         assertThat(feed.entries.map { it.entry }).containsExactly(visible)
         assertThat(feed.entries.single().space).isEqualTo(space)
-        assertThat(feed.nextSince).isEqualTo(now.minusSeconds(200))
+        assertThat(feed.nextSince).isEqualTo(outside.record.at)
+        assertThat(feed.initialSince).isEqualTo(since)
+        assertThat(feed.nextCursor).isEqualTo(2)
     }
 
     @Test
@@ -50,6 +52,63 @@ class ActivityServiceTest {
         assertThatThrownBy { service.recent(agentAccess(Permission.EDIT, setOf(spaceId, otherSpaceId)), null, 20) }
             .isInstanceOf(PermissionDeniedException::class.java)
             .hasMessage("reading the whole activity log needs owner permission")
+    }
+
+    @Test
+    fun `101 equal timestamp changes continue through 100 and one then an empty page without skipping`() {
+        val since = now.minusSeconds(1)
+        val entries = (1L..101L).map { entry(it, ActivitySubject(spaceId.value, null, null, null), now) }
+        every { catalog.find(ActivityQuery(setOf(spaceId.value), since, null, 100, true)) } returns entries.take(100)
+        every { catalog.find(ActivityQuery(setOf(spaceId.value), since, null, 100, true, 100)) } returns entries.drop(100)
+        every { catalog.find(ActivityQuery(setOf(spaceId.value), since, null, 100, true, 101)) } returns emptyList()
+        every { spaces.findByIds(setOf(spaceId)) } returns listOf(space)
+        every { spaces.findByIds(emptySet()) } returns emptyList()
+        every { documents.findByIds(emptyList()) } returns emptyList()
+        val access = agentAccess(Permission.READ, setOf(spaceId))
+
+        val first = service.changesSince(access, since, 100)
+        val second = service.changesSince(access, first.initialSince, 100, first.nextCursor)
+        val end = service.changesSince(access, second.initialSince, 100, second.nextCursor)
+
+        assertThat((first.entries + second.entries).map { it.entry.id }).containsExactlyElementsOf(1L..101L)
+        assertThat(first.nextSince).isEqualTo(now)
+        assertThat(second.nextSince).isEqualTo(now)
+        assertThat(first.initialSince).isEqualTo(since)
+        assertThat(second.initialSince).isEqualTo(since)
+        assertThat(second.nextCursor).isEqualTo(101)
+        assertThat(end.entries).isEmpty()
+        assertThat(end.nextCursor).isEqualTo(101)
+        assertThat(end.nextSince).isEqualTo(since)
+        assertThat(end.initialSince).isEqualTo(since)
+    }
+
+    @Test
+    fun `legacy timestamp-only consumers advance using nextSince`() {
+        val since = now.minusSeconds(10)
+        val firstEntry = entry(1, ActivitySubject(spaceId.value, null, null, null), now.minusSeconds(5))
+        val secondEntry = entry(2, ActivitySubject(spaceId.value, null, null, null), now)
+        every { catalog.find(ActivityQuery(setOf(spaceId.value), since, null, 1, true)) } returns listOf(firstEntry)
+        every { catalog.find(ActivityQuery(setOf(spaceId.value), firstEntry.record.at, null, 1, true)) } returns listOf(secondEntry)
+        every { spaces.findByIds(setOf(spaceId)) } returns listOf(space)
+        every { documents.findByIds(emptyList()) } returns emptyList()
+        val access = agentAccess(Permission.READ, setOf(spaceId))
+
+        val first = service.changesSince(access, since, 1)
+        val second = service.changesSince(access, first.nextSince, 1)
+
+        assertThat(
+            first.entries
+                .single()
+                .entry.id,
+        ).isEqualTo(1)
+        assertThat(first.nextSince).isEqualTo(firstEntry.record.at).isAfter(since)
+        assertThat(
+            second.entries
+                .single()
+                .entry.id,
+        ).isEqualTo(2)
+        assertThat(second.nextSince).isEqualTo(now).isAfter(first.nextSince)
+        assertThat(second.initialSince).isEqualTo(first.nextSince)
     }
 
     private fun entry(

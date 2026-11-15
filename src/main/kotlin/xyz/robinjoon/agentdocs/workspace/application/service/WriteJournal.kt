@@ -8,9 +8,12 @@ import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationKey
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.output.OperationStore
 import xyz.robinjoon.agentdocs.workspace.domain.Actor
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
+import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
 import java.time.Clock
 import java.time.Instant
 
@@ -42,8 +45,14 @@ class WriteJournal(
         context: WriteContext,
         record: OperationRecord,
     ) {
-        keyOf(context)?.let { operations.save(it, record, now()) }
+        val remembered =
+            if (record.documentWrite != null || record.threadView != null) record.copy(state = OperationResultState.AVAILABLE) else record
+        keyOf(context)?.let { operations.save(it, remembered, now()) }
     }
+
+    fun removeCommentResults(comment: CommentId) = operations.removeCommentResults(comment)
+
+    fun removeDocumentResults(ids: List<DocumentId>) = operations.removeDocumentResults(ids)
 
     fun record(
         context: WriteContext,

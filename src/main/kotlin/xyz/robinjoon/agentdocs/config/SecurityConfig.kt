@@ -13,6 +13,7 @@ import org.springframework.security.web.context.RequestAttributeSecurityContextR
 import org.springframework.security.web.csrf.CsrfFilter
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
 import org.springframework.security.web.util.matcher.RequestMatcher
+import xyz.robinjoon.agentdocs.access.adapter.inbound.web.ApiAccessDeniedHandler
 import xyz.robinjoon.agentdocs.access.adapter.inbound.web.ApiAuthenticationEntryPoint
 import xyz.robinjoon.agentdocs.access.adapter.inbound.web.BearerTokenFilter
 import xyz.robinjoon.agentdocs.access.adapter.inbound.web.CsrfCookieFilter
@@ -90,7 +91,10 @@ class SecurityConfig {
                     .authenticated()
                     .anyRequest()
                     .permitAll()
-            }.exceptionHandling { it.authenticationEntryPoint(components.entryPoint) }
+            }.exceptionHandling {
+                it.authenticationEntryPoint(components.entryPoint)
+                it.accessDeniedHandler(ApiAccessDeniedHandler())
+            }
         return http.build()
     }
 
@@ -115,6 +119,7 @@ class SecurityConfig {
                     .anyRequest()
                     .permitAll()
             }.exceptionHandling {
+                it.accessDeniedHandler(ApiAccessDeniedHandler())
                 it.defaultAuthenticationEntryPointFor(components.entryPoint, PathPatternRequestMatcher.withDefaults().matcher("/api/**"))
             }.oauth2Login { login ->
                 login

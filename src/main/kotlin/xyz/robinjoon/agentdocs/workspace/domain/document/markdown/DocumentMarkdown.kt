@@ -4,8 +4,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 
-// The whole-document form agents read and write: front matter with the header and revision, then the blocks. The
-// revision in the front matter is the base a later full replace merges against.
+// The content version stays stable when pending input is confirmed without changing the body.
 object DocumentMarkdown {
     fun write(
         document: Document,
@@ -24,7 +23,7 @@ object DocumentMarkdown {
                         .lowercase(),
                 "tags" to FrontMatter.list(header.properties.tags),
                 header.properties.assignee?.let { "assignee" to it },
-                "revision" to document.revision.toString(),
+                "version" to document.version.toString(),
             )
         val body = BlockMarkdown.write(document.blocks, annotated)
         return FrontMatter(entries).render() + "\n\n" + body + "\n"

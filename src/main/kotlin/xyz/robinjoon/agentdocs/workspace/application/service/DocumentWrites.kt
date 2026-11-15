@@ -1,21 +1,25 @@
 package xyz.robinjoon.agentdocs.workspace.application.service
 
+import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
+import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
 import java.time.Instant
 
-// How a write lands in history: whether it may fold into the person's latest edit, and the kind of revision it
-// adds otherwise.
+// Whether a write can continue pending web input, and the snapshot kind for immediate confirmation.
 internal enum class WriteMode(
     val amendable: Boolean,
     val kind: RevisionKind,
 ) {
-    // A person's save on the latest revision, or their header change.
+    // A person's body or header input.
     TYPING(true, RevisionKind.EDIT),
 
-    // An agent's edit, or a save merged over someone else's change.
+    // A guarded block edit confirms immediately.
     EDIT(false, RevisionKind.EDIT),
     RESTORE(false, RevisionKind.RESTORE),
+    ;
+
+    fun groupsInput(context: WriteContext): Boolean = amendable && context.source == ChangeSource.WEB && !context.access.actor.isAgent
 }
 
 // A move into or out of the trash. kind names the activity log entry and operation the write remembered for a retry.

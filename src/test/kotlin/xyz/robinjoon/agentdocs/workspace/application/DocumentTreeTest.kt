@@ -52,6 +52,11 @@ class DocumentTreeTest {
 
     init {
         every { activity.record(any()) } just runs
+        every { spaces.findById(any()) } returns space
+        every { revisions.marks(any()) } returns emptyList()
+        every { documents.pending(any()) } returns null
+        every { documents.confirmPending(any()) } answers { firstArg() }
+        every { documents.savePending(any(), any()) } answers { firstArg() }
         every { revisions.find(any(), any()) } returns null
     }
 

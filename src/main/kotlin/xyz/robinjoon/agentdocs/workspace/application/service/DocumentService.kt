@@ -7,9 +7,13 @@ import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
+import xyz.robinjoon.agentdocs.workspace.application.model.SpaceReference
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.LegacyOperationException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.RevisionNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.StaleRevisionException
@@ -30,9 +34,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
 import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
-import xyz.robinjoon.agentdocs.workspace.domain.document.edit.BlockMerge
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.DocumentEditor
-import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditConflictException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.BlockDiff
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.ChangeOrigin
@@ -56,6 +58,7 @@ class DocumentService(
     private val journal: WriteJournal,
 ) : DocumentUseCase {
     private val tree = DocumentTree(documents, journal)
+    private val pending = PendingEdits(documents)
 
     @Transactional
     override fun create(
@@ -74,7 +77,16 @@ class DocumentService(
         val change = RevisionChange.of(originOf(context), context.summary ?: "문서 생성", document.blocks.map { it.id }, now)
         val saved = documents.add(document, Revision.of(document, change))
         journal.record(context, "document.created", subjectOf(saved), "${saved.header.title}: ${change.summary}")
-        val written = DocumentWrite(saved, saved.revision, change.changedBlocks, amended = false, unchanged = false, related = parents)
+        val written =
+            DocumentWrite(
+                saved,
+                saved.revision,
+                change.changedBlocks,
+                amended = false,
+                unchanged = false,
+                related = parents,
+                space = SpaceReference(target.id, target.slug, target.profile.name),
+            )
         return remember(context, CREATE, written)
     }
 
@@ -82,20 +94,14 @@ class DocumentService(
     override fun save(
         context: WriteContext,
         id: DocumentId,
-        baseRevision: Int,
+        baseVersion: Int,
         blocks: List<Block>,
     ): DocumentWrite {
         journal.replayed(context, SAVE)?.let { return replay(context.access, it) }
         val document = lockForEdit(context.access, id)
-        val stale = baseRevision != document.revision
-        val written =
-            write(
-                context,
-                document,
-                Content(document.header, mergeOnto(document, baseRevision, blocks)),
-                if (stale) WriteMode.EDIT else WriteMode.TYPING,
-            )
-        return remember(context, SAVE, written.copy(merged = stale))
+        requireVersion(document, baseVersion)
+        val written = write(context, document, Content(document.header, blocks), WriteMode.TYPING)
+        return remember(context, SAVE, written)
     }
 
     @Transactional
@@ -122,7 +128,7 @@ class DocumentService(
     ): DocumentWrite {
         journal.replayed(context, HEADER)?.let { return replay(context.access, it) }
         val document = lockForEdit(context.access, id)
-        change.baseRevision?.takeIf { it != document.revision }?.let { requireUntouchedSince(document, it, change) }
+        requireVersion(document, change.baseVersion ?: throw InvalidRequestException("baseVersion is required"))
         val header = headerWith(document.header, change)
         val content = Content(header, document.blocks)
         if (header.path == document.header.path) return remember(context, HEADER, write(context, document, content, WriteMode.TYPING))
@@ -140,7 +146,7 @@ class DocumentService(
     ): DocumentWrite {
         journal.replayed(context, Transition.TRASH.operation)?.let { return replay(context.access, it) }
         val document = lockForEdit(context.access, id)
-        if (document.isTrashed) return unchanged(document)
+        if (document.isTrashed) return remember(context, Transition.TRASH.operation, unchanged(document))
         val now = journal.now()
         val written = transition(context, document, Transition.TRASH, now)
         return remember(context, Transition.TRASH.operation, written.copy(related = tree.trashAlong(context, document, now)))
@@ -154,7 +160,7 @@ class DocumentService(
     ): DocumentWrite {
         journal.replayed(context, Transition.UNTRASH.operation)?.let { return replay(context.access, it) }
         val document = lockForEdit(context.access, id)
-        if (!document.isTrashed) return unchanged(document)
+        if (!document.isTrashed) return remember(context, Transition.UNTRASH.operation, unchanged(document))
         val together = tree.planRestore(document)
         val now = journal.now()
         val parents = tree.reviveParents(context, document.spaceId, document.header.path, now)
@@ -170,16 +176,23 @@ class DocumentService(
     ) {
         Permissions.requireOwner(context.access, "deleting a document permanently")
         // The document is gone after the first attempt, so a retry has nothing left to answer with.
-        if (journal.replayed(context, PURGE) != null) return
+        journal.replayed(context, PURGE)?.let {
+            if (it.state == OperationResultState.REMOVED) throw ResultRemovedException(it)
+            if (it.state != OperationResultState.COMPLETED) throw LegacyOperationException(it)
+            return
+        }
         val document = documents.findByIdForUpdate(id)?.takeIf { context.access.sees(it.spaceId) } ?: throw DocumentNotFoundException(id)
         if (!document.isTrashed) {
             throw InvalidRequestException("only a document in the trash can be deleted permanently", "move it to the trash first")
         }
-        val together = tree.trashedTogether(document)
+        val together = documents.lockTrashedUnder(document.spaceId, document.header.path)
+        val deletingIds = listOf(id) + together.map { it.id }
         documents.delete(id)
         journal.record(context, "document.purged", subjectOf(document), "${document.header.title}: 영구 삭제")
         tree.purgeAlong(context, together)
-        journal.remember(context, OperationRecord(PURGE, id.value, null))
+        // Thread deletion waits for in-flight writers before their copied results are removed.
+        journal.removeDocumentResults(deletingIds)
+        journal.remember(context, OperationRecord(PURGE, id.value, null, state = OperationResultState.COMPLETED))
     }
 
     @Transactional
@@ -187,11 +200,11 @@ class DocumentService(
         context: WriteContext,
         id: DocumentId,
         revision: Int,
-        baseRevision: Int?,
+        baseVersion: Int?,
     ): DocumentWrite {
         journal.replayed(context, RESTORE)?.let { return replay(context.access, it) }
         val document = lockForEdit(context.access, id)
-        if (baseRevision != null && baseRevision != document.revision) throw StaleRevisionException(baseRevision, document.revision)
+        requireVersion(document, baseVersion ?: throw InvalidRequestException("baseVersion is required"))
         val target = revisions.find(id, revision) ?: throw RevisionNotFoundException("$id rev $revision")
         val header = document.header.copy(title = target.content.header.title)
         val restoring = context.copy(summary = context.summary ?: "rev $revision 내용으로 복원")
@@ -200,13 +213,20 @@ class DocumentService(
 
     @Transactional
     override fun purgeExpiredTrash(): Int {
-        val expired = documents.trashedBefore(journal.now().minus(trashRetention))
+        val cutoff = journal.now().minus(trashRetention)
+        val expired = documents.trashedBefore(cutoff)
+        var deleted = 0
         expired.forEach { id ->
-            val document = documents.findByIdForUpdate(id) ?: return@forEach
+            val document =
+                documents.findByIdForUpdate(id)?.takeIf {
+                    it.lifecycle.trashedAt?.isBefore(cutoff) == true
+                } ?: return@forEach
             documents.delete(id)
+            journal.removeDocumentResults(listOf(id))
             journal.recordBySystem("document.purged", subjectOf(document), "${document.header.title}: 휴지통 보관 기간이 지나 삭제")
+            deleted++
         }
-        return expired.size
+        return deleted
     }
 
     @Transactional
@@ -225,7 +245,7 @@ class DocumentService(
         transition: Transition,
         now: Instant,
     ): DocumentWrite {
-        val moved = transition.apply(document, now) ?: return unchanged(document)
+        val moved = transition.apply(pending.confirm(document), now) ?: return unchanged(document)
         val change = RevisionChange.of(originOf(context), transition.summary, emptyList(), now).withKind(RevisionKind.TRANSITION)
         val saved = documents.update(moved, Revision.of(moved, change), amended = false)
         journal.record(context, transition.kind, subjectOf(saved), "${saved.header.title}: ${transition.summary}")
@@ -240,12 +260,15 @@ class DocumentService(
         mode: WriteMode,
     ): DocumentWrite {
         // Compared as whole lists: the diff ignores moved blocks, but a new order is still a change.
-        if (next.blocks == document.blocks && next.header == document.header) return unchanged(document)
-        val changes = BlockDiff.between(document.blocks, next.blocks)
         val now = journal.now()
-        val latest = if (mode.amendable) amendableRevision(context, document, now) else null
-        if (latest != null) return amend(context, document, latest, next)
-        val revised = document.revise(next.header, next.blocks, now)
+        val latest = documents.pending(document.id)
+        val typing = mode.groupsInput(context)
+        val continues = typing && latest != null && pending.continues(latest, context.access.actor, now)
+        val current = if (continues || latest == null) document else pending.confirm(document)
+        if (next.blocks == current.blocks && next.header == current.header) return unchanged(current)
+        val changes = BlockDiff.between(current.blocks, next.blocks)
+        if (typing) return type(context, current, next, if (continues) latest else null)
+        val revised = current.revise(next.header, next.blocks, now)
         val summary =
             context.summary ?: ChangeSummary.of(document.header, next.header, changes, BlockDiff.reordered(document.blocks, next.blocks))
         val change = RevisionChange.of(originOf(context), summary, changes.map { it.blockId }, now).withKind(mode.kind)
@@ -254,88 +277,62 @@ class DocumentService(
         return DocumentWrite(saved, saved.revision, change.changedBlocks, amended = false, unchanged = false)
     }
 
-    // A person's web saves group into one revision while they keep typing: the latest revision is an edit of theirs,
-    // came from the web, and was last saved at most 30 seconds ago. Agents and other paths always add a revision.
-    private fun amendableRevision(
+    private fun type(
         context: WriteContext,
         document: Document,
-        now: Instant,
-    ): Revision? {
-        val actor = context.access.actor
-        if (context.source != ChangeSource.WEB || actor.isAgent) return null
-        val latest = revisions.find(document.id, document.revision) ?: return null
-        val origin = latest.change.origin
-        val recent = Duration.between(latest.change.period.updatedAt, now) <= amendWindow
-        return latest.takeIf {
-            recent && latest.change.amendable && origin.source == ChangeSource.WEB &&
-                origin.actor.isSameAuthorAs(
-                    actor,
-                ) && !latest.content.trashed
-        }
-    }
-
-    // The summary and changed blocks of an amended revision describe its difference from the revision before it.
-    private fun amend(
-        context: WriteContext,
-        document: Document,
-        latest: Revision,
         next: Content,
+        latest: Revision?,
     ): DocumentWrite {
         val now = journal.now()
-        val amended = document.amend(next.header, next.blocks, now)
-        val previous = if (latest.number > 1) revisions.find(document.id, latest.number - 1) else null
-        val summary =
-            previous?.let {
-                val before = it.content.blocks
-                ChangeSummary.of(
-                    it.content.header,
-                    next.header,
-                    BlockDiff.between(before, next.blocks),
-                    BlockDiff.reordered(before, next.blocks),
-                )
-            } ?: latest.change.summary
-        val changed = BlockDiff.between(document.blocks, next.blocks).map { it.blockId }
-        val change = latest.change.amendedWith(RevisionChange.of(originOf(context), summary, changed, now), summary)
-        val saved = documents.update(amended, Revision.of(amended, change), amended = true)
-        return DocumentWrite(saved, saved.revision, change.changedBlocks, amended = true, unchanged = false)
+        val edited = document.amend(next.header, next.blocks, now)
+        val before = revisions.find(document.id, document.revision)
+        val changes = BlockDiff.between(before?.content?.blocks.orEmpty(), next.blocks)
+        val summary = context.summary ?: ChangeSummary.of(document.header, next.header, changes, false)
+        val incoming = RevisionChange.of(originOf(context), summary, changes.map { it.blockId }, now)
+        val change = latest?.change?.amendedWith(incoming, summary) ?: incoming
+        val revision = Revision.of(edited, change).copy(number = document.revision + 1)
+        val saved = documents.savePending(edited, revision)
+        val subject = ActivitySubject(saved.spaceId.value, saved.id.value, null, null)
+        journal.record(context, "document.revised", subject, "${saved.header.title}: ${change.summary}")
+        return DocumentWrite(saved, saved.revision, change.changedBlocks, amended = latest != null, unchanged = false)
     }
 
-    private fun mergeOnto(
-        document: Document,
-        baseRevision: Int,
-        submitted: List<Block>,
-    ): List<Block> {
-        if (baseRevision == document.revision) return submitted
-        if (baseRevision !in 1 until document.revision) {
-            throw InvalidRequestException(
-                "baseRevision $baseRevision does not exist; the document is at revision ${document.revision}",
-                "send the revision you last read",
-            )
-        }
-        val base = revisions.find(document.id, baseRevision) ?: throw RevisionNotFoundException("${document.id} rev $baseRevision")
-        val merged = BlockMerge.merge(base.content.blocks, document.blocks, submitted)
-        if (merged.conflicts.isNotEmpty()) throw EditConflictException(merged.conflicts)
-        return merged.blocks
-    }
-
-    // A stale base conflicts only on the fields this change sets that someone changed since: renaming after an agent
-    // edited blocks goes through, overwriting a title a person just typed does not.
-    private fun requireUntouchedSince(
+    private fun requireVersion(
         document: Document,
         base: Int,
-        change: HeaderChange,
     ) {
-        val before = revisions.find(document.id, base)?.content?.header ?: throw StaleRevisionException(base, document.revision)
-        val now = document.header
-        val touched =
-            listOf(
-                change.title != null && before.title != now.title,
-                change.path != null && before.path != now.path,
-                change.status != null && before.properties.status != now.properties.status,
-                change.tags != null && before.properties.tags != now.properties.tags,
-                change.assignee != null && before.properties.assignee != now.properties.assignee,
-            )
-        if (touched.any { it }) throw StaleRevisionException(base, document.revision)
+        if (base != document.version) throw StaleRevisionException(base, document.version, document)
+    }
+
+    @Transactional
+    override fun finalizeEdits(
+        context: WriteContext,
+        id: DocumentId,
+        baseVersion: Int,
+    ): DocumentWrite {
+        journal.replayed(context, FINALIZE)?.let { return replay(context.access, it) }
+        val document = lockForEdit(context.access, id)
+        val edit = documents.pending(id)
+        val owned =
+            edit
+                ?.change
+                ?.origin
+                ?.actor
+                ?.isSameAuthorAs(context.access.actor) == true
+        val confirmed = if (owned && edit.version == baseVersion) pending.confirm(document) else document
+        return remember(context, FINALIZE, unchanged(confirmed))
+    }
+
+    @Transactional
+    override fun finalizeExpiredEdits(): Int {
+        val now = journal.now()
+        val expired = documents.expiredPending(now)
+        expired.forEach { id ->
+            val document = documents.findByIdForUpdate(id) ?: return@forEach
+            val edit = documents.pending(id) ?: return@forEach
+            if (pending.expired(edit, now)) pending.confirm(document)
+        }
+        return expired.size
     }
 
     private fun headerWith(
@@ -386,13 +383,14 @@ class DocumentService(
         kind: String,
         result: DocumentWrite,
     ): DocumentWrite {
-        // A write that changed nothing is not remembered: its retry changes nothing either.
-        if (!result.unchanged) journal.remember(context, OperationRecord(kind, result.document.id.value, result.revision))
-        return result
+        val space = if (kind == HEADER) spaces.findById(result.document.spaceId) else null
+        val reference = space?.let { SpaceReference(it.id, it.slug, it.profile.name) } ?: result.space
+        val snapshot = result.copy(marks = revisions.marks(result.document.id), space = reference)
+        journal.remember(context, OperationRecord(kind, result.document.id.value, result.revision, documentWrite = snapshot))
+        return snapshot
     }
 
-    // A retried write does not write again. It answers with the document as it is now and the revision the first
-    // attempt produced, after the same visibility and permission checks a first attempt gets.
+    // Recheck current access, then replay only the captured result. Legacy keys never reapply writes.
     private fun replay(
         access: Access,
         record: OperationRecord,
@@ -400,14 +398,8 @@ class DocumentService(
         val id = DocumentId(record.target)
         val document = documents.findById(id)?.takeIf { access.sees(it.spaceId) } ?: throw DocumentNotFoundException(id)
         Permissions.require(access, document.spaceId, Permission.EDIT, "editing a document")
-        val revision = record.revision ?: document.revision
-        val changed =
-            revisions
-                .find(id, revision)
-                ?.change
-                ?.changedBlocks
-                .orEmpty()
-        return DocumentWrite(document, revision, changed, amended = false, unchanged = false)
+        if (record.state == OperationResultState.REMOVED) throw ResultRemovedException(record)
+        return record.documentWrite ?: throw LegacyOperationException(record)
     }
 
     private fun unchanged(document: Document): DocumentWrite =
@@ -430,7 +422,7 @@ class DocumentService(
         const val HEADER = "document.header"
         const val RESTORE = "document.restore"
         const val PURGE = "document.purge"
-        val amendWindow: Duration = Duration.ofSeconds(30)
+        const val FINALIZE = "document.finalize"
         val trashRetention: Duration = Duration.ofDays(30)
     }
 }

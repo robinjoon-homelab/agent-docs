@@ -207,7 +207,7 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
                 TestArguments.of("docs_create", """{"tags":[1]}""", "tags"),
                 TestArguments.of("docs_edit", """{"answering":true}""", "answering"),
                 TestArguments.of("docs_move", """{"tags":"tag"}""", "tags"),
-                TestArguments.of("docs_move", """{"baseRevision":"1"}""", "baseRevision"),
+                TestArguments.of("docs_move", """{"baseVersion":"1"}""", "baseVersion"),
                 TestArguments.of("docs_move", """{"assignee":false}""", "assignee"),
                 TestArguments.of("docs_history", """{"document":"$documentId","action":"diff","from":1,"to":"2"}""", "to"),
                 TestArguments.of("docs_search", """{"query":"text","space":false}""", "space"),

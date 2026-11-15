@@ -11,11 +11,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 
-// Every write needs edit permission on the document's space, takes a row lock on the document, and adds a revision,
-// except that a person's saves within 30 seconds of their own last web save replace that revision. The leading
-// segments of a path are the parent document: writes that would leave a document without a live parent create or
-// restore one, and moves, trash moves, restores, and permanent deletes take the documents under it along. What they
-// wrote besides the named document is in DocumentWrite.related.
+// Writes lock the document and require edit permission. Content versions and immutable history advance separately.
 interface DocumentUseCase {
     fun create(
         context: WriteContext,
@@ -23,12 +19,11 @@ interface DocumentUseCase {
         draft: DocumentDraft,
     ): DocumentWrite
 
-    // The whole block list as the writer has it, based on the revision it last read. Blocks changed by others since
-    // are merged in; a block both changed fails with EditConflictException listing every such block.
+    // Replaces the whole body only when baseVersion matches; stale writes return the current content.
     fun save(
         context: WriteContext,
         id: DocumentId,
-        baseRevision: Int,
+        baseVersion: Int,
         blocks: List<Block>,
     ): DocumentWrite
 
@@ -41,7 +36,7 @@ interface DocumentUseCase {
         answering: ThreadId?,
     ): DocumentWrite
 
-    // Fails with StaleRevisionException when change.baseRevision is set and is not the current revision. A new path
+    // Requires the current content version. A new path
     // under the document's own path fails, and so does one where the document or any document under it would land
     // on a path in use, with PathTakenException naming it.
     fun changeHeader(
@@ -67,16 +62,24 @@ interface DocumentUseCase {
     )
 
     // Writes the blocks and title of an earlier revision as a new revision. History is never rewound.
-    // baseRevision, when given, must be the current revision: restoring drops every later change from the document.
+    // baseVersion is required and must match the current content version.
     fun restore(
         context: WriteContext,
         id: DocumentId,
         revision: Int,
-        baseRevision: Int?,
+        baseVersion: Int?,
     ): DocumentWrite
 
     // Removes documents that have been in the trash for 30 days. Returns how many were removed.
     fun purgeExpiredTrash(): Int
+
+    fun finalizeEdits(
+        context: WriteContext,
+        id: DocumentId,
+        baseVersion: Int,
+    ): DocumentWrite
+
+    fun finalizeExpiredEdits(): Int
 
     // Gives every folder path that has no document an empty one, written in the name of the person with the owner's
     // login. Paths that already have a document are left alone, so running it again adds nothing. Returns the

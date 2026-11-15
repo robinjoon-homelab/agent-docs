@@ -19,6 +19,7 @@ import xyz.robinjoon.agentdocs.access.application.service.ClientDirectory
 import xyz.robinjoon.agentdocs.access.application.service.ClientRegistrationService
 import xyz.robinjoon.agentdocs.access.application.service.ConnectionService
 import xyz.robinjoon.agentdocs.access.application.service.SignInService
+import xyz.robinjoon.agentdocs.access.application.service.TokenPolicy
 import xyz.robinjoon.agentdocs.access.application.service.TokenService
 import xyz.robinjoon.agentdocs.access.application.service.WebSessionService
 import xyz.robinjoon.agentdocs.access.domain.user.Allowlist
@@ -65,8 +66,9 @@ class AccessConfig {
     @Bean
     fun callerUseCase(
         ports: AccessPorts,
+        settings: AccessSettings,
         clock: Clock,
-    ): CallerUseCase = CallerService(ports.connections, ports.users, clock)
+    ): CallerUseCase = CallerService(ports.connections, ports.users, clock, Allowlist(settings.owner, settings.members))
 
     @Bean
     fun connectionUseCase(
@@ -87,7 +89,8 @@ class AccessConfig {
         ports: AccessPorts,
         journal: AccessJournal,
         settings: AccessSettings,
-    ): TokenUseCase = TokenService(ports.requests, ports.connections, ports.clients, ports.secrets, journal, settings)
+    ): TokenUseCase =
+        TokenService(ports.requests, ports.connections, ports.clients, ports.secrets, journal, TokenPolicy(ports.users, settings))
 
     @Bean
     fun clientRegistrationUseCase(directory: ClientDirectory): ClientRegistrationUseCase = ClientRegistrationService(directory)

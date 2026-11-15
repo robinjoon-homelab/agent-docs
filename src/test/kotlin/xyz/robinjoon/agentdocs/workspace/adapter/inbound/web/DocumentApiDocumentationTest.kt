@@ -54,11 +54,16 @@ import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownChunk
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownFormat
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
+import xyz.robinjoon.agentdocs.workspace.application.model.SpaceReference
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.LegacyOperationException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.StaleRevisionException
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
@@ -69,15 +74,13 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
 import xyz.robinjoon.agentdocs.workspace.domain.document.Paragraph
 import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
-import xyz.robinjoon.agentdocs.workspace.domain.document.edit.BlockConflict
-import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditConflictException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 import java.util.UUID
 
-// The use cases are strict mocks; merge, conflict, and revision rules belong to the domain and service tests. This test
+// The use cases are strict mocks; version, conflict, and revision rules belong to the domain and service tests. This test
 // checks block JSON in both directions, statuses, and error conversion.
 class DocumentApiDocumentationTest : RestDocsWebTest() {
     private val documents = mockk<DocumentUseCase>()
@@ -121,8 +124,15 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                 listOf(title),
             )
         every { documents.create(webContext.copy(operationId = "op-1"), SpaceSlug("agent-docs"), draft) } returns
-            DocumentWrite(created, 1, listOf(title.id), amended = false, unchanged = false)
-        every { queries.open(ownerAccess, documentId) } returns DocumentView(created, space, emptyList())
+            DocumentWrite(
+                created,
+                1,
+                listOf(title.id),
+                amended = false,
+                unchanged = false,
+                marks = listOf(BlockMark(title.id, agentActor, 1, at)),
+            )
+        every { queries.open(ownerAccess, documentId) } returns DocumentView(document(revision = 9), space, emptyList())
 
         mockMvc
             .perform(
@@ -134,6 +144,8 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     ),
             ).andExpect(status().isCreated)
             .andExpect(header().string("Location", "/api/documents/$documentId"))
+            .andExpect(jsonPath("$.revision").value(1))
+            .andExpect(jsonPath("$.blockChanges[0].revision").value(1))
             .andDo(
                 documented(
                     "documents-create",
@@ -175,7 +187,8 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     ),
                     responseFields(
                         fieldWithPath("documentId").description("문서 ID"),
-                        fieldWithPath("revision").description("읽은 리비전. 같은 리비전은 늘 같은 바이트다"),
+                        fieldWithPath("version").description("현재 내용 버전"),
+                        fieldWithPath("revision").description("마지막 확정 리비전"),
                         fieldWithPath("markdown").description("마크다운"),
                         fieldWithPath("nextCursor").type(JsonFieldType.NUMBER).optional().description("남은 블록이 있으면 다음 cursor"),
                         fieldWithPath("totalBlocks").description("문서의 블록 수"),
@@ -214,7 +227,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     .principal(owner)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
-                        """{"baseRevision":3,"blocks":[{"id":"head01","type":"heading","level":1,"text":"재시도 설계"},""" +
+                        """{"baseVersion":3,"blocks":[{"id":"head01","type":"heading","level":1,"text":"재시도 설계"},""" +
                             """{"id":"para01","type":"paragraph","text":" 실패하면 **60초** 뒤에 다시 시도한다. "}]}""",
                     ),
             ).andExpect(status().isOk)
@@ -224,7 +237,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     "documents-save",
                     pathParameters(parameterWithName("id").description("문서 ID")),
                     requestFields(
-                        fieldWithPath("baseRevision").description("마지막으로 읽거나 저장한 리비전. 그 뒤 다른 블록의 변경은 합치고, 같은 블록이면 409"),
+                        fieldWithPath("baseVersion").description("마지막으로 읽거나 저장한 version. 다르면 본문 전체와 currentVersion을 담아 409"),
                         blocksSubsection("blocks"),
                         fieldWithPath("opId").optional().type(JsonFieldType.STRING).description("멱등 키"),
                     ),
@@ -234,30 +247,57 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
-    fun `a block both sides changed answers 409 with the block as it is now`() {
+    fun `a stale save answers 409 with the full current content and version`() {
         every { documents.save(webContext, documentId, 2, listOf(revised)) } throws
-            EditConflictException(listOf(BlockConflict(body.id, BlockMarkdown.hash(body), BlockMarkdown.of(body))))
+            StaleRevisionException(2, 3, document())
 
         mockMvc
             .perform(
                 put("/api/documents/{id}/content", documentId)
                     .principal(owner)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"baseRevision":2,"blocks":[{"id":"para01","type":"paragraph","text":"실패하면 **60초** 뒤에 다시 시도한다."}]}"""),
+                    .content("""{"baseVersion":2,"blocks":[{"id":"para01","type":"paragraph","text":"실패하면 **60초** 뒤에 다시 시도한다."}]}"""),
             ).andExpect(status().isConflict)
-            .andExpect(jsonPath("$.conflicts[0].current.text").value("실패하면 **30초** 뒤에 다시 시도한다."))
+            .andExpect(jsonPath("$.currentVersion").value(3))
+            .andExpect(jsonPath("$.currentDocument.blocks[1].text").value("실패하면 **30초** 뒤에 다시 시도한다."))
+            .andDo(documented("documents-conflict", responseFields(*staleFields())))
+    }
+
+    @Test
+    fun `finalize confirms pending edits and returns the current version`() {
+        every { documents.finalizeEdits(webContext, documentId, 4) } returns
+            DocumentWrite(document(revision = 4), 4, emptyList(), amended = false, unchanged = true)
+
+        mockMvc
+            .perform(post("/api/documents/{id}/finalize?baseVersion=4", documentId).principal(owner))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.revision").value(4))
+            .andExpect(jsonPath("$.version").value(4))
             .andDo(
                 documented(
-                    "documents-conflict",
-                    responseFields(
-                        *workspaceProblemFields(),
-                        fieldWithPath("conflicts[].blockId").description("충돌한 블록 ID"),
-                        fieldWithPath("conflicts[].currentHash").type(JsonFieldType.STRING).optional().description("현재 해시. 지워졌으면 null"),
-                        fieldWithPath("conflicts[].currentMarkdown").type(JsonFieldType.STRING).optional().description("현재 블록의 마크다운"),
-                        subsectionWithPath("conflicts[].current").type(JsonFieldType.OBJECT).optional().description("현재 블록 JSON"),
-                    ),
+                    "documents-finalize",
+                    queryParameters(parameterWithName("baseVersion").description("이 탭이 마지막으로 저장한 콘텐츠 버전. 현재 작성자·버전이 일치하는 대기 입력만 확정")),
+                    responseFields(*writeFields()),
                 ),
             )
+    }
+
+    @Test
+    fun `save and header changes require baseVersion`() {
+        mockMvc
+            .perform(
+                put("/api/documents/{id}/content", documentId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"blocks":[]}"""),
+            ).andExpect(status().isBadRequest)
+        mockMvc
+            .perform(
+                patch("/api/documents/{id}", documentId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"title":"x"}"""),
+            ).andExpect(status().isBadRequest)
     }
 
     @Test
@@ -297,22 +337,32 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
     fun `a header change keeps fields that are left out and clears an explicit null`() {
         val change = HeaderChange("재시도 정책", DocumentPath("payments/retry-policy"), DocumentStatus.CONFIRMED, null, AssigneeChange(null), 3)
         every { documents.changeHeader(webContext, documentId, change) } returns
-            DocumentWrite(document(revision = 4), 4, emptyList(), amended = false, unchanged = false)
-        every { queries.open(ownerAccess, documentId) } returns DocumentView(document(revision = 4), space, emptyList())
+            DocumentWrite(
+                document(revision = 4),
+                4,
+                emptyList(),
+                amended = false,
+                unchanged = false,
+                marks = listOf(BlockMark(body.id, agentActor, 3, at)),
+                space = SpaceReference(space.id, space.slug, "원래 스페이스 이름"),
+            )
+        every { queries.open(ownerAccess, documentId) } returns DocumentView(document(revision = 9), space, emptyList())
 
         mockMvc
             .perform(
                 patch("/api/documents/{id}", documentId)
                     .principal(owner)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"baseRevision":3,"title":"재시도 정책","path":"payments/retry-policy","status":"confirmed","assignee":null}"""),
+                    .content("""{"baseVersion":3,"title":"재시도 정책","path":"payments/retry-policy","status":"confirmed","assignee":null}"""),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.revision").value(4))
+            .andExpect(jsonPath("$.blockChanges[0].revision").value(3))
+            .andExpect(jsonPath("$.space.name").value("원래 스페이스 이름"))
             .andDo(
                 documented(
                     "documents-change-header",
                     requestFields(
-                        fieldWithPath("baseRevision").optional().description("마지막으로 본 리비전. 그 뒤 문서가 바뀌었으면 409"),
+                        fieldWithPath("baseVersion").description("마지막으로 본 version. 그 뒤 문서가 바뀌었으면 409"),
                         fieldWithPath("title").optional().description("새 제목"),
                         fieldWithPath("path").optional().description("새 경로. 같은 스페이스 안에서 옮긴다"),
                         fieldWithPath("status").optional().description("새 상태"),
@@ -328,17 +378,17 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
     @Test
     fun `a header change based on an older revision answers 409`() {
         every { documents.changeHeader(webContext, documentId, HeaderChange("x", null, null, null, null, 2)) } throws
-            StaleRevisionException(2, 3)
+            StaleRevisionException(2, 3, document())
 
         mockMvc
             .perform(
                 patch(
                     "/api/documents/{id}",
                     documentId,
-                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"baseRevision":2,"title":"x"}"""),
+                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"baseVersion":2,"title":"x"}"""),
             ).andExpect(status().isConflict)
             .andExpect(jsonPath("$.code").value("conflict"))
-            .andDo(documented("documents-stale-revision", responseFields(*workspaceProblemFields())))
+            .andDo(documented("documents-stale-revision", responseFields(*staleFields())))
     }
 
     @Test
@@ -351,7 +401,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                 patch(
                     "/api/documents/{id}",
                     documentId,
-                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"baseRevision":3,"path":"billing"}"""),
+                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"baseVersion":3,"path":"billing"}"""),
             ).andExpect(status().isConflict)
             .andExpect(jsonPath("$.code").value("taken"))
             .andExpect(jsonPath("$.path").value("billing/retry"))
@@ -424,8 +474,73 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
         mockMvc.perform(get("/api/documents/{id}", documentId).principal(owner)).andExpect(status().isNotFound)
     }
 
+    @Test
+    fun `legacy operations report the successful record without suggesting a duplicate write`() {
+        every { documents.save(any(), documentId, 3, any()) } throws
+            LegacyOperationException(OperationRecord("document.save", documentId.value, 2))
+
+        mockMvc
+            .perform(
+                put("/api/documents/{id}/content", documentId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"baseVersion":3,"blocks":[],"opId":"before-upgrade"}"""),
+            ).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("legacy_operation"))
+            .andExpect(jsonPath("$.target").value(documentId.toString()))
+            .andExpect(jsonPath("$.revision").value(2))
+            .andExpect(jsonPath("$.fix").value(org.hamcrest.Matchers.startsWith("Do not resend the original request.")))
+            .andDo(
+                documented(
+                    "documents-legacy-operation",
+                    responseFields(
+                        *workspaceProblemFields(),
+                        fieldWithPath("target").description("이미 성공한 작업의 대상 ID"),
+                        fieldWithPath("revision").optional().type(JsonFieldType.NUMBER).description("기록에 남은 리비전. 작업에 따라 null"),
+                    ),
+                ),
+            )
+    }
+
+    @Test
+    fun `deleted response content reports result removed without inviting a duplicate write`() {
+        every { documents.save(any(), documentId, 3, any()) } throws
+            ResultRemovedException(OperationRecord("document.save", documentId.value, 2, state = OperationResultState.REMOVED))
+
+        mockMvc
+            .perform(
+                put("/api/documents/{id}/content", documentId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"baseVersion":3,"blocks":[],"opId":"removed-result"}"""),
+            ).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("result_removed"))
+            .andExpect(jsonPath("$.target").value(documentId.toString()))
+            .andExpect(jsonPath("$.revision").value(2))
+            .andExpect(jsonPath("$.fix").value(org.hamcrest.Matchers.startsWith("Do not resend the original request.")))
+            .andDo(
+                documented(
+                    "documents-result-removed",
+                    responseFields(
+                        *workspaceProblemFields(),
+                        fieldWithPath("target").description("이미 성공한 작업의 대상 ID"),
+                        fieldWithPath("revision").optional().type(JsonFieldType.NUMBER).description("기록에 남은 리비전. 작업에 따라 null"),
+                    ),
+                ),
+            )
+    }
+
+    private fun staleFields(): Array<FieldDescriptor> =
+        arrayOf(
+            *workspaceProblemFields(),
+            fieldWithPath("currentVersion").description("현재 내용 버전. 로컬 병합 후 baseVersion으로 보낸다"),
+            subsectionWithPath("currentDocument").description("현재 문서의 헤더, version, 확정 revision과 전체 blocks"),
+        )
+
     private fun listingFields(prefix: String): Array<FieldDescriptor> =
-        arrayOf(fieldWithPath("${prefix}id").description("문서 ID")) + headerFields(prefix) + actorFields("${prefix}updatedBy")
+        arrayOf(
+            fieldWithPath("${prefix}id").description("문서 ID"),
+        ) + headerFields(prefix) + actorFields("${prefix}updatedBy")
 
     private fun documentFields(): Array<FieldDescriptor> =
         arrayOf(
@@ -443,11 +558,12 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
     private fun writeFields(): Array<FieldDescriptor> =
         arrayOf(
             fieldWithPath("id").description("문서 ID"),
-            fieldWithPath("revision").description("이 쓰기가 만든 리비전. amended면 이어 쓴 리비전"),
-            fieldWithPath("amended").description("사람이 30초 안에 이어 쓴 저장이라 새 리비전 대신 마지막 리비전을 고쳤는지"),
+            fieldWithPath("revision").description("마지막 확정 리비전. pending 저장은 확정할 때만 증가한다"),
+            fieldWithPath("version").description("현재 내용 버전. 실제 변경마다 증가한다"),
+            fieldWithPath("amended").description("같은 사람의 WEB 저장이 기존 pending에 이어졌는지. 유휴 30초 또는 총 600초면 확정한다"),
             fieldWithPath("unchanged").description("바뀐 것이 없어 리비전을 만들지 않았는지"),
             fieldWithPath("changedBlockIds").description("바뀐 블록 ID"),
-            fieldWithPath("merged").description("오래된 baseRevision에 다른 쪽의 변경을 합쳤는지. true면 받은 blocks로 화면을 맞춘다"),
+            fieldWithPath("merged").description("항상 false. 서버는 오래된 version을 병합하지 않는다"),
             blocksSubsection("blocks"),
         )
 }

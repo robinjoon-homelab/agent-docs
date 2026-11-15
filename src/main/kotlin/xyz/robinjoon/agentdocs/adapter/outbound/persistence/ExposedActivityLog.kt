@@ -47,6 +47,7 @@ class ExposedActivityLog :
         query.spaceIds?.let { spaces -> select.andWhere { ActivitiesTable.spaceId inList spaces } }
         query.since?.let { since -> select.andWhere { ActivitiesTable.occurredAt greater since.atOffset(ZoneOffset.UTC) } }
         query.beforeId?.let { before -> select.andWhere { ActivitiesTable.id less before } }
+        query.afterId?.let { after -> select.andWhere { ActivitiesTable.id greater after } }
         val order = if (query.oldestFirst) SortOrder.ASC else SortOrder.DESC
         return select.orderBy(ActivitiesTable.id to order).limit(query.limit).map { it.toEntry() }
     }

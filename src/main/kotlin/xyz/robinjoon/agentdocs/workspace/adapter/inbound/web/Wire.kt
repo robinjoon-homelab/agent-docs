@@ -57,6 +57,8 @@ internal object Wire {
             status = optional(body, "status")?.let(::status),
             tags = body.get("tags")?.let(::strings),
             assignee = if (body.has("assignee")) AssigneeChange(optional(body, "assignee")) else null,
-            baseRevision = body.get("baseRevision")?.takeIf(JsonNode::isInt)?.intValue(),
+            baseVersion =
+                body.get("baseVersion")?.takeIf(JsonNode::isInt)?.intValue()
+                    ?: throw InvalidRequestException("baseVersion is required"),
         )
 }

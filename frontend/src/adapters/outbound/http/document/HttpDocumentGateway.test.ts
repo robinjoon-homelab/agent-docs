@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { document } from '../../../../test-support/fixtures';
 import { PathTakenError } from '../../../../application/shared/ports/errors';
 import { HttpClient } from '../shared/httpClient';
 import { HttpDocumentGateway } from './HttpDocumentGateway';
@@ -14,6 +15,27 @@ function gatewayReturning(status: number, body: unknown): HttpDocumentGateway {
 }
 
 describe('HttpDocumentGateway', () => {
+  it('confirms only the supplied version with a bodyless keepalive request', async () => {
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      if (
+        typeof input !== 'string' ||
+        input !== '/api/documents/d1/finalize?baseVersion=11' ||
+        init?.body !== undefined ||
+        !init?.keepalive
+      ) {
+        return Promise.reject(new Error('invalid finalize request'));
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ version: 11, revision: 4, blocks: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    };
+    const gateway = new HttpDocumentGateway(new HttpClient({ fetch, cookies: () => '' }));
+    expect(await gateway.finalize('d1', 11)).toEqual({ kind: 'saved', version: 11, revision: 4, blocks: [] });
+  });
+
   it('turns a path in use into an error naming that path, which a document moved along may hold', async () => {
     const gateway = gatewayReturning(409, {
       code: 'taken',
@@ -53,6 +75,7 @@ describe('HttpDocumentGateway', () => {
       status: 'in_review',
       tags: ['ops'],
       assignee: null,
+      version: 12,
       revision: 7,
       createdAt: '2026-10-01T00:00:00Z',
       updatedAt: '2026-10-18T00:00:00Z',
@@ -112,6 +135,7 @@ describe('HttpDocumentGateway', () => {
       path: 'p',
       title: 't',
       status: 'draft',
+      version: 1,
       revision: 1,
       createdAt: '2026-10-01T00:00:00Z',
       updatedAt: '2026-10-01T00:00:00Z',
@@ -120,11 +144,10 @@ describe('HttpDocumentGateway', () => {
     await expect(gateway.get('d1')).rejects.toMatchObject({ code: 'unknown' });
   });
 
-  it("returns the stored blocks and whether the server merged other writers' changes", async () => {
+  it('returns the stored blocks and distinct version and revision', async () => {
     const result = await gatewayReturning(200, {
       revision: 8,
-      amended: false,
-      merged: true,
+      version: 14,
       blocks: [
         { id: 'a000000000', type: 'paragraph', text: 'mine', hash: '12345678' },
         { id: 'b000000000', type: 'paragraph', text: 'agent edit', hash: '9abcdef0' },
@@ -133,8 +156,7 @@ describe('HttpDocumentGateway', () => {
     expect(result).toEqual({
       kind: 'saved',
       revision: 8,
-      amended: false,
-      merged: true,
+      version: 14,
       blocks: [
         { id: 'a000000000', type: 'paragraph', text: 'mine', hash: '12345678' },
         { id: 'b000000000', type: 'paragraph', text: 'agent edit', hash: '9abcdef0' },
@@ -142,32 +164,16 @@ describe('HttpDocumentGateway', () => {
     });
   });
 
-  it('turns a 409 with conflicts into a conflict result', async () => {
+  it('returns the current document and version on stale writes', async () => {
+    const currentDocument = document({ version: 14, revision: 8 });
     const result = await gatewayReturning(409, {
-      code: 'conflict',
-      status: 409,
-      title: 'Conflict',
-      conflicts: [
-        {
-          blockId: 'a',
-          currentHash: 'ffffffff',
-          current: { id: 'a', type: 'paragraph', text: 'theirs' },
-          currentMarkdown: 'theirs',
-        },
-        { blockId: 'b', currentHash: null, current: null, currentMarkdown: null },
-      ],
+      currentVersion: 14,
+      currentDocument: { ...currentDocument, space: undefined, blockChanges: undefined },
     }).saveContent('d1', 7, []);
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       kind: 'conflict',
-      conflicts: [
-        {
-          blockId: 'a',
-          currentHash: 'ffffffff',
-          current: { id: 'a', type: 'paragraph', text: 'theirs' },
-          currentMarkdown: 'theirs',
-        },
-        { blockId: 'b', currentHash: null, current: null, currentMarkdown: null },
-      ],
+      currentVersion: 14,
+      currentDocument: { version: 14, revision: 8, blocks: currentDocument.blocks },
     });
   });
 

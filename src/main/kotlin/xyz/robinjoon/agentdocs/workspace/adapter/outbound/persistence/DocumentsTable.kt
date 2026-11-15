@@ -17,6 +17,7 @@ internal object DocumentsTable : Table("documents") {
     val body = text("body")
     val searchText = text("search_text")
     val revision = integer("revision")
+    val version = integer("content_version")
     val createdAt = timestampWithTimeZone("created_at")
     val updatedAt = timestampWithTimeZone("updated_at")
     val trashedAt = timestampWithTimeZone("trashed_at").nullable()

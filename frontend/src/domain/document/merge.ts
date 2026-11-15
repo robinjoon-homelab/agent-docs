@@ -70,3 +70,22 @@ export function mergeAfterConflict(
   });
   return result;
 }
+
+/** Includes edit/delete conflicts and distinct additions using the same block id. */
+export function conflictingBlocks(
+  base: readonly Block[],
+  mine: readonly Block[],
+  theirs: readonly Block[],
+): string[] {
+  const before = byId(base);
+  const local = byId(mine);
+  const remote = byId(theirs);
+  const equal = (a: Block | undefined, b: Block | undefined): boolean =>
+    a === undefined || b === undefined ? a === b : blocksEqual(a, b);
+  return [...new Set([...before.keys(), ...local.keys(), ...remote.keys()])].filter(
+    (id) =>
+      !equal(local.get(id), before.get(id)) &&
+      !equal(remote.get(id), before.get(id)) &&
+      !equal(local.get(id), remote.get(id)),
+  );
+}

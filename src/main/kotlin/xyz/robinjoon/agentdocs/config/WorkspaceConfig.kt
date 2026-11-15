@@ -10,6 +10,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import xyz.robinjoon.agentdocs.application.port.output.ActivityCatalog
 import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.scheduling.PendingEditScheduler
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.startup.FolderBackfill
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.crypto.SecureRandomUploadSecretSource
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.http.HttpRemoteImageSource
@@ -26,7 +27,6 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.SearchUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCase
-import xyz.robinjoon.agentdocs.workspace.application.port.input.UsageUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
 import xyz.robinjoon.agentdocs.workspace.application.service.ActivityService
 import xyz.robinjoon.agentdocs.workspace.application.service.AssetService
@@ -37,7 +37,6 @@ import xyz.robinjoon.agentdocs.workspace.application.service.SearchService
 import xyz.robinjoon.agentdocs.workspace.application.service.SpaceService
 import xyz.robinjoon.agentdocs.workspace.application.service.ThreadService
 import xyz.robinjoon.agentdocs.workspace.application.service.UploadGrantService
-import xyz.robinjoon.agentdocs.workspace.application.service.UsageService
 import xyz.robinjoon.agentdocs.workspace.application.service.WriteJournal
 import java.net.URI
 import java.nio.file.Path
@@ -80,17 +79,15 @@ class WorkspaceConfig {
     ): FolderBackfill = FolderBackfill(documents, properties.owner)
 
     @Bean
-    fun documentQueryUseCase(
-        persistence: WorkspacePersistence,
-        clock: Clock,
-    ): DocumentQueryUseCase =
+    fun pendingEditScheduler(documents: DocumentUseCase): PendingEditScheduler = PendingEditScheduler(documents)
+
+    @Bean
+    fun documentQueryUseCase(persistence: WorkspacePersistence): DocumentQueryUseCase =
         DocumentQueryService(
             persistence.documents,
             persistence.revisions,
             persistence.spaces,
             persistence.threads,
-            persistence.views,
-            clock,
         )
 
     @Bean
@@ -130,12 +127,6 @@ class WorkspaceConfig {
         catalog: ActivityCatalog,
         persistence: WorkspacePersistence,
     ): ActivityUseCase = ActivityService(catalog, persistence.spaces, persistence.documents)
-
-    @Bean
-    fun usageUseCase(
-        persistence: WorkspacePersistence,
-        clock: Clock,
-    ): UsageUseCase = UsageService(persistence.usage, persistence.spaces, clock)
 
     private fun assetStoreOf(assets: AssetProperties): AssetStore {
         if (assets.store != "s3") return FileSystemAssetStore(Path.of(assets.directory))
