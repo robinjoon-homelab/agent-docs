@@ -37,6 +37,15 @@ data class Document private constructor(
 
     fun confirmRevision(): Document = copy(lifecycle = lifecycle.confirmed())
 
+    fun transfer(
+        space: SpaceId,
+        path: DocumentPath,
+        at: Instant,
+    ): Document {
+        if (isTrashed) throw InvalidDocumentException("a document in the trash cannot move")
+        return copy(header = header.copy(spaceId = space, path = path), lifecycle = lifecycle.next(at))
+    }
+
     val isTrashed: Boolean get() = lifecycle.trashedAt != null
 
     fun block(id: BlockId): Block? = blocks.firstOrNull { it.id == id }

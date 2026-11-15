@@ -12,21 +12,30 @@ import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.agentAcce
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.context
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.now
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.ownerAccess
+import xyz.robinjoon.agentdocs.workspace.application.model.GuidanceChange
+import xyz.robinjoon.agentdocs.workspace.application.model.GuideCandidate
+import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
+import xyz.robinjoon.agentdocs.workspace.application.model.SettingUpdate
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceChange
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceDraft
+import xyz.robinjoon.agentdocs.workspace.application.model.SpaceGuide
+import xyz.robinjoon.agentdocs.workspace.application.model.SpaceGuideIssue
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceLocator
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceStatistics
 import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotResolvedException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.OperationStore
+import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceGuideCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceStatisticsCatalog
 import xyz.robinjoon.agentdocs.workspace.application.service.SpaceService
 import xyz.robinjoon.agentdocs.workspace.application.service.WriteJournal
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.space.ExternalLink
 import xyz.robinjoon.agentdocs.workspace.domain.space.ExternalLinkKind
+import xyz.robinjoon.agentdocs.workspace.domain.space.InvalidSpaceException
 import xyz.robinjoon.agentdocs.workspace.domain.space.SlugTakenException
 import xyz.robinjoon.agentdocs.workspace.domain.space.Space
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceProfile
@@ -36,8 +45,9 @@ import java.util.UUID
 class SpaceServiceTest {
     private val spaces = mockk<SpaceRepository>()
     private val statistics = mockk<SpaceStatisticsCatalog>()
+    private val guides = mockk<SpaceGuideCatalog>()
     private val activity = mockk<ActivityReporter>()
-    private val service = SpaceService(spaces, statistics, WriteJournal(activity, mockk<OperationStore>(), WorkspaceFixtures.clock))
+    private val service = SpaceService(spaces, statistics, guides, WriteJournal(activity, mockk<OperationStore>(), WorkspaceFixtures.clock))
     private val homelab = space("homelab", ExternalLink.of(ExternalLinkKind.GITHUB_ORGANIZATION, "homelab"))
     private val docs =
         space(
@@ -46,6 +56,13 @@ class SpaceServiceTest {
             ExternalLink.of(ExternalLinkKind.LOCAL_PATH, "/Users/me/IdeaProjects/agent-docs"),
         )
     private val projects = space("projects", ExternalLink.of(ExternalLinkKind.LOCAL_PATH, "/Users/me/IdeaProjects"))
+    private val twoRepositories =
+        space(
+            "platform",
+            ExternalLink.of(ExternalLinkKind.GITHUB_REPOSITORY, "homelab/agent-docs"),
+            ExternalLink.of(ExternalLinkKind.GITHUB_REPOSITORY, "homelab/scraping-platform"),
+        )
+    private val guideId = DocumentId(UUID.fromString("77777777-7777-4777-8777-777777777777"))
 
     init {
         every { activity.record(any()) } just runs
@@ -55,16 +72,17 @@ class SpaceServiceTest {
     fun `a repository link wins over a link to its organization`() {
         every { spaces.findAll() } returns listOf(homelab, docs)
 
-        assertThat(service.resolve(ownerAccess, SpaceLocator("git@github.com:homelab/agent-docs.git", null))).isEqualTo(docs)
-        assertThat(service.resolve(ownerAccess, SpaceLocator("https://github.com/homelab/scraping-platform", null))).isEqualTo(homelab)
+        assertThat(service.resolve(ownerAccess, SpaceLocator("git@github.com:homelab/agent-docs.git", null)).space).isEqualTo(docs)
+        assertThat(service.resolve(ownerAccess, SpaceLocator("https://github.com/homelab/scraping-platform", null)).space)
+            .isEqualTo(homelab)
     }
 
     @Test
     fun `the deepest linked directory wins for a path`() {
         every { spaces.findAll() } returns listOf(projects, docs)
 
-        assertThat(service.resolve(ownerAccess, SpaceLocator(null, "/Users/me/IdeaProjects/agent-docs/frontend"))).isEqualTo(docs)
-        assertThat(service.resolve(ownerAccess, SpaceLocator(null, "/Users/me/IdeaProjects/other"))).isEqualTo(projects)
+        assertThat(service.resolve(ownerAccess, SpaceLocator(null, "/Users/me/IdeaProjects/agent-docs/frontend")).space).isEqualTo(docs)
+        assertThat(service.resolve(ownerAccess, SpaceLocator(null, "/Users/me/IdeaProjects/other")).space).isEqualTo(projects)
     }
 
     @Test
@@ -103,11 +121,12 @@ class SpaceServiceTest {
         every { spaces.update(any()) } answers { firstArg() }
 
         val changed =
-            service.change(
-                context(ownerAccess),
-                SpaceSlug("agent-docs"),
-                SpaceChange(SpaceSlug("adocs"), "Agent Docs", null, null),
-            )
+            service
+                .change(
+                    context(ownerAccess),
+                    SpaceSlug("agent-docs"),
+                    SpaceChange(SpaceSlug("adocs"), "Agent Docs", null, null),
+                ).space
 
         assertThat(changed.slug).isEqualTo(SpaceSlug("adocs"))
         assertThat(changed.address.formerSlugs).containsExactly(SpaceSlug("agent-docs"))
@@ -134,7 +153,7 @@ class SpaceServiceTest {
 
         assertThat(service.list(ownerAccess, includeArchived = false).map { it.space }).containsExactly(homelab)
         assertThat(service.list(ownerAccess, includeArchived = true).map { it.space }).containsExactlyInAnyOrder(homelab, archived)
-        assertThat(service.resolve(ownerAccess, SpaceLocator("git@github.com:homelab/agent-docs.git", null))).isEqualTo(homelab)
+        assertThat(service.resolve(ownerAccess, SpaceLocator("git@github.com:homelab/agent-docs.git", null)).space).isEqualTo(homelab)
     }
 
     @Test
@@ -142,13 +161,106 @@ class SpaceServiceTest {
         every { spaces.findBySlugForUpdate(SpaceSlug("agent-docs")) } returns docs
         every { spaces.update(any()) } answers { firstArg() }
 
-        val archived = service.change(context(ownerAccess), SpaceSlug("agent-docs"), SpaceChange(null, null, null, null, archived = true))
+        val archived =
+            service.change(context(ownerAccess), SpaceSlug("agent-docs"), SpaceChange(null, null, null, null, archived = true)).space
         every { spaces.findBySlugForUpdate(SpaceSlug("agent-docs")) } returns archived
-        val restored = service.change(context(ownerAccess), SpaceSlug("agent-docs"), SpaceChange(null, null, null, null, archived = false))
+        val restored =
+            service.change(context(ownerAccess), SpaceSlug("agent-docs"), SpaceChange(null, null, null, null, archived = false)).space
 
         assertThat(archived.lifecycle.archivedAt).isEqualTo(now)
         assertThat(restored.isArchived).isFalse()
     }
+
+    @Test
+    fun `an agent guide is set to a document of the same space outside the trash`() {
+        every { spaces.findBySlugForUpdate(SpaceSlug("agent-docs")) } returns docs
+        every { spaces.update(any()) } answers { firstArg() }
+        every { guides.find(setOf(guideId)) } returns listOf(GuideCandidate(guideId, docs.id, "작성 규칙", "guide", false))
+
+        val changed = service.change(context(ownerAccess), SpaceSlug("agent-docs"), guidance(SettingUpdate.To(guideId), null))
+
+        assertThat(changed.space.guidance.guideDocumentId).isEqualTo(guideId.value)
+        assertThat(changed.guide).isEqualTo(SpaceGuide.Offered(guideId, "작성 규칙", "guide"))
+    }
+
+    @Test
+    fun `a guide in another space or in the trash is refused with the same answer`() {
+        every { spaces.findBySlugForUpdate(SpaceSlug("agent-docs")) } returns docs
+        val elsewhere = GuideCandidate(guideId, homelab.id, "다른 스페이스", "guide", false)
+        val trashed = GuideCandidate(guideId, docs.id, "작성 규칙", "guide", true)
+
+        for (candidate in listOf(elsewhere, trashed)) {
+            every { guides.find(setOf(guideId)) } returns listOf(candidate)
+            assertThatThrownBy { service.change(context(ownerAccess), SpaceSlug("agent-docs"), guidance(SettingUpdate.To(guideId), null)) }
+                .isInstanceOf(InvalidRequestException::class.java)
+                .hasMessage("the agent guide must be a document of this space outside the trash")
+        }
+    }
+
+    @Test
+    fun `the guide is cleared and a linked repository becomes the default in one change`() {
+        every { spaces.findBySlugForUpdate(SpaceSlug("agent-docs")) } returns docs.guideBy(guideId.value)
+        every { spaces.update(any()) } answers { firstArg() }
+
+        val changed =
+            service.change(
+                context(ownerAccess),
+                SpaceSlug("agent-docs"),
+                guidance(SettingUpdate.Clear, SettingUpdate.To("git@github.com:homelab/agent-docs.git")),
+            )
+
+        assertThat(changed.space.guidance.guideDocumentId).isNull()
+        assertThat(changed.space.guidance.defaultRepository).isEqualTo("homelab/agent-docs")
+        assertThat(changed.guide).isNull()
+    }
+
+    @Test
+    fun `a repository that is not linked cannot be the default, and dropping the link drops the default`() {
+        val chosen = twoRepositories.chooseRepository("homelab/scraping-platform")
+        every { spaces.findBySlugForUpdate(SpaceSlug("platform")) } returns chosen
+        every { spaces.update(any()) } answers { firstArg() }
+
+        assertThatThrownBy {
+            service.change(context(ownerAccess), SpaceSlug("platform"), guidance(null, SettingUpdate.To("homelab/other")))
+        }.isInstanceOf(InvalidSpaceException::class.java)
+        val unlinked =
+            service.change(
+                context(ownerAccess),
+                SpaceSlug("platform"),
+                SpaceChange(null, null, null, listOf(ExternalLink.of(ExternalLinkKind.GITHUB_REPOSITORY, "homelab/agent-docs"))),
+            )
+
+        assertThat(unlinked.space.guidance.defaultRepository).isNull()
+    }
+
+    @Test
+    fun `a trashed guide and a guide moved to another space are withheld from the list`() {
+        val trashedId = DocumentId(UUID.randomUUID())
+        every { spaces.findAll() } returns listOf(docs.guideBy(trashedId.value), homelab.guideBy(guideId.value))
+        every { statistics.forSpaces(setOf(docs.id, homelab.id)) } returns emptyMap()
+        val trashed = GuideCandidate(trashedId, docs.id, "옛 규칙", "old", true)
+        every { guides.find(setOf(trashedId, guideId)) } returns listOf(trashed, GuideCandidate(guideId, docs.id, "규칙", "guide", false))
+
+        val listed = service.list(ownerAccess, includeArchived = false).associate { it.space.id to it.guide }
+
+        assertThat(listed[docs.id]).isEqualTo(SpaceGuide.Withheld(SpaceGuideIssue.TRASHED))
+        assertThat(listed[homelab.id]).isEqualTo(SpaceGuide.Withheld(SpaceGuideIssue.UNAVAILABLE))
+    }
+
+    @Test
+    fun `the guide next to a document is offered only for a visible space with a live guide`() {
+        every { spaces.findById(docs.id) } returns docs.guideBy(guideId.value)
+        every { guides.find(setOf(guideId)) } returns listOf(GuideCandidate(guideId, docs.id, "작성 규칙", "guide", false))
+
+        assertThat(service.agentGuide(agentAccess(Permission.READ, setOf(homelab.id)), docs.id)).isNull()
+        assertThat(service.agentGuide(agentAccess(Permission.READ, setOf(docs.id)), docs.id))
+            .isEqualTo(SpaceGuide.Offered(guideId, "작성 규칙", "guide"))
+    }
+
+    private fun guidance(
+        guide: SettingUpdate<DocumentId>?,
+        repository: SettingUpdate<String>?,
+    ): SpaceChange = SpaceChange(null, null, null, null, guidance = GuidanceChange(guide, repository))
 
     private fun space(
         slug: String,

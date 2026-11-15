@@ -1,6 +1,14 @@
+import type { GitHubContext } from '../document/githubReferences';
+
 export type SpaceLinkKind = 'github_repository' | 'github_organization' | 'local_path' | 'url';
 
 export type SpaceLink = { readonly kind: SpaceLinkKind; readonly value: string };
+
+/** The document a space points agents to, offered only while it is the space's document outside the trash. */
+export type SpaceGuide = { readonly documentId: string; readonly title: string; readonly path: string };
+
+/** Why a guide the owner named is not offered: it is in the trash, or it was deleted or moved to another space. */
+export type SpaceGuideIssue = 'trashed' | 'unavailable';
 
 export type Space = {
   readonly id: string;
@@ -13,6 +21,11 @@ export type Space = {
   readonly archivedAt: string | null;
   readonly lastActivityAt: string | null;
   readonly documentCount: number;
+  /** Absent or null when the space names no guide or the named one is withheld (see agentGuideIssue). */
+  readonly agentGuide?: SpaceGuide | null;
+  readonly agentGuideIssue?: SpaceGuideIssue | null;
+  /** The linked repository, as owner/repo, that short references stand for when several are linked. */
+  readonly defaultRepository?: string | null;
 };
 
 export function isArchived(space: Space): boolean {
@@ -132,4 +145,21 @@ export function spaceInitial(name: string): string {
 
 export function draftOf(space: Space): SpaceDraft {
   return { slug: space.slug, name: space.name, description: space.description, links: space.links };
+}
+
+export const SPACE_GUIDE_ISSUE_TEXT: Record<SpaceGuideIssue, string> = {
+  trashed:
+    '지정한 지침 문서가 휴지통에 있어 에이전트에게 안내하지 않습니다. 복원하거나 다른 문서를 지정하세요.',
+  unavailable:
+    '지정한 지침 문서를 찾을 수 없어 에이전트에게 안내하지 않습니다. 삭제되었거나 다른 스페이스로 옮겨졌습니다. 다른 문서를 지정하세요.',
+};
+
+/** Only repository links name a repository; an organization link alone never stands for one of its repositories. */
+export function linkedRepositories(space: Pick<Space, 'links'>): string[] {
+  return space.links.filter((link) => link.kind === 'github_repository').map((link) => link.value);
+}
+
+/** What GitHub short references in the space's documents resolve against; the editor decorations take this value. */
+export function githubContextOf(space: Pick<Space, 'links' | 'defaultRepository'>): GitHubContext {
+  return { repositories: linkedRepositories(space), defaultRepository: space.defaultRepository ?? null };
 }

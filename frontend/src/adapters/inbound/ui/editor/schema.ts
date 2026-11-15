@@ -243,7 +243,11 @@ export const CodeBlockNode = Node.create({
   marks: '',
   code: true,
   defining: true,
-  addAttributes: () => ({ ...idAttribute, language: { default: '', rendered: false } }),
+  addAttributes: () => ({
+    ...idAttribute,
+    language: { default: '', rendered: false },
+    displayMath: { default: false, rendered: false },
+  }),
   parseHTML: () => [{ tag: 'pre', preserveWhitespace: 'full' }],
   renderHTML: ({ HTMLAttributes }) => ['pre', HTMLAttributes, ['code', 0]],
 });
@@ -330,7 +334,8 @@ export const DocLink = Link.extend({ inclusive: false }).configure({
   autolink: true,
   linkOnPaste: true,
   defaultProtocol: 'https',
-  isAllowedUri: (url, context) => url.startsWith('doc:') || context.defaultValidate(url),
+  isAllowedUri: (url, context) =>
+    url.startsWith('doc:') || /^asset:[0-9a-f-]{36}$/i.test(url) || context.defaultValidate(url),
   HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: null },
 });
 

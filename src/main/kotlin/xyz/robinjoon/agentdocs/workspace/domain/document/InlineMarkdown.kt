@@ -1,11 +1,39 @@
 package xyz.robinjoon.agentdocs.workspace.domain.document
 
+import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
+import java.util.UUID
+
 // Computes the text a reader sees in inline markdown exactly as the web editor does (frontend
 // src/domain/document/inline.ts), because text anchors are offsets into this string on both sides: a difference moves
 // or breaks comments. Delimiter runs pair by the CommonMark stack with its rule of 3, and anything that does not pair
 // stays literal, so an unusual sequence never loses characters. Whitespace means JavaScript's \s, not Java's.
 internal object InlineMarkdown {
     fun plainText(markdown: String): String = parse(markdown, inLink = false)
+
+    fun assetIds(markdown: String): Set<AssetId> {
+        val ids = mutableSetOf<AssetId>()
+        var index = 0
+        while (index < markdown.length) {
+            if (markdown[index] == '[') assetAt(markdown, index)?.let(ids::add)
+            index = scanAt(markdown, index, inLink = false)?.next ?: (index + 1)
+        }
+        return ids
+    }
+
+    private fun assetAt(
+        markdown: String,
+        index: Int,
+    ): AssetId? {
+        val labelEnd = linkTextEnd(markdown, index)
+        if (labelEnd < 0) return null
+        val end = destinationEnd(markdown, labelEnd + 1)
+        if (end <= labelEnd) return null
+        val target = markdown.substring(labelEnd + 2, end - 1).removeSurrounding("<", ">")
+        if (!assetDestination.matches(target)) return null
+        return AssetId(UUID.fromString(target.removePrefix("asset:")))
+    }
+
+    private val assetDestination = Regex("asset:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
     private fun parse(
         source: String,
@@ -36,6 +64,7 @@ internal object InlineMarkdown {
         inLink: Boolean,
     ): Scan? =
         when (source[index]) {
+            '$' -> math(source, index)
             '\\' -> backslash(source, index)
             '`' -> backticks(source, index)
             '*', '~' -> delimiter(source, index)
@@ -44,6 +73,26 @@ internal object InlineMarkdown {
             '[' -> if (inLink) null else link(source, index)
             else -> null
         }
+
+    private fun math(
+        source: String,
+        index: Int,
+    ): Scan? {
+        val delimiter = if (source.startsWith("$$", index)) "$$" else "$"
+        val start = index + delimiter.length
+        var close = source.indexOf(delimiter, start)
+        while (close >= 0 && mathEscapedAt(source, close)) close = source.indexOf(delimiter, close + delimiter.length)
+        if (close <= start) return null
+        val body = source.substring(start, close)
+        if (body.isBlank() || (delimiter == "$" && (body.first().isWhitespace() || body.last().isWhitespace()))) return null
+        val end = close + delimiter.length
+        return Scan(Literal(source.substring(index, end)), end)
+    }
+
+    private fun mathEscapedAt(
+        source: String,
+        index: Int,
+    ): Boolean = source.take(index).takeLastWhile { it == '\\' }.length % 2 == 1
 
     private fun backslash(
         source: String,

@@ -10,4 +10,5 @@ data class SpaceChange(
     val description: String?,
     val links: List<ExternalLink>?,
     val archived: Boolean? = null,
+    val guidance: GuidanceChange? = null,
 )

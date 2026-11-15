@@ -3,16 +3,17 @@ import { BrowserRouter, Route, Routes } from 'react-router';
 import { Loading, NotFound } from '../common/States';
 import { ToastProvider } from '../common/Toast';
 import { DocumentRedirect } from '../pages/document/DocumentRedirect';
-import { HomePage } from '../pages/home/HomePage';
 import { InboxPage } from '../pages/inbox/InboxPage';
 import { LoginPage } from '../pages/login/LoginPage';
 import { ConnectionApprovalPage } from '../pages/oauth/ConnectionApprovalPage';
 import { SearchPage } from '../pages/search/SearchPage';
 import { AgentConnectionsPage } from '../pages/settings/AgentConnectionsPage';
+import { WebhooksPage } from '../pages/settings/WebhooksPage';
 import { SpaceHomePage } from '../pages/space/SpaceHomePage';
 import { SpaceSettingsPage } from '../pages/space/SpaceSettingsPage';
 import { AppShell } from './AppShell';
 import { RequireSession } from './RequireSession';
+import { DataRoute, HomeRoute, MobileMemoRoute } from './ServiceRoutes';
 
 // The editor (Tiptap/ProseMirror) and the diff view are the heaviest screens; load them on demand.
 const DocumentPage = lazy(() =>
@@ -31,11 +32,14 @@ export function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route element={<RequireSession />}>
               <Route path="/oauth/authorize" element={<ConnectionApprovalPage />} />
+              <Route path="/m" element={<MobileMemoRoute />} />
               <Route element={<AppShell />}>
-                <Route index element={<HomePage />} />
+                <Route index element={<HomeRoute />} />
                 <Route path="/inbox" element={<InboxPage />} />
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/settings/agents" element={<AgentConnectionsPage />} />
+                <Route path="/settings/data" element={<DataRoute />} />
+                <Route path="/settings/webhooks" element={<WebhooksPage />} />
                 <Route path="/d/:docId" element={<DocumentRedirect />} />
                 <Route path="/s/:space" element={<SpaceHomePage />} />
                 <Route path="/s/:space/settings" element={<SpaceSettingsPage />} />

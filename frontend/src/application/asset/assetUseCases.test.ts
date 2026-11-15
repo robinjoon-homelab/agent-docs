@@ -17,10 +17,10 @@ const gateway: AssetGateway = {
 };
 
 describe('asset uploads', () => {
-  it('rejects non-images and uploads images', async () => {
+  it('uploads file attachments and images', async () => {
     const useCases = createAssetUseCases(gateway);
     const pdf = { name: 'a.pdf', type: 'application/pdf', size: 10, data: new Blob() };
-    expect(await useCases.upload('team', pdf)).toEqual({ ok: false, error: 'not_image' });
+    expect((await useCases.upload('team', pdf)).ok).toBe(true);
     const png = { name: 'a.png', type: 'image/png', size: 10, data: new Blob() };
     const result = await useCases.upload('team', png);
     expect(result.ok && result.value.id).toBe('as-1');

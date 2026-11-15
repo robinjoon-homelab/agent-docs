@@ -78,10 +78,21 @@ function draftToJSON(draft: DraftBlock): JSONContent {
       return textBlock('callout', { id: draft.id, kind: draft.kind }, draft.text);
     case 'code':
       return draft.code === ''
-        ? { type: 'codeBlock', attrs: { id: draft.id, language: draft.language } }
+        ? {
+            type: 'codeBlock',
+            attrs: {
+              id: draft.id,
+              language: draft.language,
+              ...(draft.displayMath ? { displayMath: true } : {}),
+            },
+          }
         : {
             type: 'codeBlock',
-            attrs: { id: draft.id, language: draft.language },
+            attrs: {
+              id: draft.id,
+              language: draft.language,
+              ...(draft.displayMath ? { displayMath: true } : {}),
+            },
             content: [{ type: 'text', text: draft.code }],
           };
     case 'table':
@@ -182,6 +193,7 @@ function nodeToDraft(node: JSONContent, newId: () => string): DraftBlock | null 
         id,
         type: 'code',
         language: attr(node, 'language', ''),
+        ...(attr<boolean>(node, 'displayMath', false) ? { displayMath: true } : {}),
         code: (node.content ?? []).map((child) => child.text ?? '').join(''),
       };
     case 'table':

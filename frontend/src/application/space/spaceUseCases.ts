@@ -17,6 +17,13 @@ export interface SpaceUseCases {
   update(current: Space, draft: SpaceDraft): Promise<Result<Space, SpaceDraftError[]>>;
   /** Archives the space or brings it back; a space already in that state is answered as is. */
   setArchived(current: Space, archived: boolean): Promise<Space>;
+  /**
+   * Names the document agents read before writing here, or clears it with null. The server takes only a document of
+   * this space outside the trash; an offered guide that is chosen again is answered as is.
+   */
+  setAgentGuide(current: Space, documentId: string | null): Promise<Space>;
+  /** Chooses the linked repository short references stand for, or clears the choice with null. */
+  setDefaultRepository(current: Space, repository: string | null): Promise<Space>;
 }
 
 function changedFields(current: Space, draft: SpaceDraft): SpacePatch {
@@ -51,6 +58,16 @@ export function createSpaceUseCases(gateway: SpaceGateway): SpaceUseCases {
     async setArchived(current, archived) {
       if (isArchived(current) === archived) return current;
       return gateway.update(current.slug, { archived });
+    },
+    async setAgentGuide(current, documentId) {
+      const offered = current.agentGuide?.documentId ?? null;
+      if (offered === documentId && (documentId !== null || !current.agentGuideIssue)) return current;
+      return gateway.update(current.slug, { agentGuideDocumentId: documentId });
+    },
+    async setDefaultRepository(current, repository) {
+      const chosen = repository === null || repository.trim() === '' ? null : repository.trim();
+      if ((current.defaultRepository ?? null) === chosen) return current;
+      return gateway.update(current.slug, { defaultRepository: chosen });
     },
   };
 }

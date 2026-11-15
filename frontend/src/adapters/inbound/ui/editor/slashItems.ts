@@ -94,6 +94,19 @@ export function slashItems(newId: () => string, pickImage: () => void): (query: 
       aliases: ['table', 'grid'],
       apply: (editor) => insertBlock(editor, newTableJSON(newId)),
     },
+    { key: 'mockup', label: '시안', aliases: ['mockup', 'html'], apply: () => pickImage() },
+    {
+      key: 'attachment',
+      label: '파일 첨부',
+      aliases: ['file', 'attachment', 'pdf'],
+      apply: () => pickImage(),
+    },
+    {
+      key: 'math',
+      label: '수식',
+      aliases: ['math', 'latex'],
+      apply: convert({ type: 'codeBlock', language: 'math', displayMath: true }),
+    },
     { key: 'image', label: '이미지', aliases: ['image', 'img', 'picture', '사진'], apply: () => pickImage() },
     {
       key: 'divider',

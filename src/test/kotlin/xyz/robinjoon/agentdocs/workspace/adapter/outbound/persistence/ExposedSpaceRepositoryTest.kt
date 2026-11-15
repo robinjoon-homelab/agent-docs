@@ -12,6 +12,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.space.ExternalLink
 import xyz.robinjoon.agentdocs.workspace.domain.space.ExternalLinkKind
 import xyz.robinjoon.agentdocs.workspace.domain.space.SlugTakenException
 import xyz.robinjoon.agentdocs.workspace.domain.space.Space
+import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceGuidance
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceProfile
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import java.util.UUID
@@ -38,6 +39,25 @@ class ExposedSpaceRepositoryTest {
         assertThat(moved.profile.links).containsExactlyElementsOf(links)
         assertThat(moved.address.formerSlugs).containsExactly(SpaceSlug("agent-docs"), SpaceSlug("docs"))
         assertThat(database.inTransaction { repository.findById(created.id) }).isEqualTo(moved)
+    }
+
+    @Test
+    fun `the agent guide and the default repository are kept, and dropping the repository link clears the default`() {
+        val links =
+            listOf(
+                ExternalLink.of(ExternalLinkKind.GITHUB_REPOSITORY, "homelab/agent-docs"),
+                ExternalLink.of(ExternalLinkKind.GITHUB_REPOSITORY, "homelab/scraping-platform"),
+            )
+        val created = database.inTransaction { repository.add(space("docs").describe(SpaceProfile.of("Docs", "", links))) }
+        val guide = UUID.fromString("77777777-7777-4777-8777-777777777777")
+
+        val guided = database.inTransaction { repository.update(created.guideBy(guide).chooseRepository("homelab/scraping-platform")) }
+        val dropped = guided.describe(SpaceProfile.of("Docs", "", links.take(1), guided.guidance))
+        val unlinked = database.inTransaction { repository.update(dropped) }
+
+        assertThat(database.inTransaction { repository.findById(created.id) }).isEqualTo(unlinked)
+        assertThat(guided.guidance).isEqualTo(SpaceGuidance.of(guide, "homelab/scraping-platform"))
+        assertThat(unlinked.guidance).isEqualTo(SpaceGuidance.of(guide, null))
     }
 
     @Test

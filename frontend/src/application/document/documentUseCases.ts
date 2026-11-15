@@ -10,7 +10,12 @@ import type {
 import { PATH_RULE_TEXT, isValidPath, movedPath, normalizePath } from '../../domain/document/document';
 import type { Result } from '../shared/result';
 import { failure, ok } from '../shared/result';
-import type { DocumentFilter, DocumentGateway, RevisionFilter } from './ports/DocumentGateway';
+import type {
+  DocumentFilter,
+  DocumentGateway,
+  RevisionFilter,
+  TransferResult,
+} from './ports/DocumentGateway';
 
 export type NewDocumentError = 'path_invalid' | 'title_required';
 
@@ -38,6 +43,7 @@ export interface DocumentUseCases {
   ): Promise<RecentDocument<S>[]>;
   listTrash(spaceSlug: string): Promise<TrashedDocument[]>;
   create(spaceSlug: string, path: string, title: string): Promise<Result<AgentDocument, NewDocumentError[]>>;
+  transfer(documentId: string, baseVersion: number, space: string, path: string): Promise<TransferResult>;
   get(documentId: string): Promise<AgentDocument>;
   trash(documentId: string): Promise<void>;
   untrash(documentId: string): Promise<void>;
@@ -47,6 +53,8 @@ export interface DocumentUseCases {
   /** Diff plus both block lists so the view can place removed blocks; `to` null means current. */
   compare(documentId: string, from: number, to: number | null): Promise<Comparison>;
   restore(documentId: string, revision: number, baseVersion: number): Promise<number>;
+  nameRevision(documentId: string, revision: number, name: string): Promise<string | null>;
+  restoreBlock(documentId: string, revision: number, blockId: string, baseVersion: number): Promise<number>;
   /** Moves a document into `folder` ('' = space root) keeping its name; null when nothing changes. */
   move(document: MovableDocument, folder: string): Promise<Result<AgentDocument | null, NewDocumentError[]>>;
 }
@@ -75,6 +83,7 @@ export function createDocumentUseCases(gateway: DocumentGateway): DocumentUseCas
       if (errors.length > 0) return failure(errors);
       return ok(await gateway.create(spaceSlug, { path, title }));
     },
+    transfer: (id, version, space, path) => gateway.transfer(id, version, space, path),
     get: (documentId) => gateway.get(documentId),
     trash: (documentId) => gateway.trash(documentId),
     untrash: (documentId) => gateway.untrash(documentId),
@@ -92,6 +101,9 @@ export function createDocumentUseCases(gateway: DocumentGateway): DocumentUseCas
       return { diff, fromBlocks: fromSnapshot.blocks, toBlocks };
     },
     restore: (documentId, revision, baseVersion) => gateway.restore(documentId, revision, baseVersion),
+    nameRevision: (documentId, revision, name) => gateway.nameRevision(documentId, revision, name),
+    restoreBlock: (documentId, revision, blockId, baseVersion) =>
+      gateway.restoreBlock(documentId, revision, blockId, baseVersion),
     async move(document, folder) {
       const path = movedPath(document.path, folder);
       if (path === document.path) return ok(null);

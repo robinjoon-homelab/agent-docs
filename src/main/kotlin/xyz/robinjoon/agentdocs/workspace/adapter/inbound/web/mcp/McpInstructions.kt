@@ -6,7 +6,9 @@ internal object McpInstructions {
     const val TEXT =
         "Agent Docs keeps your user's documents as blocks in spaces. Find your space with spaces_resolve (pass `git remote get-url " +
             "origin`) " +
-            "or spaces_list. Read with docs_read: every block is preceded by <!-- b:ID h:HASH -->. Change documents with docs_edit, " +
+            "or spaces_list. A space may name an agent guide, the document with its writing rules, terms, and templates: both tools " +
+            "return it as agentGuide, so read it with docs_read before you write in that space. Read with docs_read: every block " +
+            "is preceded by <!-- b:ID h:HASH -->. Change documents with docs_edit, " +
             "naming each " +
             "block id and its current hash as ifHash; if someone changed the block since you read it, nothing is applied and the error " +
             "returns " +

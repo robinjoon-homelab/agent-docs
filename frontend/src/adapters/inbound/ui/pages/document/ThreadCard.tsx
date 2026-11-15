@@ -12,9 +12,10 @@ import {
 import { ActorChip } from '../../common/ActorChip';
 import { CommentBody } from '../../common/InlineText';
 import { RelativeTime } from '../../common/RelativeTime';
+import { ThreadCollaboration, type ThreadCollaborationActions } from './ThreadCollaboration';
 import { CommentEditor } from './CommentEditor';
 
-export type ThreadActions = {
+export type ThreadActions = ThreadCollaborationActions & {
   readonly reply: (thread: Thread, body: string) => Promise<boolean>;
   readonly resolve: (thread: Thread) => Promise<void>;
   readonly reopen: (thread: Thread) => Promise<void>;
@@ -152,6 +153,7 @@ export function ThreadCard({
           </button>
         </div>
       ) : null}
+      <ThreadCollaboration thread={thread} login={login} actions={actions} />
       <ul className="comments">
         {thread.comments.map((comment) => (
           <CommentItem

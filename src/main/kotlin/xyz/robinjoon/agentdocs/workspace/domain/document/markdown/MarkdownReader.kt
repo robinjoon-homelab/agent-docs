@@ -61,6 +61,7 @@ class MarkdownReader private constructor(
         val id = claimId(note?.id)
         val trimmed = line.trim()
         return when {
+            trimmed == "$$" -> readMath(id)
             fencePattern.matches(trimmed) -> readCode(id)
             startsTable(index) -> TableReader.read(lines, index, id, note?.columns.orEmpty()).also { index = it.next }.table
             headingPattern.matches(line) -> readHeading(id)
@@ -89,6 +90,17 @@ class MarkdownReader private constructor(
         if (!body.all { it.isBlank() || frontMatterEntryPattern.matches(it) }) return FrontMatter.empty
         index = close + 1
         return FrontMatter(body.filter(String::isNotBlank).map { it.substringBefore(':').trim() to it.substringAfter(':').trim() })
+    }
+
+    private fun readMath(id: BlockId): CodeBlock {
+        index++
+        val body = ArrayList<String>()
+        while (index < lines.size && lines[index].trim() != "$$") {
+            body += lines[index++]
+        }
+        if (index == lines.size) throw InvalidDocumentException("display math needs a closing $$ line")
+        index++
+        return CodeBlock(id, "math", body.joinToString("\n"), displayMath = true)
     }
 
     private fun readCode(id: BlockId): CodeBlock {
@@ -177,7 +189,8 @@ class MarkdownReader private constructor(
 
     private fun startsBlock(line: String): Boolean {
         val trimmed = line.trim()
-        return trimmed.isEmpty() || Annotation.parse(trimmed) != null || fencePattern.matches(trimmed) || startsTable(index) ||
+        return trimmed == "$$" || trimmed.isEmpty() || Annotation.parse(trimmed) != null || fencePattern.matches(trimmed) ||
+            startsTable(index) ||
             headingPattern.matches(line) || dividerPattern.matches(line) || trimmed.startsWith(">") || trimmed.startsWith("![") ||
             listItemPattern.matches(line)
     }

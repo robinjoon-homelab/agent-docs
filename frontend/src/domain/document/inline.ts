@@ -1,3 +1,4 @@
+import { mathAt } from './math';
 /**
  * Inline text is stored as a GFM inline markdown string. This module converts it to a flat inline AST
  * (text runs with marks and an optional link) and back. The parser implements the platform subset:
@@ -293,6 +294,9 @@ function scanLink(source: string, index: number, inLink: boolean): Scan | null {
 
 function scanAt(source: string, index: number, inLink: boolean): Scan | null {
   const ch = source[index];
+  const math = ch === '$' ? mathAt(source, index) : null;
+  if (math !== null)
+    return { node: { t: 'text', text: source.slice(index, math.to), bits: 0 }, next: math.to };
   if (ch === '\\') return scanBackslash(source, index);
   if (ch === '`') return scanBackticks(source, index);
   if (ch === '*' || ch === '~') return scanDelimiter(source, index, ch);
@@ -480,6 +484,12 @@ function escapeText(text: string, level: EscapeLevel): string {
   let out = '';
   for (let index = 0; index < text.length; index++) {
     const ch = text[index] ?? '';
+    const math = mathAt(text, index);
+    if (math !== null) {
+      out += text.slice(index, math.to);
+      index = math.to - 1;
+      continue;
+    }
     const next = text[index + 1];
     if (ch === '\\') {
       const needed = level === 'full' || next === undefined || ASCII_PUNCTUATION.test(next);

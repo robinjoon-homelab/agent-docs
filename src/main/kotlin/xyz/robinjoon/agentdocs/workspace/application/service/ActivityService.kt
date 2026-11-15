@@ -31,10 +31,10 @@ class ActivityService(
         val bounded = limit.coerceIn(1, MAX_LIMIT)
         if (space == null) {
             Permissions.requireOwner(access, "reading the whole activity log")
-            return viewsOf(catalog.find(ActivityQuery(null, null, null, bounded, oldestFirst = false)))
+            return viewsOf(access, catalog.find(ActivityQuery(null, null, null, bounded, oldestFirst = false)))
         }
         val target = spaces.findBySlug(space)?.takeIf { access.sees(it.id) } ?: throw SpaceNotFoundException(space)
-        return viewsOf(catalog.find(ActivityQuery(setOf(target.id.value), null, null, bounded, oldestFirst = false)))
+        return viewsOf(access, catalog.find(ActivityQuery(setOf(target.id.value), null, null, bounded, oldestFirst = false)))
     }
 
     // The owner's feed also includes entries outside spaces; an agent sees only its listed spaces.
@@ -51,17 +51,28 @@ class ActivityService(
                 entry.record.subject.spaceId
                     ?.let { access.sees(SpaceId(it)) } ?: access.isOwner
             }
-        return ChangeFeed(viewsOf(visible), entries.lastOrNull()?.record?.at ?: since, entries.lastOrNull()?.id ?: cursor, since)
+        return ChangeFeed(viewsOf(access, visible), entries.lastOrNull()?.record?.at ?: since, entries.lastOrNull()?.id ?: cursor, since)
     }
 
-    private fun viewsOf(entries: List<ActivityEntry>): List<ActivityView> {
+    private fun viewsOf(
+        access: Access,
+        entries: List<ActivityEntry>,
+    ): List<ActivityView> {
         val spaceIds = entries.mapNotNull { it.record.subject.spaceId }.map(::SpaceId).toSet()
         val spacesById = spaces.findByIds(spaceIds).associateBy { it.id.value }
         val documentIds = entries.mapNotNull { it.record.subject.documentId }.distinct().map(::DocumentId)
-        val titles = documents.findByIds(documentIds).associate { it.id.value to it.header.title }
+        val current = documents.findByIds(documentIds).filter { access.sees(it.spaceId) }.associateBy { it.id.value }
         return entries.map { entry ->
             val subject = entry.record.subject
-            ActivityView(entry, subject.spaceId?.let(spacesById::get), subject.documentId?.let(titles::get))
+            ActivityView(
+                entry,
+                subject.spaceId?.let(spacesById::get),
+                subject.documentId
+                    ?.let(current::get)
+                    ?.takeIf { it.spaceId.value == subject.spaceId }
+                    ?.header
+                    ?.title,
+            )
         }
     }
 

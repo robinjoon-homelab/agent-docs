@@ -32,6 +32,6 @@ class AssetContentTest {
     @Test
     fun `a media type is recognized with or without parameters`() {
         assertThat(AssetMediaType.of("image/SVG+xml; charset=utf-8")).isEqualTo(AssetMediaType.SVG)
-        assertThat(AssetMediaType.of("application/pdf")).isNull()
+        assertThat(AssetMediaType.of("application/pdf")).isEqualTo(AssetMediaType.PDF)
     }
 }

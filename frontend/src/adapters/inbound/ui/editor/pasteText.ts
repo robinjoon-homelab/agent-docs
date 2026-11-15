@@ -115,7 +115,17 @@ function markdownNodes(text: string): JSONContent[] | null {
     const line = lines[i] ?? '';
     const fence = /^(`{3,}|~{3,})(\S*)\s*$/.exec(line);
     const table = tableAt(lines, i);
-    if (fence) {
+    if (line.trim() === '$$') {
+      const code: string[] = [];
+      while (++i < lines.length && lines[i]?.trim() !== '$$') code.push(lines[i] ?? '');
+      if (i === lines.length) return null;
+      nodes.push({
+        type: 'codeBlock',
+        attrs: { language: 'math', displayMath: true },
+        content: code.length === 0 ? [] : [{ type: 'text', text: code.join('\n') }],
+      });
+      recognized = true;
+    } else if (fence) {
       const code: string[] = [];
       while (
         ++i < lines.length &&

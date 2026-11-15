@@ -30,6 +30,29 @@ class CallerServiceTest {
     private val user = User.restore(UserId(ownerId), GitHubAccount(42, "robinjoon"), UserProfile(null, null), now)
 
     @Test
+    fun `CLI source requires exact configured client id rather than a self declared name`() {
+        val existing = connection("adt_a_cli", null)
+        val id = "https://docs.example.com/oauth/clients/adocs"
+        val owner =
+            existing.owner.copy(
+                client =
+                    xyz.robinjoon.agentdocs.access.domain.connection
+                        .ClientRef(id, "adocs", "docs.example.com"),
+            )
+        val cli =
+            xyz.robinjoon.agentdocs.access.domain.connection.Connection
+                .restore(existing.id, owner, existing.grant, existing.state)
+        every { connections.findByAccessHash(TokenHash.of("adt_a_cli")) } returns cli
+        every { users.findById(UserId(ownerId)) } returns user
+        every { connections.update(any()) } answers { firstArg() }
+        val configured = CallerService(connections, users, clock, Allowlist("robinjoon", emptySet()), id)
+        val foreign =
+            CallerService(connections, users, clock, Allowlist("robinjoon", emptySet()), "https://other.example/oauth/clients/adocs")
+        assertThat(configured.callerFor("adt_a_cli")?.agent?.cli).isTrue()
+        assertThat(foreign.callerFor("adt_a_cli")?.agent?.cli).isFalse()
+    }
+
+    @Test
     fun `old connections cannot authenticate access script or upload after owner removal or demotion`() {
         val active = connection("adt_a_token", "adt_r_token")
         every { connections.findByAccessHash(TokenHash.of("adt_a_token")) } returns active

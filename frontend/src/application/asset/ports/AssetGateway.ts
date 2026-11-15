@@ -11,5 +11,6 @@ export interface AssetGateway {
   upload(spaceSlug: string, file: UploadFile): Promise<Asset>;
   importUrl(spaceSlug: string, url: string): Promise<Asset>;
   /** URL usable as an <img src> for a stored asset. */
-  contentUrl(assetId: string): string;
+  contentUrl(assetId: string, documentId?: string): string;
+  htmlSource?(assetId: string, documentId?: string): Promise<string>;
 }

@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.access.adapter.outbound.persistence
 
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.lowerCase
 import org.jetbrains.exposed.v1.core.statements.UpdateBuilder
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -41,6 +42,13 @@ class ExposedUserRepository : UserRepository {
             .where {
                 UsersTable.githubId eq githubId
             }.singleOrNull()
+            ?.toUser()
+
+    override fun findByLogin(login: String): User? =
+        UsersTable
+            .selectAll()
+            .where { UsersTable.login.lowerCase() eq login.lowercase() }
+            .singleOrNull()
             ?.toUser()
 
     private fun write(

@@ -7,6 +7,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
 import xyz.robinjoon.agentdocs.workspace.application.model.RelatedChange
 import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
+import xyz.robinjoon.agentdocs.workspace.application.model.RevisionLabel
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceReference
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
@@ -27,10 +28,14 @@ internal object OperationSnapshotCodec {
     private val json = JsonMapper.builder().build()
 
     fun encode(record: OperationRecord): String? {
-        if (record.documentWrite == null && record.threadView == null) return null
+        if (record.documentWrite == null && record.threadView == null && record.revisionLabel == null) return null
         return json.writeValueAsString(
             mapOf(
                 "version" to 1,
+                "revisionLabel" to
+                    record.revisionLabel?.let {
+                        mapOf("document" to it.documentId.value.toString(), "revision" to it.revision, "name" to it.name)
+                    },
                 "documentWrite" to record.documentWrite?.let(::write),
                 "threadView" to record.threadView?.let(ThreadSnapshotCodec::encode),
             ),
@@ -46,6 +51,14 @@ internal object OperationSnapshotCodec {
         return record.copy(
             documentWrite = node.fieldNode("documentWrite")?.let(::readWrite),
             threadView = node.fieldNode("threadView")?.let(ThreadSnapshotCodec::decode),
+            revisionLabel =
+                node.fieldNode("revisionLabel")?.let {
+                    RevisionLabel(
+                        DocumentId(it.uuid("document")),
+                        it.path("revision").intValue(),
+                        it.optionalText("name"),
+                    )
+                },
         )
     }
 
@@ -73,7 +86,9 @@ internal object OperationSnapshotCodec {
         val write = node.path("documentWrite")
         val primary = write.path("document").optionalText("id")
         val threadDocument = node.path("threadView").optionalText("document")
-        return primary?.let(UUID::fromString) in documents || threadDocument?.let(UUID::fromString) in documents ||
+        return node.path("revisionLabel").optionalText("document")?.let(UUID::fromString) in documents ||
+            primary?.let(UUID::fromString) in documents ||
+            threadDocument?.let(UUID::fromString) in documents ||
             write.path("related").values().any { it.path("document").uuid("id") in documents }
     }
 

@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { DocumentAssetScope } from '../document/DocumentAssetScope';
+import type { ComponentProps } from 'react';
+import { useMemo, useState } from 'react';
+import { HtmlMockup } from '../../editor/HtmlMockup';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import type { Comparison } from '../../../../../application/document/documentUseCases';
 import { isNotVisible } from '../../../../../application/shared/ports/errors';
@@ -30,6 +33,8 @@ import { usePageTitle } from '../../hooks/usePageTitle';
 import { useSpace } from '../../hooks/useSpace';
 import './history.css';
 import { InlineDiff } from './InlineDiff';
+import { RevisionDetails, RevisionLinks } from './RevisionDetails';
+import { useSession } from '../../app/SessionContext';
 
 const FILTERS: readonly RevisionActorFilter[] = ['all', 'human', 'agent'];
 
@@ -76,6 +81,7 @@ function RevisionRow({
             </span>
           </span>
           <span className="history-revision-summary">
+            {revision.name == null ? null : <strong>{revision.name} · </strong>}
             {revision.summary === '' ? '변경' : revision.summary}
           </span>
           <span className="faint small">
@@ -84,6 +90,7 @@ function RevisionRow({
           </span>
         </span>
       </button>
+      <RevisionLinks revision={revision} />
       {revision.threadIds.length === 0 ? null : (
         <div className="history-threads">
           {revision.threadIds.map((threadId) => (
@@ -123,7 +130,38 @@ function UnifiedDiff({ text }: { text: string }) {
   );
 }
 
-function DiffBlocks({ comparison, onlyChanged }: { comparison: Comparison; onlyChanged: boolean }) {
+function HistoryBlock(props: ComponentProps<typeof BlockView>) {
+  const { assets } = useServices();
+  const options = useMemo(
+    () => ({
+      htmlSource: (assetId: string) => assets.htmlSource(assetId),
+      replaceHtml: () => Promise.reject(new Error('이력은 읽기 전용입니다.')),
+    }),
+    [assets],
+  );
+  const { block } = props;
+  return block.type === 'image' && block.caption === 'mockup' ? (
+    <HtmlMockup
+      assetId={block.assetId}
+      blockId={block.id}
+      title={block.alt}
+      editable={false}
+      options={options}
+    />
+  ) : (
+    <BlockView {...props} />
+  );
+}
+
+function DiffBlocks({
+  comparison,
+  onlyChanged,
+  onRestore,
+}: {
+  comparison: Comparison;
+  onlyChanged: boolean;
+  onRestore?: (blockId: string) => void;
+}) {
   const rows = buildDiffRows(comparison.fromBlocks, comparison.toBlocks, comparison.diff);
   const ordinals = listOrdinals(rows.map((row) => row.block));
   const visible = onlyChanged ? rows.filter((row) => row.marker !== null) : rows;
@@ -139,7 +177,13 @@ function DiffBlocks({ comparison, onlyChanged }: { comparison: Comparison; onlyC
             {row.marker === null ? '' : DIFF_MARKER[row.marker]}
           </span>
           <div className="history-row-body">
-            <BlockView
+            {onRestore === undefined ||
+            !comparison.fromBlocks.some((block) => block.id === row.block.id) ? null : (
+              <button type="button" className="btn btn-small" onClick={() => onRestore(row.block.id)}>
+                이 블록만 복원
+              </button>
+            )}
+            <HistoryBlock
               block={row.block}
               changedCells={row.changedCells}
               ordinal={ordinals.get(row.block.id)}
@@ -150,7 +194,7 @@ function DiffBlocks({ comparison, onlyChanged }: { comparison: Comparison; onlyC
             {row.marker === 'modified' && row.before !== null && row.block.type !== 'table' ? (
               <details className="history-before">
                 <summary>이전 내용</summary>
-                <BlockView block={row.before} />
+                <HistoryBlock block={row.before} />
               </details>
             ) : null}
           </div>
@@ -224,6 +268,7 @@ function RestoreDialog({
 }
 
 function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: AgentDocument }) {
+  const { me } = useSession();
   const services = useServices();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -235,6 +280,8 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
   const [view, setView] = useState<'blocks' | 'markdown'>('blocks');
   const [onlyChanged, setOnlyChanged] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const [blockError, setBlockError] = useState<unknown>(null);
+  const [blockBusy, setBlockBusy] = useState(false);
 
   const requestedText = searchParams.get('rev');
   const requested =
@@ -262,6 +309,23 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
     setSearchParams({ rev: String(revision) }, { replace: true });
   };
 
+  const restoreBlock = async (blockId: string): Promise<void> => {
+    if (range === null || blockBusy) return;
+    setBlockBusy(true);
+    setBlockError(null);
+    try {
+      await services.documents.restoreBlock(document.id, range.from, blockId, document.version);
+      void navigate(documentHref(spaceSlug, document.id));
+    } catch (failure) {
+      setBlockError(failure);
+      setBlockBusy(false);
+    }
+  };
+
+  const selectedRevision =
+    revisions.state === 'ready'
+      ? revisions.data.find((revision) => revision.revision === range?.from)
+      : undefined;
   const threadList = threads.state === 'ready' ? threads.data : [];
   const counts =
     comparison.state === 'ready' && comparison.data !== null ? diffCounts(comparison.data.diff) : null;
@@ -367,6 +431,16 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
         </aside>
 
         <section className="history-main" aria-label="비교">
+          {selectedRevision === undefined ? null : (
+            <RevisionDetails
+              key={`${selectedRevision.revision}:${selectedRevision.name ?? ''}`}
+              documentId={document.id}
+              revision={selectedRevision}
+              onChanged={revisions.reload}
+            />
+          )}
+          {blockError === null ? null : <ErrorBox error={blockError} />}
+          {blockBusy ? <p className="muted">블록을 복원하고 있습니다.</p> : null}
           <div className="history-main-header">
             <strong>
               {range === null
@@ -419,7 +493,15 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
             view === 'markdown' ? (
               <UnifiedDiff text={comparison.data.diff.unified} />
             ) : (
-              <DiffBlocks comparison={comparison.data} onlyChanged={onlyChanged} />
+              <DiffBlocks
+                comparison={comparison.data}
+                onlyChanged={onlyChanged}
+                onRestore={
+                  mode === 'current' && me.owner && !blockBusy
+                    ? (blockId) => void restoreBlock(blockId)
+                    : undefined
+                }
+              />
             )
           ) : null}
         </section>
@@ -456,5 +538,9 @@ export function HistoryPage() {
     );
   }
   if (space.state === 'loading' || document.state === 'loading') return <Loading />;
-  return <HistoryView spaceSlug={space.data.slug} document={document.data} />;
+  return (
+    <DocumentAssetScope documentId={document.data.id}>
+      <HistoryView spaceSlug={space.data.slug} document={document.data} />
+    </DocumentAssetScope>
+  );
 }

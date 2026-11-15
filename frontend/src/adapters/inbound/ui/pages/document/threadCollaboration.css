@@ -1,0 +1,44 @@
+.thread-collaboration {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+
+.thread-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.thread-reactions [aria-pressed='true'] {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.thread-suggestion {
+  border-inline-start: 3px solid var(--border, #ccc);
+  padding-inline-start: 0.6rem;
+  overflow-wrap: anywhere;
+}
+
+.thread-suggestion del {
+  background: #fce8e8;
+  color: #762222;
+}
+
+.thread-suggestion ins {
+  background: #e4f4e4;
+  color: #245224;
+}
+
+.thread-collaboration form,
+.thread-collaboration label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.thread-collaboration textarea {
+  width: 100%;
+  min-height: 4rem;
+  resize: vertical;
+}

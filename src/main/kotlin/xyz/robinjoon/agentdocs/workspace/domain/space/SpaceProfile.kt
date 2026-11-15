@@ -2,12 +2,15 @@ package xyz.robinjoon.agentdocs.workspace.domain.space
 
 import java.util.Collections
 
-// The settings the owner edits together: what the space is called, what it is for, and what it is linked to.
+// The settings the owner edits together: what the space is called, what it is for, what it is linked to, and what it
+// points agents to. The guidance lives here because its default repository must be one of these links: whenever the
+// links change, a default that is no longer linked is dropped.
 @ConsistentCopyVisibility
 data class SpaceProfile private constructor(
     val name: String,
     val description: String,
     val links: List<ExternalLink>,
+    val guidance: SpaceGuidance,
 ) {
     init {
         if (name.isBlank() || name.length > MAX_NAME_LENGTH) {
@@ -24,6 +27,8 @@ data class SpaceProfile private constructor(
         }
     }
 
+    fun guidedBy(guidance: SpaceGuidance): SpaceProfile = copy(guidance = guidance.within(links))
+
     companion object {
         const val MAX_NAME_LENGTH = 100
         const val MAX_DESCRIPTION_LENGTH = 500
@@ -33,6 +38,10 @@ data class SpaceProfile private constructor(
             name: String,
             description: String,
             links: List<ExternalLink>,
-        ): SpaceProfile = SpaceProfile(name.trim(), description.trim(), Collections.unmodifiableList(links.toList()))
+            guidance: SpaceGuidance = SpaceGuidance.none,
+        ): SpaceProfile {
+            val kept = Collections.unmodifiableList(links.toList())
+            return SpaceProfile(name.trim(), description.trim(), kept, guidance.within(kept))
+        }
     }
 }

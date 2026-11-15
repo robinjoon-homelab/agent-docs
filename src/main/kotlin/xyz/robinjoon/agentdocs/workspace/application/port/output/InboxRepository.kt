@@ -1,5 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.application.port.output
 
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItem
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItemId
 import java.time.Instant
@@ -7,6 +9,11 @@ import java.util.UUID
 
 // A person's items are found by user id once they are claimed; see InboxRecipient.
 interface InboxRepository {
+    fun moveDocuments(
+        documents: Set<DocumentId>,
+        space: SpaceId,
+    )
+
     fun addAll(items: List<InboxItem>)
 
     fun update(item: InboxItem): InboxItem

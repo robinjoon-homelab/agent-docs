@@ -281,4 +281,163 @@ describe('DocumentEditorSession', () => {
     expect(session.getState()).toMatchObject({ version: 11, revision: 3, status: 'pending' });
     expect(server.doc.blocks.map(withoutHash)).toEqual([paragraph(A, 'saved body')]);
   });
+  it('suggests a revision name only after a confirmed status change has a confirmed revision', async () => {
+    const server = new FakeDocumentServer(document({ version: 3, revision: 2, status: 'draft' }));
+    const session = open(server);
+    expect(await session.patchMeta({ status: 'confirmed' })).toBe(true);
+    expect(session.getState().revisionNameSuggestion).toBeNull();
+    await session.finalize();
+    expect(session.getState().revisionNameSuggestion).toBe(3);
+    session.dismissRevisionNameSuggestion();
+    expect(session.getState().revisionNameSuggestion).toBeNull();
+  });
 });
+
+describe('remote refresh preserves debounce input', () => {
+  it('merges untouched blocks while retaining body input inside the autosave delay', async () => {
+    const server = new FakeDocumentServer(
+      document({ blocks: [stored(paragraph(A, 'A0')), stored(paragraph(B, 'B0'))] }),
+    );
+    const session = open(server);
+    session.markEdited([paragraph(A, 'mine'), paragraph(B, 'B0')]);
+    server.agentWrites({ blocks: [paragraph(A, 'A0'), paragraph(B, 'remote')] });
+    await session.refreshRemote();
+    expect(session.currentBlocks()).toEqual([paragraph(A, 'mine'), paragraph(B, 'remote')]);
+    expect(session.getState().status).toBe('pending');
+    expect(server.doc.blocks.map(withoutHash)).toEqual([paragraph(A, 'A0'), paragraph(B, 'remote')]);
+    expect(await session.saveContent(session.currentBlocks())).toBe('saved');
+    expect(server.doc.blocks.map(withoutHash)).toEqual([paragraph(A, 'mine'), paragraph(B, 'remote')]);
+  });
+
+  it('keeps a same-block conflict and its original choices across later signals', async () => {
+    const server = new FakeDocumentServer(document({ blocks: [stored(paragraph(A, 'base'))] }));
+    const session = open(server);
+    session.markEdited([paragraph(A, 'mine')]);
+    server.agentWrites({ blocks: [paragraph(A, 'remote')] });
+    await session.refreshRemote();
+    const conflict = session.getState();
+    server.agentWrites({ blocks: [paragraph(A, 'later')] });
+    await session.refreshRemote();
+    expect(session.getState()).toEqual(conflict);
+    expect(session.currentBlocks()).toEqual([paragraph(A, 'mine')]);
+    expect(session.getState().conflicts[0]?.current).toEqual(paragraph(A, 'remote'));
+  });
+
+  it('reads the latest body input after an in-flight remote query completes', async () => {
+    const server = new FakeDocumentServer(document({ blocks: [stored(paragraph(A, 'base'))] }));
+    const session = open(server);
+    server.agentWrites({ blocks: [paragraph(A, 'remote')] });
+    let complete: (value: AgentDocument) => void = () => {
+      throw new Error('not ready');
+    };
+    server.get = () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      });
+    const refreshing = session.refreshRemote();
+    await Promise.resolve();
+    session.markEdited([paragraph(A, 'newest input')]);
+    complete(server.doc);
+    await refreshing;
+    expect(session.getState().status).toBe('conflict');
+    expect(session.currentBlocks()).toEqual([paragraph(A, 'newest input')]);
+  });
+
+  it('preserves the first title baseline across SSE during the 800ms debounce', async () => {
+    const server = new FakeDocumentServer(document({ title: 'base' }));
+    const session = open(server);
+    session.markMetaEdited({ title: 'mine' });
+    server.agentWrites({ title: 'remote' });
+    await session.refreshRemote();
+    expect(session.getState().meta.title).toBe('mine');
+    expect(await session.patchMeta({ title: 'mine' })).toBe(false);
+    expect(server.doc.title).toBe('remote');
+    expect(session.getState().errorMessage).not.toBeNull();
+  });
+
+  it('safely retries title input when SSE changes another metadata field', async () => {
+    const server = new FakeDocumentServer(document({ title: 'base' }));
+    const session = open(server);
+    session.markMetaEdited({ title: 'mine' });
+    server.agentWrites({ tags: ['remote'] });
+    await session.refreshRemote();
+    expect(await session.patchMeta({ title: 'mine' })).toBe(true);
+    expect(server.doc).toMatchObject({ title: 'mine', tags: ['remote'] });
+  });
+
+  it('ignores stale and different-document responses', async () => {
+    const server = new FakeDocumentServer(document({ version: 10 }));
+    const session = open(server);
+    const initial = session.getState();
+    server.get = () => Promise.resolve(document({ version: 9, title: 'stale' }));
+    await session.refreshRemote();
+    expect(session.getState()).toEqual(initial);
+    server.get = () => Promise.resolve(document({ id: 'different', version: 20, title: 'wrong' }));
+    await session.refreshRemote();
+    expect(session.getState()).toEqual(initial);
+  });
+
+  it('never makes a remote version eligible for this tabs finalization', async () => {
+    const server = new FakeDocumentServer(document());
+    const session = open(server);
+    await session.saveContent([paragraph(A, 'own')]);
+    server.agentWrites({ blocks: [paragraph(A, 'remote')] });
+    await session.refreshRemote();
+    const remote = server.doc;
+    expect(session.hasPendingRevision()).toBe(false);
+    await session.finalize();
+    expect(server.doc).toEqual(remote);
+  });
+});
+
+it('keeps newer metadata input and advances its baseline after an earlier own write succeeds', async () => {
+  const server = new FakeDocumentServer(document({ title: 'base' }));
+  const session = open(server);
+  const patch = server.patch;
+  let release: () => void = () => undefined;
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.patch = async (...args) => {
+    await delayed;
+    return patch(...args);
+  };
+  session.markMetaEdited({ title: 'first input' });
+  const saving = session.patchMeta({ title: 'first input' });
+  await Promise.resolve();
+  session.markMetaEdited({ title: 'later input' });
+  release();
+  expect(await saving).toBe(true);
+  expect(session.getState().meta.title).toBe('later input');
+  expect(await session.patchMeta({ title: 'later input' })).toBe(true);
+  expect(server.doc.title).toBe('later input');
+});
+
+it.each([false, true])(
+  'advances queued metadata baselines only for own success, external edit=%s',
+  async (external) => {
+    const server = new FakeDocumentServer(document({ title: 'A', version: 1, revision: 1 }));
+    const session = open(server);
+    const patch = server.patch;
+    let release: () => void = () => undefined;
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.patch = async (id, version, change) => {
+      await delayed;
+      const saved = await patch(id, version, change);
+      if (external && change.title === 'B') server.agentWrites({ title: 'outside' });
+      return saved;
+    };
+    session.markMetaEdited({ title: 'B' });
+    const first = session.patchMeta({ title: 'B' });
+    await Promise.resolve();
+    session.markMetaEdited({ title: 'C' });
+    const second = session.patchMeta({ title: 'C' });
+    release();
+    expect(await first).toBe(true);
+    expect(await second).toBe(!external);
+    expect(server.doc).toMatchObject({ title: external ? 'outside' : 'C', version: 3 });
+    expect(session.getState().errorMessage === null).toBe(!external);
+  },
+);

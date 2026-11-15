@@ -1,3 +1,4 @@
+import type { InputTracePayload } from '../../../domain/statistics/statistics';
 import type { Block, StoredBlock } from '../../../domain/document/block';
 import type {
   AgentDocument,
@@ -66,8 +67,19 @@ export interface DocumentGateway {
   create(spaceSlug: string, document: NewDocument): Promise<AgentDocument>;
   get(documentId: string): Promise<AgentDocument>;
   /** Returns the current document when the base version is stale. */
-  saveContent(documentId: string, baseVersion: number, blocks: readonly Block[]): Promise<SaveContentResult>;
-  patch(documentId: string, baseVersion: number, patch: MetaPatch): Promise<AgentDocument>;
+  saveContent(
+    documentId: string,
+    baseVersion: number,
+    blocks: readonly Block[],
+    inputTrace?: InputTracePayload,
+  ): Promise<SaveContentResult>;
+  patch(
+    documentId: string,
+    baseVersion: number,
+    patch: MetaPatch,
+    inputTrace?: InputTracePayload,
+  ): Promise<AgentDocument>;
+  transfer(documentId: string, baseVersion: number, space: string, path: string): Promise<TransferResult>;
   finalize(documentId: string, baseVersion: number): Promise<SavedContent>;
   trash(documentId: string): Promise<void>;
   untrash(documentId: string): Promise<void>;
@@ -78,4 +90,14 @@ export interface DocumentGateway {
   diff(documentId: string, from: number, to?: number): Promise<DocumentDiff>;
   /** `baseVersion` is the document version the user was looking at; stale writes are rejected. */
   restore(documentId: string, revision: number, baseVersion: number): Promise<number>;
+  nameRevision(documentId: string, revision: number, name: string): Promise<string | null>;
+  restoreBlock(documentId: string, revision: number, blockId: string, baseVersion: number): Promise<number>;
 }
+
+export type TransferResult = {
+  readonly documentId: string;
+  readonly space: AgentDocument['space'];
+  readonly path: string;
+  readonly version: number;
+  readonly revision: number;
+};

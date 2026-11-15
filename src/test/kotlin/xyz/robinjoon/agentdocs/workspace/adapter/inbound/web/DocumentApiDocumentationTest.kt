@@ -83,11 +83,40 @@ import java.util.UUID
 // The use cases are strict mocks; version, conflict, and revision rules belong to the domain and service tests. This test
 // checks block JSON in both directions, statuses, and error conversion.
 class DocumentApiDocumentationTest : RestDocsWebTest() {
+    private val editSessions =
+        mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.EditSessionUseCase>(relaxed = true) {
+            every { recordHuman(any(), any()) } returns emptyList()
+        }
     private val documents = mockk<DocumentUseCase>()
+    private val spaces =
+        mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase> {
+            every { agentGuide(any(), any()) } returns null
+        }
     private val queries = mockk<DocumentQueryUseCase>()
-    private val mockMvc = restDocsMockMvc(DocumentController(documents, queries), WorkspaceExceptionHandler())
+    private val mockMvc =
+        restDocsMockMvc(
+            DocumentController(documents, queries, spaces, EditStatisticsRecorder(editSessions)),
+            WorkspaceExceptionHandler(),
+        )
     private val listing = DocumentListing(documentId, document().header, document().lifecycle, agentActor)
     private val revised = Paragraph(BlockId("para01"), InlineText("실패하면 **60초** 뒤에 다시 시도한다."))
+
+    @Test
+    fun `invalid optional input trace preserves a successful document save`() {
+        every { documents.save(webContext, documentId, 3, listOf(revised)) } returns
+            DocumentWrite(document(listOf(revised), revision = 4), 4, listOf(revised.id), false, false)
+        mockMvc
+            .perform(
+                put("/api/documents/{id}/content", documentId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """{"baseVersion":3,"blocks":[{"id":"para01","type":"paragraph","text":"실패하면 **60초** 뒤에 다시 시도한다."}],"inputTrace":{"tabId":"invalid"}}""",
+                    ),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.version").value(4))
+            .andExpect(jsonPath("$.unchanged").value(false))
+    }
 
     @Test
     fun `list returns documents of the space filtered by status, tag, and folder`() {
@@ -150,6 +179,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                 documented(
                     "documents-create",
                     requestFields(
+                        *WebFixtures.writeMetadataFields(),
                         fieldWithPath("path").description("스페이스 안 경로"),
                         fieldWithPath("title").description("제목, 200자 이하"),
                         fieldWithPath("status").optional().description("처음 상태. 기본 draft"),
@@ -164,6 +194,24 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     responseFields(*documentFields()),
                 ),
             )
+    }
+
+    @Test
+    fun `REST guide metadata leaves markdown bytes unchanged`() {
+        val markdown = "---\nversion: 3\n---\n\n본문\n"
+        every { queries.markdown(ownerAccess, documentId, any()) } returns MarkdownChunk(document(), markdown, null, 2)
+        every { spaces.agentGuide(ownerAccess, any()) } returns
+            xyz.robinjoon.agentdocs.workspace.application.model.SpaceGuide.Offered(
+                xyz.robinjoon.agentdocs.workspace.domain.document
+                    .DocumentId(UUID.randomUUID()),
+                "작성 지침",
+                "guide",
+            )
+        mockMvc
+            .perform(get("/api/documents/{id}/markdown", documentId).principal(owner))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.markdown").value(markdown))
+            .andExpect(jsonPath("$.agentGuide.title").value("작성 지침"))
     }
 
     @Test
@@ -190,6 +238,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("version").description("현재 내용 버전"),
                         fieldWithPath("revision").description("마지막 확정 리비전"),
                         fieldWithPath("markdown").description("마크다운"),
+                        *WebFixtures.guideFields("agentGuide"),
                         fieldWithPath("nextCursor").type(JsonFieldType.NUMBER).optional().description("남은 블록이 있으면 다음 cursor"),
                         fieldWithPath("totalBlocks").description("문서의 블록 수"),
                     ),
@@ -228,7 +277,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """{"baseVersion":3,"blocks":[{"id":"head01","type":"heading","level":1,"text":"재시도 설계"},""" +
-                            """{"id":"para01","type":"paragraph","text":" 실패하면 **60초** 뒤에 다시 시도한다. "}]}""",
+                            """{"id":"para01","type":"paragraph","text":" 실패하면 **60초** 뒤에 다시 시도한다. "}],"inputTrace":${WebFixtures.inputTraceJson}}""",
                     ),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.amended").value(true))
@@ -237,6 +286,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     "documents-save",
                     pathParameters(parameterWithName("id").description("문서 ID")),
                     requestFields(
+                        *WebFixtures.writeMetadataFields(),
                         fieldWithPath("baseVersion").description("마지막으로 읽거나 저장한 version. 다르면 본문 전체와 currentVersion을 담아 409"),
                         blocksSubsection("blocks"),
                         fieldWithPath("opId").optional().type(JsonFieldType.STRING).description("멱등 키"),
@@ -323,6 +373,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                 documented(
                     "documents-edit",
                     requestFields(
+                        *WebFixtures.writeMetadataFields(),
                         subsectionWithPath("operations").description("연산 목록. replace, insert, delete, move, replaceText. '편집 연산' 절을 본다"),
                         fieldWithPath("answering").optional().description("이 수정이 답하는 스레드. 새 리비전을 스레드에 연결한다"),
                         fieldWithPath("opId").optional().description("멱등 키"),
@@ -362,6 +413,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                 documented(
                     "documents-change-header",
                     requestFields(
+                        *WebFixtures.writeMetadataFields(),
                         fieldWithPath("baseVersion").description("마지막으로 본 version. 그 뒤 문서가 바뀌었으면 409"),
                         fieldWithPath("title").optional().description("새 제목"),
                         fieldWithPath("path").optional().description("새 경로. 같은 스페이스 안에서 옮긴다"),

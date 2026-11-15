@@ -257,3 +257,15 @@
     flex-wrap: wrap;
   }
 }
+
+.guidance-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.guidance-row .select {
+  flex: 1;
+  min-width: 200px;
+}

@@ -7,4 +7,5 @@ data class RevisionSummary(
     val number: Int,
     val title: String,
     val change: RevisionChange,
+    val name: String? = null,
 )

@@ -1,0 +1,48 @@
+import { describe, expect, it } from 'vitest';
+import { parseInline, plainText, serializeInlinePreserving, serializeInline } from './inline';
+import { githubReferences } from './githubReferences';
+import { mathSpans } from './math';
+import { assetReferences } from './assetReferences';
+
+describe('content expressions', () => {
+  it('keeps formula markup and TeX commands through the inline model', () => {
+    const source = String.raw`값 $\frac{a*b}{c}$ 및 $$x^2$$`;
+    const inline = parseInline(source);
+    expect(serializeInlinePreserving(inline, source)).toBe(source);
+    expect(serializeInline(inline)).toBe(source);
+    expect(plainText(source)).toBe(source);
+    expect(mathSpans(source).map((span) => span.source)).toEqual([String.raw`\frac{a*b}{c}`, 'x^2']);
+  });
+  it('does not invent a repository for absent or ambiguous connections', () => {
+    expect(githubReferences('#123', { repositories: [] })).toEqual([]);
+    expect(githubReferences('#123', { repositories: ['a/one', 'a/two'] })).toEqual([]);
+    expect(
+      githubReferences('#123', { repositories: ['a/one', 'a/two'], defaultRepository: 'else/other' }),
+    ).toEqual([]);
+  });
+  it('uses selected repository and HEAD without altering visible text', () => {
+    const text = '#123 abcdef123 src/main.kt#L4-L6';
+    const spans = githubReferences(text, { repositories: ['a/one', 'a/two'], defaultRepository: 'a/two' });
+    expect(spans.map((span) => span.href)).toEqual([
+      'https://github.com/a/two/issues/123',
+      'https://github.com/a/two/commit/abcdef123',
+      'https://github.com/a/two/blob/HEAD/src/main.kt#L4-L6',
+    ]);
+    expect(spans.map((span) => text.slice(span.from, span.to))).toEqual([
+      '#123',
+      'abcdef123',
+      'src/main.kt#L4-L6',
+    ]);
+  });
+  it('extracts reachable assets without treating code samples as attachments', () => {
+    const id = '88888888-8888-4888-8888-888888888888';
+    const other = '99999999-9999-4999-8999-999999999999';
+    expect(
+      assetReferences([
+        { id: 'image00001', type: 'image', assetId: id, alt: '시안', caption: 'mockup' },
+        { id: 'para000001', type: 'paragraph', text: `[첨부](asset:${id}) \`[코드](asset:${other})\`` },
+        { id: 'code000001', type: 'code', language: '', code: `[코드](asset:${other})` },
+      ]),
+    ).toEqual([id]);
+  });
+});

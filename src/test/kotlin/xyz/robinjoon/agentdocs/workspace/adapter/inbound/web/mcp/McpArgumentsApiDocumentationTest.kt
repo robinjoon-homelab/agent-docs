@@ -10,8 +10,8 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.springframework.http.MediaType
 import org.springframework.restdocs.mockmvc.RestDocumentationRequestBuilders.post
 import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
-import org.springframework.restdocs.payload.PayloadDocumentation.relaxedResponseFields
 import org.springframework.restdocs.payload.PayloadDocumentation.requestFields
+import org.springframework.restdocs.payload.PayloadDocumentation.responseFields
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -51,19 +51,21 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
     private val threads = mockk<ThreadUseCase>()
     private val queries = mockk<DocumentQueryUseCase>()
     private val documents = mockk<DocumentUseCase>()
+    private val documentAssets = mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentAssetUseCase>()
+    private val assets = mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase>()
     private val uploads = mockk<UploadGrantUseCase>()
     private val tools =
         listOf(
             CommentsQueryTool(threads, mockk()),
-            CommentsWriteTool(threads),
-            DocsReadTool(queries),
+            CommentsWriteTool(threads, mockk()),
+            DocsReadTool(queries, mockk()),
             DocsListTool(queries),
-            DocsCreateTool(documents),
-            DocsEditTool(documents),
-            DocsMoveTool(documents),
-            DocsHistoryTool(queries, documents),
+            DocsCreateTool(documents, mockk(relaxed = true)),
+            DocsEditTool(documents, mockk(relaxed = true)),
+            DocsMoveTool(documents, mockk(relaxed = true)),
+            DocsHistoryTool(queries, documents, mockk(relaxed = true)),
             DocsSearchTool(mockk()),
-            DocsUploadTool(mockk(), uploads, "https://docs.example.com/api/uploads"),
+            DocsUploadTool(assets, uploads, "https://docs.example.com/api/uploads", documentAssets),
             ChangesSinceTool(mockk()),
             SpacesResolveTool(mockk()),
         )
@@ -104,7 +106,10 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("params.name").description("comments_query"),
                         fieldWithPath("params.arguments.status").description("잘못된 문자열 예시. [\"resolved\"]처럼 문자열 배열로 전달한다"),
                     ),
-                    relaxedResponseFields(
+                    responseFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
+                        fieldWithPath("result.content[].type").description("text"),
                         fieldWithPath("result.isError").description("입력이 도구의 inputSchema에 맞지 않으면 true"),
                         fieldWithPath("result.content[].text").description("어느 인자가 어떻게 어긋났는지 알려 주는 검증 메시지"),
                     ),
@@ -157,6 +162,69 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.result.isError").value(true))
             .andExpect(jsonPath("$.result.content[0].text", containsString("leave out contentBase64")))
+    }
+
+    @Test
+    fun `HTML source resolves a transferred document logical asset reference`() {
+        val id =
+            xyz.robinjoon.agentdocs.workspace.domain.asset
+                .AssetId(UUID.randomUUID())
+        val bytes = "<html>transferred</html>".toByteArray()
+        val asset =
+            xyz.robinjoon.agentdocs.workspace.domain.asset.Asset.upload(
+                xyz.robinjoon.agentdocs.workspace.domain.asset
+                    .AssetId(UUID.randomUUID()),
+                spaceId,
+                xyz.robinjoon.agentdocs.workspace.domain.asset.AssetContent.of(
+                    xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType.HTML,
+                    bytes,
+                ),
+                xyz.robinjoon.agentdocs.workspace.domain.asset
+                    .AssetOrigin("preview.html", null, agentAccess.actor, at),
+            )
+        every { documentAssets.content(agentAccess, documentId, id) } returns
+            xyz.robinjoon.agentdocs.workspace.application.model
+                .AssetFile(asset, bytes)
+        call("docs_upload", """{"space":"agent-docs","document":"$documentId","assetId":"$id"}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(false))
+            .andExpect(jsonPath("$.result.content[0].text", containsString(id.toString())))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("transferred")))
+            .andDo(
+                documented(
+                    "mcp-upload-document-source",
+                    requestFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
+                        fieldWithPath("method").description("tools/call"),
+                        fieldWithPath("params.name").description("docs_upload"),
+                        fieldWithPath("params.arguments.space").description("기존 필수 스페이스 slug"),
+                        fieldWithPath("params.arguments.document").description("선택 문서 UUID. assetId와 함께 주면 현재 문서 권한·실제 참조와 바인딩으로 원문 조회"),
+                        fieldWithPath("params.arguments.assetId").description("불변 본문에 기록된 논리 첨부 UUID"),
+                    ),
+                    responseFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
+                        fieldWithPath("result.isError").description("false"),
+                        fieldWithPath("result.content[].type").description("text"),
+                        fieldWithPath("result.content[].text").description("JSON: assetId는 불변 논리 참조 ID, source는 현재 문서 권한으로 읽은 바인딩 HTML 원문"),
+                    ),
+                ),
+            )
+    }
+
+    @Test
+    fun `HTML source rejects an unrelated document reference`() {
+        val id =
+            xyz.robinjoon.agentdocs.workspace.domain.asset
+                .AssetId(UUID.randomUUID())
+        every { documentAssets.content(agentAccess, documentId, id) } throws
+            xyz.robinjoon.agentdocs.workspace.application.port.input
+                .AssetNotFoundException(id)
+        call("docs_upload", """{"space":"agent-docs","document":"$documentId","assetId":"$id"}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(true))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("not_found")))
     }
 
     @ParameterizedTest
@@ -216,6 +284,7 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
                     """{"space":"agent-docs","url":"https://example.com/image.png","alt":true}""",
                     "alt",
                 ),
+                TestArguments.of("docs_upload", """{"space":"agent-docs","document":1}""", "document"),
                 TestArguments.of("changes_since", """{"limit":"100"}""", "limit"),
                 TestArguments.of("spaces_resolve", """{"remote":[]}""", "remote"),
             )

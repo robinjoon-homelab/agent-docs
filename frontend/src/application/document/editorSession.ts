@@ -1,3 +1,4 @@
+import type { InputTraceBatch } from '../../domain/statistics/statistics';
 import type { Block } from '../../domain/document/block';
 import { blocksEqual, withoutHash } from '../../domain/document/block';
 import type { AgentDocument, DocumentMeta, SaveConflict } from '../../domain/document/document';
@@ -7,6 +8,9 @@ import type { Clock } from '../shared/ports/Clock';
 import { isApiError } from '../shared/ports/errors';
 import { StaleDocumentError } from './ports/DocumentGateway';
 import type { CurrentDocument, DocumentGateway, MetaPatch } from './ports/DocumentGateway';
+
+export type InputBatch = { readonly trace: InputTraceBatch; accepted(): void; unchanged(): void };
+export type InputKind = 'body' | keyof DocumentMeta;
 
 export type SaveStatus = 'saved' | 'pending' | 'saving' | 'conflict' | 'error';
 
@@ -21,6 +25,7 @@ export type EditorSessionState = {
   readonly conflicts: readonly SaveConflict[];
   readonly errorMessage: string | null;
   readonly lastSavedAt: Date | null;
+  readonly revisionNameSuggestion: number | null;
 };
 
 /**
@@ -61,6 +66,13 @@ export class DocumentEditorSession {
   private readonly documentId: string;
   private lastInputAt: Date;
   private finalizableVersion: number | null = null;
+  private suggestNameOnConfirmation = false;
+  private inputBatch: ((kinds: readonly InputKind[]) => InputBatch | null) | null = null;
+  private bodyBatch: InputBatch | null = null;
+  private inputSequence = 0;
+  private bodyBatchSequence: number | null = null;
+  private readonly metaBases = new Map<keyof DocumentMeta, { value: unknown; version: number }>();
+  private pendingMeta: MetaPatch = {};
   private contentBaseVersion: number;
   private state: EditorSessionState;
   private base: readonly Block[];
@@ -89,6 +101,7 @@ export class DocumentEditorSession {
       conflicts: [],
       errorMessage: null,
       lastSavedAt: null,
+      revisionNameSuggestion: null,
     };
   }
 
@@ -104,6 +117,38 @@ export class DocumentEditorSession {
     this.mergeListeners.add(listener);
     return () => this.mergeListeners.delete(listener);
   };
+
+  setInputBatches(source: (kinds: readonly InputKind[]) => InputBatch | null): void {
+    this.inputBatch = source;
+  }
+
+  /** Capture the original field baseline before the header's debounce or blur. */
+  markMetaEdited(patch: MetaPatch): void {
+    for (const key of Object.keys(patch) as (keyof DocumentMeta)[]) {
+      if (!this.metaBases.has(key))
+        this.metaBases.set(key, { value: this.savedMeta[key], version: this.state.version });
+    }
+    this.pendingMeta = { ...this.pendingMeta, ...patch };
+    this.lastInputAt = this.clock.now();
+    this.update({
+      meta: { ...this.state.meta, ...patch },
+      status: this.state.status === 'saved' ? 'pending' : this.state.status,
+    });
+  }
+
+  cancelMetaEdited(key: keyof DocumentMeta): void {
+    this.pendingMeta = Object.fromEntries(
+      Object.entries(this.pendingMeta).filter(([field]) => field !== key),
+    );
+    this.metaBases.delete(key);
+    this.update({
+      meta: { ...this.savedMeta, ...this.pendingMeta },
+      status:
+        this.metaBases.size === 0 && (this.latest === null || sameBlocks(this.latest, this.base))
+          ? 'saved'
+          : this.state.status,
+    });
+  }
 
   /** Blocks as the server last confirmed them. */
   baseBlocks(): readonly Block[] {
@@ -124,6 +169,7 @@ export class DocumentEditorSession {
 
   /** Marks the document unsaved as soon as the user types, before the autosave delay runs out. */
   markEdited(blocks?: readonly Block[]): void {
+    this.inputSequence += 1;
     if (blocks !== undefined) this.latest = blocks;
     this.lastInputAt = this.clock.now();
     this.editedSinceSend = true;
@@ -141,26 +187,68 @@ export class DocumentEditorSession {
     return this.idle();
   }
 
+  async flushMeta(): Promise<boolean> {
+    if (Object.keys(this.pendingMeta).length === 0) return true;
+    return this.patchMeta(this.pendingMeta);
+  }
+
   /** Optimistic metadata change; rolled back to the last saved value when the server refuses it. */
   patchMeta(patch: MetaPatch): Promise<boolean> {
-    this.lastInputAt = this.clock.now();
+    if (!Object.keys(patch).every((key) => this.metaBases.has(key as keyof DocumentMeta)))
+      this.markMetaEdited(patch);
+    // Share baseline cells: an earlier own success must advance already queued writes too.
+    const baselines = new Map(this.metaBases);
+    const batch = this.inputBatch?.(Object.keys(patch) as (keyof DocumentMeta)[]) ?? null;
+    const input = { ...this.pendingMeta };
     this.update({ meta: { ...this.state.meta, ...patch } });
     let saved = false;
     return this.enqueue(async () => {
       try {
-        const document = await this.saveMeta(patch);
+        const previousStatus = this.savedMeta.status;
+        const document = await this.saveMeta(patch, baselines, batch);
+        for (const key of Object.keys(patch) as (keyof DocumentMeta)[]) {
+          if (JSON.stringify(this.pendingMeta[key]) === JSON.stringify(input[key])) {
+            this.pendingMeta = Object.fromEntries(
+              Object.entries(this.pendingMeta).filter(([field]) => field !== key),
+            );
+            this.metaBases.delete(key);
+          } else {
+            const baseline = this.metaBases.get(key);
+            if (baseline !== undefined) {
+              baseline.value = document[key];
+              baseline.version = document.version;
+            }
+          }
+        }
+        if (previousStatus !== 'confirmed' && document.status === 'confirmed')
+          this.suggestNameOnConfirmation = true;
+        if (document.status !== 'confirmed') this.suggestNameOnConfirmation = false;
         this.acceptDocumentBody(document);
         this.savedMeta = metaOf(document);
         this.update({
           version: document.version,
           revision: document.revision,
-          meta: this.savedMeta,
+          meta: { ...this.savedMeta, ...this.pendingMeta },
+          status:
+            this.getState().status === 'conflict'
+              ? 'conflict'
+              : (this.latest !== null && !sameBlocks(this.latest, this.base)) || this.metaBases.size > 0
+                ? 'pending'
+                : 'saved',
           errorMessage: null,
         });
         saved = true;
       } catch (error) {
         this.update({
-          meta: this.savedMeta,
+          meta: {
+            ...this.savedMeta,
+            ...Object.fromEntries(
+              Object.entries(this.pendingMeta).filter(
+                ([key, value]) => JSON.stringify(value) !== JSON.stringify(input[key as keyof DocumentMeta]),
+              ),
+            ),
+          },
+          status: this.getState().status === 'conflict' ? 'conflict' : 'error',
           errorMessage: errorText(error, '문서 정보를 저장하지 못했습니다.'),
         });
       }
@@ -172,17 +260,49 @@ export class DocumentEditorSession {
    * document along. A stored body that differs becomes the new base like a merged save. During a conflict nothing
    * is read: resolving it reads the current document anyway.
    */
-  refreshMeta(): Promise<void> {
+  async refreshMeta(): Promise<void> {
+    try {
+      await this.refreshRemote();
+    } catch (error) {
+      this.update({ errorMessage: errorText(error, '문서 정보를 다시 읽지 못했습니다.') });
+    }
+  }
+
+  refreshRemote(): Promise<void> {
     return this.enqueue(async () => {
       if (this.state.status === 'conflict') return;
-      try {
-        const document = await this.gateway.get(this.documentId);
-        this.acceptDocumentBody(document);
-        this.savedMeta = metaOf(document);
-        this.update({ version: document.version, revision: document.revision, meta: this.savedMeta });
-      } catch (error) {
-        this.update({ errorMessage: errorText(error, '문서 정보를 다시 읽지 못했습니다.') });
+      const document = await this.gateway.get(this.documentId);
+      if (
+        document.id !== this.documentId ||
+        document.version < this.state.version ||
+        this.getState().status === 'conflict'
+      )
+        return;
+      const previousBase = this.base;
+      const mine = this.currentBlocks();
+      const theirs = document.blocks.map(withoutHash);
+      const conflicts = conflictingBlocks(previousBase, mine, theirs);
+      if (document.version > this.state.version) this.finalizableVersion = null;
+      if (conflicts.length > 0) {
+        this.update({
+          status: 'conflict',
+          conflicts: conflicts.map((blockId) => ({
+            blockId,
+            currentHash: null,
+            current: theirs.find((block) => block.id === blockId) ?? null,
+            currentMarkdown: null,
+          })),
+        });
+        return;
       }
+      this.adopt(previousBase, theirs);
+      this.contentBaseVersion = document.version;
+      this.savedMeta = metaOf(document);
+      this.update({
+        version: document.version,
+        revision: document.revision,
+        meta: { ...this.savedMeta, ...this.pendingMeta },
+      });
     });
   }
 
@@ -203,7 +323,7 @@ export class DocumentEditorSession {
       this.update({
         version: current.version,
         revision: current.revision,
-        meta: this.savedMeta,
+        meta: { ...this.savedMeta, ...this.pendingMeta },
         status: 'pending',
         conflicts: [],
       });
@@ -242,20 +362,31 @@ export class DocumentEditorSession {
       this.editedSinceSend = false;
     }
     const blocks = this.latest;
+    const batch =
+      this.bodyBatchSequence === this.inputSequence ? this.bodyBatch : (this.inputBatch?.(['body']) ?? null);
+    this.bodyBatch = batch;
+    this.bodyBatchSequence = this.inputSequence;
     if (blocks === null || this.state.status === 'conflict') return;
     if (sameBlocks(blocks, this.base)) {
-      this.update({ status: 'saved', errorMessage: null });
+      batch?.unchanged();
+      this.bodyBatch = null;
+      this.bodyBatchSequence = null;
+      this.update({ status: this.metaBases.size > 0 ? 'pending' : 'saved', errorMessage: null });
       return;
     }
     this.update({ status: 'saving' });
     try {
       const requestedVersion = this.contentBaseVersion;
-      const result = await this.gateway.saveContent(this.documentId, requestedVersion, blocks);
+      const result = await this.gateway.saveContent(this.documentId, requestedVersion, blocks, batch?.trace);
       if (result.kind === 'conflict') {
         if (attempt >= 3) throw new Error('문서가 계속 바뀌고 있습니다. 다시 저장하세요.');
         await this.rebaseContent(result.currentDocument, result.currentVersion, attempt + 1);
         return;
       }
+      if (result.version > requestedVersion) batch?.accepted();
+      else batch?.unchanged();
+      this.bodyBatch = null;
+      this.bodyBatchSequence = null;
       const server = result.blocks.map(withoutHash);
       this.base = server;
       this.contentBaseVersion = result.version;
@@ -263,7 +394,7 @@ export class DocumentEditorSession {
       this.update({
         revision: result.revision,
         version: result.version,
-        status: this.hasUnsentEdits() ? 'pending' : 'saved',
+        status: this.hasUnsentEdits() || this.metaBases.size > 0 ? 'pending' : 'saved',
         errorMessage: null,
         lastSavedAt: this.clock.now(),
       });
@@ -280,30 +411,42 @@ export class DocumentEditorSession {
     this.contentBaseVersion = document.version;
   }
 
-  private async saveMeta(patch: MetaPatch): Promise<AgentDocument> {
+  private async saveMeta(
+    patch: MetaPatch,
+    baselines: ReadonlyMap<keyof DocumentMeta, { value: unknown; version: number }>,
+    batch: InputBatch | null,
+  ): Promise<AgentDocument> {
     const base = this.savedMeta;
     try {
-      return await this.writeMeta(this.state.version, patch);
+      const version = Math.min(this.state.version, ...[...baselines.values()].map((entry) => entry.version));
+      return await this.writeMeta(version, patch, batch);
     } catch (error) {
       if (!(error instanceof StaleDocumentError)) throw error;
       const current = error.currentDocument;
       const keys = Object.keys(patch) as (keyof DocumentMeta)[];
       const safe = keys.every(
         (key) =>
-          JSON.stringify(base[key]) === JSON.stringify(current[key]) ||
-          JSON.stringify(patch[key]) === JSON.stringify(current[key]),
+          JSON.stringify(baselines.has(key) ? baselines.get(key)?.value : base[key]) ===
+            JSON.stringify(current[key]) || JSON.stringify(patch[key]) === JSON.stringify(current[key]),
       );
       if (!safe) throw error;
       this.acceptDocumentBody(current);
       this.savedMeta = metaOf(current);
       this.update({ version: error.currentVersion, revision: current.revision });
-      return this.writeMeta(error.currentVersion, patch);
+      return this.writeMeta(error.currentVersion, patch, batch);
     }
   }
 
-  private async writeMeta(version: number, patch: MetaPatch): Promise<AgentDocument> {
-    const document = await this.gateway.patch(this.documentId, version, patch);
-    if (document.version > version) this.finalizableVersion = document.version;
+  private async writeMeta(
+    version: number,
+    patch: MetaPatch,
+    batch: InputBatch | null,
+  ): Promise<AgentDocument> {
+    const document = await this.gateway.patch(this.documentId, version, patch, batch?.trace);
+    if (document.version > version) {
+      this.finalizableVersion = document.version;
+      batch?.accepted();
+    } else batch?.unchanged();
     return document;
   }
 
@@ -327,8 +470,12 @@ export class DocumentEditorSession {
     this.adopt(this.base, theirs);
     this.savedMeta = metaOf(current);
     this.contentBaseVersion = version;
-    this.update({ version, revision: current.revision, meta: this.savedMeta });
+    this.update({ version, revision: current.revision, meta: { ...this.savedMeta, ...this.pendingMeta } });
     await this.flushContent(attempt);
+  }
+
+  dismissRevisionNameSuggestion(): void {
+    this.update({ revisionNameSuggestion: null });
   }
 
   hasPendingRevision(): boolean {
@@ -347,7 +494,18 @@ export class DocumentEditorSession {
       try {
         const current = await this.gateway.finalize(this.documentId, version);
         if (this.finalizableVersion === version) this.finalizableVersion = null;
-        this.update({ revision: current.revision });
+        const suggestion =
+          this.suggestNameOnConfirmation &&
+          this.savedMeta.status === 'confirmed' &&
+          current.version === version &&
+          current.revision > this.state.revision
+            ? current.revision
+            : null;
+        if (suggestion !== null) this.suggestNameOnConfirmation = false;
+        this.update({
+          revision: current.revision,
+          revisionNameSuggestion: suggestion ?? this.state.revisionNameSuggestion,
+        });
       } catch (error) {
         this.update({ errorMessage: errorText(error, '변경 기록을 확정하지 못했습니다.') });
       }

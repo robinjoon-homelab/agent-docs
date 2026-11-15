@@ -107,7 +107,14 @@ export function toBlock(value: unknown): Block {
     case 'callout':
       return { id, type, kind: oneOf<CalloutKind>(source, 'kind', CALLOUT_KINDS), text: str(source, 'text') };
     case 'code':
-      return { id, type, language: strOr(source, 'language', ''), code: str(source, 'code') };
+      return {
+        id,
+        type,
+        language: strOr(source, 'language', ''),
+        code: str(source, 'code'),
+        // Only a $$ display formula carries the flag; older math blocks keep their fence and hash without it.
+        ...(source.displayMath === true ? { displayMath: true } : {}),
+      };
     case 'table':
       return { id, type, columns: list(source.columns, toColumn), rows: list(source.rows, toRow) };
     case 'image':

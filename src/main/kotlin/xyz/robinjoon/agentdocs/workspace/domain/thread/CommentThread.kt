@@ -15,6 +15,7 @@ data class CommentThread private constructor(
     val location: ThreadLocation,
     val progress: ThreadProgress,
     val comments: List<Comment>,
+    val collaboration: ThreadCollaboration,
 ) {
     init {
         if (comments.isEmpty()) {
@@ -44,7 +45,7 @@ data class CommentThread private constructor(
         if (status ==
             ThreadStatus.OPEN
         ) {
-            copy(progress = progress.moved(ThreadStatus.ANSWERED, at))
+            copy(progress = progress.moved(ThreadStatus.ANSWERED, at), collaboration = collaboration.released())
         } else {
             null
         }
@@ -59,7 +60,13 @@ data class CommentThread private constructor(
                 "mark the thread answered; the person who opened it resolves it",
             )
         }
-        return if (status == ThreadStatus.RESOLVED) null else copy(progress = progress.resolved(by, at))
+        return if (status ==
+            ThreadStatus.RESOLVED
+        ) {
+            null
+        } else {
+            copy(progress = progress.resolved(by, at), collaboration = collaboration.released())
+        }
     }
 
     fun reopen(at: Instant): CommentThread? =
@@ -82,7 +89,7 @@ data class CommentThread private constructor(
         id: CommentId,
         by: Actor,
         at: Instant,
-    ): CommentThread = replaceComment(ownComment(id, by).delete(at), at)
+    ): CommentThread = replaceComment(ownComment(id, by).delete(at), at).copy(collaboration = collaboration.deleted(id))
 
     fun linkRevision(
         revision: Int,
@@ -114,20 +121,33 @@ data class CommentThread private constructor(
         at: Instant,
     ): CommentThread = copy(comments = snapshot(comments.map { if (it.id == comment.id) comment else it }), progress = progress.touched(at))
 
+    fun requireAvailable(
+        by: Actor,
+        at: Instant,
+    ) = collaboration.requireAvailable(by, at)
+
+    fun collaborate(
+        value: ThreadCollaboration,
+        at: Instant,
+    ): CommentThread = copy(collaboration = value, progress = progress.touched(at))
+
+    // Restoring persisted collaboration preserves the original progress timestamps.
+    fun restoreCollaboration(value: ThreadCollaboration): CommentThread = copy(collaboration = value)
+
     companion object {
         fun open(
             id: ThreadId,
             location: ThreadLocation,
             first: Comment,
             at: Instant,
-        ): CommentThread = CommentThread(id, location, ThreadProgress.opened(at), listOf(first))
+        ): CommentThread = CommentThread(id, location, ThreadProgress.opened(at), listOf(first), ThreadCollaboration.empty())
 
         fun restore(
             id: ThreadId,
             location: ThreadLocation,
             progress: ThreadProgress,
             comments: List<Comment>,
-        ): CommentThread = CommentThread(id, location, progress, snapshot(comments))
+        ): CommentThread = CommentThread(id, location, progress, snapshot(comments), ThreadCollaboration.empty())
 
         private fun snapshot(comments: List<Comment>): List<Comment> = Collections.unmodifiableList(comments.toList())
     }

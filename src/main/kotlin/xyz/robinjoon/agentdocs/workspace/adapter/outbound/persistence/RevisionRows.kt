@@ -5,6 +5,7 @@ import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.statements.UpdateBuilder
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
@@ -69,23 +70,41 @@ internal object RevisionRows {
             content,
             change(row),
             row[DocumentRevisionsTable.version],
+            name(DocumentId(row[DocumentRevisionsTable.documentId]), row[DocumentRevisionsTable.revision]),
         )
     }
 
     fun change(row: ResultRow): RevisionChange =
         RevisionChange
             .restore(
-                ChangeOrigin(DocumentRevisionsTable.actor.read(row), row[DocumentRevisionsTable.changeSource]),
+                ChangeOrigin(
+                    DocumentRevisionsTable.actor.read(row),
+                    row[DocumentRevisionsTable.changeSource],
+                    RevisionMetadataCodec.readReferences(row[DocumentRevisionsTable.codeReferences]),
+                    RevisionMetadataCodec.readProvenance(row[DocumentRevisionsTable.importProvenance]),
+                ),
                 row[DocumentRevisionsTable.summary],
                 row[DocumentRevisionsTable.changedBlocks].split(' ').filter(String::isNotEmpty).map(::BlockId),
                 ChangePeriod(row[DocumentRevisionsTable.createdAt].toInstant(), row[DocumentRevisionsTable.updatedAt].toInstant()),
             ).withKind(row[DocumentRevisionsTable.kind])
+
+    fun name(
+        document: DocumentId,
+        number: Int,
+    ): String? =
+        RevisionNamesTable
+            .selectAll()
+            .where { (RevisionNamesTable.documentId eq document.value) and (RevisionNamesTable.revision eq number) }
+            .singleOrNull()
+            ?.get(RevisionNamesTable.name)
 
     private fun write(
         statement: UpdateBuilder<*>,
         revision: Revision,
     ) {
         statement[DocumentRevisionsTable.version] = revision.version
+        statement[DocumentRevisionsTable.codeReferences] = RevisionMetadataCodec.references(revision.change.origin.codeReferences)
+        statement[DocumentRevisionsTable.importProvenance] = RevisionMetadataCodec.provenance(revision.change.origin.importProvenance)
         val header = revision.content.header
         statement[DocumentRevisionsTable.spaceId] = header.spaceId.value
         statement[DocumentRevisionsTable.path] = header.path.value

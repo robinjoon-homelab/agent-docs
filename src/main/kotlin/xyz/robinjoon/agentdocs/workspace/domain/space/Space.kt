@@ -3,6 +3,7 @@ package xyz.robinjoon.agentdocs.workspace.domain.space
 import xyz.robinjoon.agentdocs.domain.AggregateRoot
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import java.time.Instant
+import java.util.UUID
 
 // An isolation boundary the owner defines. It exists on its own, independent of GitHub or any other service, and every
 // document, thread, and asset belongs to exactly one space. The private constructor and copy keep changes behind
@@ -22,6 +23,8 @@ data class Space private constructor(
 
     val isArchived: Boolean get() = lifecycle.archivedAt != null
 
+    val guidance: SpaceGuidance get() = profile.guidance
+
     fun moveTo(slug: SpaceSlug): Space = copy(address = address.movedTo(slug))
 
     fun describe(profile: SpaceProfile): Space = copy(profile = profile)
@@ -29,6 +32,12 @@ data class Space private constructor(
     fun archive(at: Instant): Space = if (isArchived) this else copy(lifecycle = lifecycle.copy(archivedAt = at))
 
     fun unarchive(): Space = copy(lifecycle = lifecycle.copy(archivedAt = null))
+
+    // The caller checks that the document is in this space and outside the trash; null clears the guide.
+    fun guideBy(documentId: UUID?): Space = copy(profile = profile.guidedBy(guidance.withGuide(documentId)))
+
+    // Null or blank clears the choice. A repository the space does not link fails with InvalidSpaceException.
+    fun chooseRepository(repository: String?): Space = copy(profile = profile.guidedBy(guidance.choosing(repository, profile.links)))
 
     companion object {
         fun create(

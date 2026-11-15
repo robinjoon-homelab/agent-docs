@@ -27,6 +27,7 @@ import { useLoad } from '../../hooks/useLoad';
 import { useNow } from '../../hooks/useNow';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { useSpace } from '../../hooks/useSpace';
+import { AgentGuideSection, DefaultRepositorySection } from './SpaceGuidanceSections';
 import './space.css';
 
 const LINK_PLACEHOLDER: Record<SpaceLinkKind, string> = {
@@ -380,6 +381,26 @@ function SpaceSettings({ space, onSaved }: { space: Space; onSaved: (space: Spac
         </h2>
         <SpaceForm key={`${space.id}:${space.slug}`} space={space} onSaved={onSaved} />
       </section>
+      <section className="section" aria-labelledby="settings-guide">
+        <h2 className="section-title" id="settings-guide">
+          에이전트 지침 문서
+        </h2>
+        <AgentGuideSection
+          key={`${space.id}:${space.agentGuide?.documentId ?? ''}:${space.agentGuideIssue ?? ''}`}
+          space={space}
+          onSaved={onSaved}
+        />
+      </section>
+      <section className="section" aria-labelledby="settings-repository">
+        <h2 className="section-title" id="settings-repository">
+          GitHub 기본 저장소
+        </h2>
+        <DefaultRepositorySection
+          key={`${space.id}:${space.defaultRepository ?? ''}:${JSON.stringify(space.links)}`}
+          space={space}
+          onSaved={onSaved}
+        />
+      </section>
       <section className="section" aria-labelledby="settings-connections">
         <h2 className="section-title" id="settings-connections">
           이 스페이스를 허용한 연결
@@ -402,7 +423,10 @@ function SpaceSettings({ space, onSaved }: { space: Space; onSaved: (space: Spac
   );
 }
 
-/** S8: space name, slug, description, external links, trash, archiving and the connections allowed here. */
+/**
+ * S8: space name, slug, description, external links, the agent guide, the default GitHub repository, trash,
+ * archiving and the connections allowed here.
+ */
 export function SpaceSettingsPage() {
   const { space: slug = '' } = useParams();
   const space = useSpace(slug);

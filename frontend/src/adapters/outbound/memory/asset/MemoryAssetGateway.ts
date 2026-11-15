@@ -20,7 +20,13 @@ export class MemoryAssetGateway implements AssetGateway {
     return this.save(url.split('/').pop() ?? 'image', 'image/*', 0, url);
   }
 
-  contentUrl(assetId: string): string {
+  async htmlSource(assetId: string, documentId?: string): Promise<string> {
+    const url = this.contentUrl(assetId, documentId);
+    return (await fetch(url)).text();
+  }
+
+  contentUrl(assetId: string, documentId?: string): string {
+    if (documentId !== undefined) this.store.document(documentId);
     return this.store.assets.get(assetId)?.url ?? '';
   }
 

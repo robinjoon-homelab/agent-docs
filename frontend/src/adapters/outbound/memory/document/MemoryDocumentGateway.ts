@@ -22,6 +22,7 @@ import type {
   RevisionSnapshot,
   TrashedDocument,
 } from '../../../../domain/document/document';
+import { isValidPath } from '../../../../domain/document/document';
 import type { Actor } from '../../../../domain/shared/actor';
 import type { MemoryStore, StoredRevision } from '../shared/store';
 import { respond } from '../shared/store';
@@ -214,6 +215,51 @@ export class MemoryDocumentGateway implements DocumentGateway {
     });
   }
 
+  transfer(documentId: string, baseVersion: number, spaceSlug: string, path: string) {
+    return respond(() => {
+      const document = this.store.document(documentId);
+      if (document.version !== baseVersion) throw new StaleDocumentError(document.version, document);
+      const space = this.store.space(spaceSlug);
+      if (!isValidPath(path) || (space.id === document.space.id && path.startsWith(`${document.path}/`)))
+        throw new ApiError('invalid', 400, '이사 경로를 확인하세요.');
+      const moving = this.documentsOf(document.space.id).filter(
+        (entry) => entry.id === documentId || entry.path.startsWith(`${document.path}/`),
+      );
+      const ids = new Set(moving.map((entry) => entry.id));
+      const targets = moving.map((entry) => ({ entry, path: path + entry.path.slice(document.path.length) }));
+      if (
+        targets.some((target) =>
+          this.documentsOf(space.id).some((entry) => !ids.has(entry.id) && entry.path === target.path),
+        )
+      )
+        throw new ApiError('conflict', 409, '같은 경로의 문서가 있습니다.');
+      for (const target of targets) {
+        const confirmed = this.confirm(target.entry.id);
+        if (confirmed.space.id === space.id && confirmed.path === target.path) continue;
+        const updated = {
+          ...confirmed,
+          space: { id: space.id, slug: space.slug, name: space.name },
+          path: target.path,
+          version: confirmed.version + 1,
+          revision: confirmed.revision + 1,
+          updatedAt: this.store.now(),
+        };
+        this.store.documents.set(updated.id, updated);
+        this.pushRevision(updated, '문서 이사', []);
+      }
+      this.store.touchSpace(document.space.id);
+      this.store.touchSpace(space.id);
+      const updated = this.store.document(documentId);
+      return {
+        documentId,
+        space: updated.space,
+        path: updated.path,
+        version: updated.version,
+        revision: updated.revision,
+      };
+    });
+  }
+
   finalize(documentId: string, baseVersion: number): Promise<SavedContent> {
     return respond(() => {
       const current = this.store.document(documentId);
@@ -315,6 +361,69 @@ export class MemoryDocumentGateway implements DocumentGateway {
         `rev ${revision}(으)로 복원`,
         changes.map((change) => change.blockId),
       );
+      return updated.revision;
+    });
+  }
+
+  nameRevision(documentId: string, revision: number, name: string): Promise<string | null> {
+    return respond(() => {
+      this.store.document(documentId);
+      const normalized = name.trim();
+      if (normalized.length > 100 || /[\r\n]/u.test(normalized))
+        throw new ApiError('invalid', 400, '리비전 이름은 한 줄로 100자까지입니다.');
+      const history = this.history(documentId);
+      if (!history.some((entry) => entry.meta.revision === revision))
+        throw new ApiError('not_found', 404, '리비전이 없습니다.');
+      this.store.revisions.set(
+        documentId,
+        history.map((entry) =>
+          entry.meta.revision !== revision
+            ? entry
+            : {
+                meta: { ...entry.meta, name: normalized || null },
+                snapshot: { ...entry.snapshot, name: normalized || null },
+              },
+        ),
+      );
+      return normalized || null;
+    });
+  }
+
+  restoreBlock(documentId: string, revision: number, blockId: string, baseVersion: number): Promise<number> {
+    return respond(() => {
+      const current = this.store.document(documentId);
+      if (current.version !== baseVersion) throw new StaleDocumentError(current.version, current);
+      const earlier = this.snapshot(documentId, revision).blocks;
+      const original = earlier.find((block) => block.id === blockId);
+      if (original === undefined) throw new ApiError('not_found', 404, '원본 블록이 없습니다.');
+      let blocks = current.blocks.map((block) => (block.id === blockId ? original : block));
+      if (!blocks.some((block) => block.id === blockId)) {
+        const at = earlier.findIndex((block) => block.id === blockId);
+        const positions = new Map(blocks.map((block, index) => [block.id, index]));
+        const before = earlier
+          .slice(0, at)
+          .reverse()
+          .find((block) => positions.has(block.id));
+        const after = earlier.slice(at + 1).find((block) => positions.has(block.id));
+        const index =
+          before === undefined
+            ? after === undefined
+              ? blocks.length
+              : (positions.get(after.id) ?? blocks.length)
+            : (positions.get(before.id) ?? -1) + 1;
+        blocks = [...blocks.slice(0, index), original, ...blocks.slice(index)];
+      }
+      if (JSON.stringify(blocks) === JSON.stringify(current.blocks)) return current.revision;
+      const confirmed = this.confirm(documentId);
+      const updated = {
+        ...confirmed,
+        blocks,
+        version: confirmed.version + 1,
+        revision: confirmed.revision + 1,
+        updatedAt: this.store.now(),
+      };
+      this.store.documents.set(documentId, updated);
+      this.pushRevision(updated, `rev ${revision} 블록 복원`, [blockId]);
       return updated.revision;
     });
   }

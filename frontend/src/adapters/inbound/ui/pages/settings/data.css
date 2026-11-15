@@ -1,0 +1,19 @@
+.data-page {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+.data-page section {
+  margin-top: 2rem;
+}
+.data-page label {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 1rem;
+}
+.data-page button {
+  margin: 0.5rem 0.5rem 0.5rem 0;
+}
+.data-page li {
+  overflow-wrap: anywhere;
+}

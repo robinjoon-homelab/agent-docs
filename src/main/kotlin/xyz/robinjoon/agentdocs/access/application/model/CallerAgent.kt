@@ -6,4 +6,5 @@ import java.util.UUID
 data class CallerAgent(
     val connectionId: UUID,
     val clientName: String,
+    val cli: Boolean = false,
 ) : Serializable

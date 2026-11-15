@@ -139,7 +139,7 @@ describe('HttpDocumentGateway', () => {
       revision: 1,
       createdAt: '2026-10-01T00:00:00Z',
       updatedAt: '2026-10-01T00:00:00Z',
-      blocks: [{ id: 'x000000000', type: 'html', html: '<b>' }],
+      blocks: [{ id: 'x000000000', type: 'future_block', html: '<b>' }],
     });
     await expect(gateway.get('d1')).rejects.toMatchObject({ code: 'unknown' });
   });
@@ -201,4 +201,103 @@ describe('HttpDocumentGateway', () => {
     });
     expect(diff.unified).toContain('+++ rev 5');
   });
+  it('reads revision labels, code references and import provenance', async () => {
+    const [revision] = await gatewayReturning(200, [
+      {
+        revision: 1,
+        actor,
+        source: 'mcp',
+        summary: 'Imported',
+        changedBlockIds: [],
+        createdAt: '2026-10-18T00:00:00Z',
+        threadIds: [],
+        name: 'Review',
+        codeReferences: [{ repository: 'owner/repo', commit: 'a'.repeat(40), pullRequest: 7 }],
+        importProvenance: { tool: 'obsidian', originalPath: 'notes/one.md' },
+      },
+    ]).revisions('d1');
+    expect(revision).toMatchObject({
+      name: 'Review',
+      codeReferences: [{ repository: 'owner/repo', pullRequest: 7 }],
+      importProvenance: { tool: 'obsidian', originalPath: 'notes/one.md' },
+    });
+  });
 });
+
+it('reads the fixed transfer result including the unchanged document identity', async () => {
+  const gateway = gatewayReturning(200, {
+    documentId: 'same',
+    space: { id: 'sp2', slug: 'destination', name: 'Destination' },
+    path: 'guides/moved',
+    version: 9,
+    revision: 4,
+    unchanged: false,
+    alsoChanged: [],
+  });
+  expect(await gateway.transfer('same', 8, 'destination', 'guides/moved')).toEqual({
+    documentId: 'same',
+    space: { id: 'sp2', slug: 'destination', name: 'Destination' },
+    path: 'guides/moved',
+    version: 9,
+    revision: 4,
+  });
+});
+
+it.each([false, true])(
+  'preserves all scope intervals in body and metadata write contracts, batch=%s',
+  async (batch) => {
+    const childTrace = {
+      tabId: '11111111-1111-4111-8111-111111111111',
+      batchId: '22222222-2222-4222-8222-222222222222',
+      firstInputAt: '2026-01-01T00:00:00.000Z',
+      lastInputAt: '2026-01-01T00:05:00.000Z',
+      intervals: [
+        { firstInputAt: '2026-01-01T00:00:00.000Z', lastInputAt: '2026-01-01T00:00:00.000Z' },
+        { firstInputAt: '2026-01-01T00:05:00.000Z', lastInputAt: '2026-01-01T00:05:00.000Z' },
+      ],
+    };
+    const inputTrace = batch
+      ? {
+          batchId: '33333333-3333-4333-8333-333333333333',
+          traces: [
+            childTrace,
+            {
+              ...childTrace,
+              tabId: '44444444-4444-4444-8444-444444444444',
+              batchId: '55555555-5555-4555-8555-555555555555',
+              firstInputAt: '2026-01-01T00:06:00.000Z',
+              lastInputAt: '2026-01-01T00:06:00.000Z',
+              intervals: [
+                { firstInputAt: '2026-01-01T00:06:00.000Z', lastInputAt: '2026-01-01T00:06:00.000Z' },
+              ],
+            },
+          ],
+        }
+      : childTrace;
+    const fetch: typeof globalThis.fetch = (_input, init) => {
+      if (typeof init?.body !== 'string') return Promise.reject(new Error('expected JSON request body'));
+      const body: unknown = JSON.parse(init.body);
+      expect(body).toEqual(
+        init.method === 'PUT'
+          ? { baseVersion: 3, blocks: [], inputTrace }
+          : { baseVersion: 4, title: 'Saved', inputTrace },
+      );
+      const response =
+        init.method === 'PUT'
+          ? { version: 4, revision: 3, blocks: [] }
+          : document({ title: 'Saved', version: 5 });
+      return Promise.resolve(
+        new Response(JSON.stringify(response), { headers: { 'content-type': 'application/json' } }),
+      );
+    };
+    const gateway = new HttpDocumentGateway(new HttpClient({ fetch, cookies: () => '' }));
+    expect(await gateway.saveContent('doc-1', 3, [], inputTrace)).toMatchObject({
+      kind: 'saved',
+      version: 4,
+    });
+    expect(await gateway.patch('doc-1', 4, { title: 'Saved' }, inputTrace)).toMatchObject({
+      title: 'Saved',
+      version: 5,
+    });
+  },
+);

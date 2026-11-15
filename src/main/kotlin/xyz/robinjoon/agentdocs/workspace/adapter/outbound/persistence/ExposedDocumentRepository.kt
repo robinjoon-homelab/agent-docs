@@ -33,11 +33,27 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.history.Revision
 import java.time.Instant
 
 class ExposedDocumentRepository : DocumentRepository {
+    override fun nameRevision(
+        id: DocumentId,
+        revision: Int,
+        name: String?,
+    ) {
+        RevisionNamesTable.deleteWhere { (documentId eq id.value) and (RevisionNamesTable.revision eq revision) }
+        if (name != null) {
+            RevisionNamesTable.insert {
+                it[documentId] = id.value
+                it[RevisionNamesTable.revision] = revision
+                it[RevisionNamesTable.name] = name
+            }
+        }
+    }
+
     // Ids are random UUIDs, so a unique violation means another live document holds the path.
     override fun add(
         document: Document,
         revision: Revision,
     ): Document {
+        DocumentAssetWriteGuard.document(document)
         try {
             DocumentsTable.insert {
                 it[id] = document.id.value
@@ -58,6 +74,7 @@ class ExposedDocumentRepository : DocumentRepository {
         revision: Revision,
         amended: Boolean,
     ): Document {
+        DocumentAssetWriteGuard.document(document)
         try {
             val updated = DocumentsTable.update({ DocumentsTable.id eq document.id.value }) { DocumentRows.write(it, document) }
             check(updated == 1) { "Document to update does not exist: ${document.id}" }
@@ -82,6 +99,7 @@ class ExposedDocumentRepository : DocumentRepository {
         document: Document,
         revision: Revision,
     ): Document {
+        DocumentAssetWriteGuard.document(document)
         DocumentsTable.update({ DocumentsTable.id eq document.id.value }) { DocumentRows.write(it, document) }
         if (pending(document.id) == null) RevisionRows.insert(revision, pending = true) else RevisionRows.replace(revision)
         writeMarks(document, revision)
@@ -229,6 +247,7 @@ class ExposedDocumentRepository : DocumentRepository {
         ThreadRows.deleteThreads(threads)
         InboxItemsTable.deleteWhere { InboxItemsTable.documentId eq id.value }
         DocumentBlockMarksTable.deleteWhere { DocumentBlockMarksTable.documentId eq id.value }
+        RevisionNamesTable.deleteWhere { documentId eq id.value }
         DocumentRevisionsTable.deleteWhere { DocumentRevisionsTable.documentId eq id.value }
         DocumentsTable.deleteWhere { DocumentsTable.id eq id.value }
     }

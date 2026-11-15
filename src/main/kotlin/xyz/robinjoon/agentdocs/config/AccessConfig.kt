@@ -9,6 +9,7 @@ import xyz.robinjoon.agentdocs.access.application.port.input.AuthorizationUseCas
 import xyz.robinjoon.agentdocs.access.application.port.input.CallerUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.ClientRegistrationUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.ConnectionUseCase
+import xyz.robinjoon.agentdocs.access.application.port.input.EmergencyLoginUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.SignInUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.TokenUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.WebSessionUseCase
@@ -18,6 +19,7 @@ import xyz.robinjoon.agentdocs.access.application.service.CallerService
 import xyz.robinjoon.agentdocs.access.application.service.ClientDirectory
 import xyz.robinjoon.agentdocs.access.application.service.ClientRegistrationService
 import xyz.robinjoon.agentdocs.access.application.service.ConnectionService
+import xyz.robinjoon.agentdocs.access.application.service.EmergencyLoginService
 import xyz.robinjoon.agentdocs.access.application.service.SignInService
 import xyz.robinjoon.agentdocs.access.application.service.TokenPolicy
 import xyz.robinjoon.agentdocs.access.application.service.TokenService
@@ -47,7 +49,8 @@ class AccessConfig {
         ports: AccessPorts,
         json: ObjectMapper,
         clock: Clock,
-    ): ClientDirectory = ClientDirectory(ports.clients, HttpClientMetadataSource(json), ports.secrets, clock)
+        settings: AccessSettings,
+    ): ClientDirectory = ClientDirectory(ports.clients, HttpClientMetadataSource(json), ports.secrets, clock, settings.issuer)
 
     @Bean
     fun signInUseCase(
@@ -64,11 +67,34 @@ class AccessConfig {
     ): WebSessionUseCase = WebSessionService(ports.sessions, ports.users, Allowlist(settings.owner, settings.members), ports.secrets, clock)
 
     @Bean
+    fun emergencyLoginUseCase(
+        ports: AccessPorts,
+        sessions: WebSessionUseCase,
+        settings: AccessSettings,
+        clock: Clock,
+    ): EmergencyLoginUseCase =
+        EmergencyLoginService(
+            ports.emergency,
+            ports.users,
+            ports.secrets,
+            sessions,
+            settings,
+            clock,
+        )
+
+    @Bean
     fun callerUseCase(
         ports: AccessPorts,
         settings: AccessSettings,
         clock: Clock,
-    ): CallerUseCase = CallerService(ports.connections, ports.users, clock, Allowlist(settings.owner, settings.members))
+    ): CallerUseCase =
+        CallerService(
+            ports.connections,
+            ports.users,
+            clock,
+            Allowlist(settings.owner, settings.members),
+            settings.issuer.trimEnd('/') + "/oauth/clients/adocs",
+        )
 
     @Bean
     fun connectionUseCase(

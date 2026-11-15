@@ -7,4 +7,5 @@ data class SpaceOverview(
     val space: Space,
     val documentCount: Int,
     val lastActivityAt: Instant?,
+    val guide: SpaceGuide? = null,
 )

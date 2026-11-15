@@ -37,7 +37,14 @@ object CallerAccess {
         summary: String?,
     ): WriteContext {
         val access = of(principal)
-        return WriteContext(access, if (access.actor.isAgent) ChangeSource.REST else ChangeSource.WEB, operationId, summary)
+        val caller = (principal as? Authentication)?.principal as? Caller
+        val source =
+            when {
+                caller?.agent?.cli == true -> ChangeSource.CLI
+                access.actor.isAgent -> ChangeSource.REST
+                else -> ChangeSource.WEB
+            }
+        return WriteContext(access, source, operationId, summary)
     }
 
     private fun permissionOf(scope: CallerScope): Permission =

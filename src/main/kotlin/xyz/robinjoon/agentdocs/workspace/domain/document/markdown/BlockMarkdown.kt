@@ -83,6 +83,7 @@ object BlockMarkdown {
     }
 
     private fun code(block: CodeBlock): String {
+        if (block.displayMath) return "$$\n${block.code}\n$$"
         val longest = longFence.findAll(block.code).maxOfOrNull { it.value.length } ?: 0
         val fence = "`".repeat(maxOf(3, longest + 1))
         val body = if (block.code.isEmpty()) "" else block.code + "\n"
@@ -123,6 +124,7 @@ object BlockMarkdown {
     // A paragraph that would read as another block keeps its text by escaping the leading marker.
     private fun escapeLeading(text: String): String =
         when {
+            text == "$$" -> "\\" + text
             leadingNumber.containsMatchIn(text) -> text.replaceFirst(leadingNumber, "$1\\\\$2$3")
             leadingSyntax.containsMatchIn(text) -> "\\" + text
             else -> text

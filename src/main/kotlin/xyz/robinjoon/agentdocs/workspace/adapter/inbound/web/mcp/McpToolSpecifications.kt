@@ -67,7 +67,7 @@ class McpToolSpecifications(
     private fun McpToolResult.toCallToolResult(): McpSchema.CallToolResult =
         McpSchema.CallToolResult
             .builder()
-            .content(listOf(McpSchema.TextContent(markdown ?: json.writeValueAsString(data))))
+            .content(listOf(McpSchema.TextContent(markdown ?: json.writeValueAsString(data))) + notes.map { McpSchema.TextContent(it) })
             .isError(isError)
             .build()
 

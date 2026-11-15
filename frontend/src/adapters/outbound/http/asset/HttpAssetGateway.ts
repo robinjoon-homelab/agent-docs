@@ -38,7 +38,19 @@ export class HttpAssetGateway implements AssetGateway {
     return toAsset(await this.http.post(`/api/spaces/${segment(spaceSlug)}/assets/import`, { url }));
   }
 
-  contentUrl(assetId: string): string {
-    return contentPath(assetId);
+  async htmlSource(assetId: string, documentId?: string): Promise<string> {
+    const value = obj(
+      await this.http.get(
+        `${documentId === undefined ? '/api' : `/api/documents/${segment(documentId)}`}/assets/${segment(assetId)}/source`,
+      ),
+      'HTML source',
+    );
+    return str(value, 'source');
+  }
+
+  contentUrl(assetId: string, documentId?: string): string {
+    return documentId === undefined
+      ? contentPath(assetId)
+      : `/api/documents/${segment(documentId)}/assets/${segment(assetId)}/content`;
   }
 }

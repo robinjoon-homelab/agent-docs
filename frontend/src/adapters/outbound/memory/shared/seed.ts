@@ -130,6 +130,13 @@ const setupBlocks: Block[] = [
     kind: 'warning',
     text: '`.env` 파일은 커밋하지 않는다.',
   },
+  {
+    id: 'm1setupmth',
+    type: 'code',
+    language: 'math',
+    code: 'T_{build} = T_{test} + T_{lint}',
+    displayMath: true,
+  },
 ];
 
 function architectureDocument(): AgentDocument {
@@ -205,6 +212,9 @@ function seedThreads(store: MemoryStore): void {
       linkedRevisions: [15],
       createdAt: ago(30 * 60 * 1000),
       updatedAt: ago(2 * 60 * 1000),
+      claim: null,
+      reactions: [{ actor: claude, emoji: '👀' }],
+      suggestions: [],
     },
     {
       id: 'th-cell',
@@ -295,6 +305,7 @@ function seedRevisions(store: MemoryStore, document: AgentDocument): void {
       blocks: first,
       summary: '초안 작성',
       source: 'web' as const,
+      metadata: {},
     },
     {
       revision: document.revision,
@@ -302,12 +313,17 @@ function seedRevisions(store: MemoryStore, document: AgentDocument): void {
       blocks: document.blocks,
       summary: '설명 문단 보강, 이미지 추가',
       source: 'mcp' as const,
+      metadata: {
+        name: '계층 설명 보강',
+        codeReferences: [{ repository: 'robinjoon/agent-docs', commit: null, pullRequest: 1 }],
+      },
     },
   ];
   store.revisions.set(
     document.id,
     revisions.map((entry, index) => ({
       meta: {
+        ...entry.metadata,
         revision: entry.revision,
         actor: entry.actor,
         source: entry.source,
@@ -317,6 +333,7 @@ function seedRevisions(store: MemoryStore, document: AgentDocument): void {
         threadIds: index === 0 ? [] : ['th-hexagon'],
       },
       snapshot: {
+        ...entry.metadata,
         revision: entry.revision,
         title: document.title,
         path: document.path,
@@ -366,6 +383,9 @@ export function seededStore(): MemoryStore {
       archivedAt: null,
       lastActivityAt: ago(2 * 60 * 1000),
       documentCount: 2,
+      agentGuide: { documentId: 'doc-setup', title: '설치 안내', path: 'guides/setup' },
+      agentGuideIssue: null,
+      defaultRepository: 'robinjoon/agent-docs',
     },
     {
       id: 'space-life',
@@ -377,6 +397,9 @@ export function seededStore(): MemoryStore {
       archivedAt: null,
       lastActivityAt: ago(6 * DAY),
       documentCount: 0,
+      agentGuide: null,
+      agentGuideIssue: null,
+      defaultRepository: null,
     },
   ];
   const architecture = architectureDocument();

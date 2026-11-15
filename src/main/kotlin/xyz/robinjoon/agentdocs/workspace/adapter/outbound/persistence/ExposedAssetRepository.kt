@@ -4,6 +4,7 @@ import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetRepository
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.asset.Asset
@@ -33,6 +34,20 @@ class ExposedAssetRepository : AssetRepository {
             .where { AssetsTable.id eq id.value }
             .singleOrNull()
             ?.toAsset()
+
+    override fun findByIdForUpdate(id: AssetId): Asset? =
+        AssetsTable
+            .selectAll()
+            .where { AssetsTable.id eq id.value }
+            .forUpdate()
+            .singleOrNull()
+            ?.toAsset()
+
+    override fun update(asset: Asset): Asset {
+        val updated = AssetsTable.update({ AssetsTable.id eq asset.id.value }) { it[spaceId] = asset.spaceId.value }
+        check(updated == 1) { "Asset to move does not exist: ${asset.id}" }
+        return requireNotNull(findById(asset.id))
+    }
 
     private fun ResultRow.toAsset(): Asset {
         val content = AssetContent(this[AssetsTable.mediaType], this[AssetsTable.sizeBytes], this[AssetsTable.sha256])

@@ -7,4 +7,8 @@ interface AssetRepository {
     fun add(asset: Asset): Asset
 
     fun findById(id: AssetId): Asset?
+
+    fun findByIdForUpdate(id: AssetId): Asset?
+
+    fun update(asset: Asset): Asset
 }

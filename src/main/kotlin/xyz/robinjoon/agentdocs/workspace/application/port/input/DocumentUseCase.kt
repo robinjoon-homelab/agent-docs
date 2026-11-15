@@ -1,8 +1,10 @@
 package xyz.robinjoon.agentdocs.workspace.application.port.input
 
+import xyz.robinjoon.agentdocs.workspace.application.model.BlockRestore
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
+import xyz.robinjoon.agentdocs.workspace.application.model.RevisionLabel
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
@@ -71,6 +73,19 @@ interface DocumentUseCase {
     ): DocumentWrite
 
     // Removes documents that have been in the trash for 30 days. Returns how many were removed.
+    fun nameRevision(
+        context: WriteContext,
+        id: DocumentId,
+        revision: Int,
+        name: String,
+    ): RevisionLabel
+
+    fun restoreBlock(
+        context: WriteContext,
+        id: DocumentId,
+        request: BlockRestore,
+    ): DocumentWrite
+
     fun purgeExpiredTrash(): Int
 
     fun finalizeEdits(

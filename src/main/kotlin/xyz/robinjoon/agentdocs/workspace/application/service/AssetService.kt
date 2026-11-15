@@ -38,6 +38,8 @@ class AssetService(
     private val remote: RemoteImageSource,
     private val journal: WriteJournal,
 ) : AssetUseCase {
+    private val attachments = AttachmentVerifier(verifier)
+
     @Transactional
     override fun upload(
         context: WriteContext,
@@ -45,7 +47,7 @@ class AssetService(
         file: UploadedFile,
     ): Asset {
         val target = writable(context.access, space)
-        return keep(context, target, verified(file.bytes), Source(file.fileName, null))
+        return keep(context, target, attachments.verify(file), Source(file.fileName, null))
     }
 
     @Transactional

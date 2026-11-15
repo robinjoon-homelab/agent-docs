@@ -10,6 +10,7 @@ data class Revision(
     val content: RevisionContent,
     val change: RevisionChange,
     val version: Int = number,
+    val name: String? = null,
 ) {
     companion object {
         fun of(

@@ -58,9 +58,21 @@ export type AgentDocument = DocumentMeta & {
 };
 
 /** `system` is a change the application made on its own, such as turning a folder into a document. */
-export type RevisionSource = 'web' | 'mcp' | 'rest' | 'system';
+export type RevisionSource = 'web' | 'mcp' | 'rest' | 'cli' | 'system';
 
-export type Revision = {
+export type CodeReference = {
+  readonly repository: string;
+  readonly commit: string | null;
+  readonly pullRequest: number | null;
+};
+
+export type RevisionMetadata = {
+  readonly name?: string | null;
+  readonly codeReferences?: readonly CodeReference[];
+  readonly importProvenance?: { readonly tool: string; readonly originalPath: string } | null;
+};
+
+export type Revision = RevisionMetadata & {
   readonly revision: number;
   readonly actor: Actor;
   readonly source: RevisionSource;
@@ -70,7 +82,7 @@ export type Revision = {
   readonly threadIds: readonly string[];
 };
 
-export type RevisionSnapshot = {
+export type RevisionSnapshot = RevisionMetadata & {
   readonly revision: number;
   readonly title: string;
   readonly path: string;

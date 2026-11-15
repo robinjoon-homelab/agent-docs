@@ -13,6 +13,13 @@ data class Asset private constructor(
     val content: AssetContent,
     val origin: AssetOrigin,
 ) {
+    fun moveTo(space: SpaceId): Asset = copy(spaceId = space)
+
+    fun copyTo(
+        id: AssetId,
+        space: SpaceId,
+    ): Asset = copy(id = id, spaceId = space)
+
     companion object {
         fun upload(
             id: AssetId,

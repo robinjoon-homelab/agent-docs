@@ -30,38 +30,56 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.ownerAc
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.space
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.spaceFields
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.webContext
+import xyz.robinjoon.agentdocs.workspace.application.model.GuidanceChange
+import xyz.robinjoon.agentdocs.workspace.application.model.SettingUpdate
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceChange
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceDraft
+import xyz.robinjoon.agentdocs.workspace.application.model.SpaceGuide
+import xyz.robinjoon.agentdocs.workspace.application.model.SpaceGuideIssue
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceLocator
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceOverview
+import xyz.robinjoon.agentdocs.workspace.application.model.SpaceView
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotResolvedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.space.ExternalLink
 import xyz.robinjoon.agentdocs.workspace.domain.space.ExternalLinkKind
 import xyz.robinjoon.agentdocs.workspace.domain.space.SlugTakenException
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceProfile
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
+import java.util.UUID
 
 // The use case is a strict mock; space rules belong to SpaceTest and SpaceServiceTest. This test checks the HTTP
 // shapes, statuses, and error conversion of the space endpoints.
 class SpaceApiDocumentationTest : RestDocsWebTest() {
     private val spaces = mockk<SpaceUseCase>()
     private val mockMvc = restDocsMockMvc(SpaceController(spaces), WorkspaceExceptionHandler())
+    private val guideId = DocumentId(UUID.fromString("77777777-7777-4777-8777-777777777777"))
+    private val guided = space.guideBy(guideId.value).chooseRepository("homelab/agent-docs")
+    private val offered = SpaceGuide.Offered(guideId, "작성 규칙", "guide")
+
+    private fun guidanceChange(
+        guide: SettingUpdate<DocumentId>?,
+        repository: SettingUpdate<String>?,
+    ): SpaceChange = SpaceChange(null, null, null, null, guidance = GuidanceChange(guide, repository))
 
     @Test
     fun `list returns the visible spaces, archived ones included, with their activity`() {
-        every { spaces.list(ownerAccess, true) } returns listOf(SpaceOverview(space, 12, at))
+        every { spaces.list(ownerAccess, true) } returns listOf(SpaceOverview(guided, 12, at, offered))
 
         mockMvc
             .perform(get("/api/spaces").principal(owner))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$[0].slug").value("agent-docs"))
+            .andExpect(jsonPath("$[0].agentGuide.title").value("작성 규칙"))
+            .andExpect(jsonPath("$[0].defaultRepository").value("homelab/agent-docs"))
             .andDo(
                 documented(
                     "spaces-list",
                     responseFields(
                         *spaceFields("[]"),
+                        *guidanceFields("[]"),
                         fieldWithPath("[].documentCount").description("휴지통 밖 문서 수"),
                         fieldWithPath("[].lastActivityAt").type(JsonFieldType.STRING).optional().description("마지막 문서 변경 시각"),
                     ),
@@ -101,7 +119,7 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("links[].value").description("연결 값"),
                     ),
                     responseHeaders(headerWithName("Location").description("새 스페이스 조회 경로")),
-                    responseFields(*spaceFields("")),
+                    responseFields(*spaceFields(""), *guidanceFields("")),
                 ),
             )
     }
@@ -109,18 +127,20 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
     @Test
     fun `get by an old slug answers with the space under its current slug`() {
         val moved = space.moveTo(SpaceSlug("adocs"))
-        every { spaces.get(ownerAccess, SpaceSlug("agent-docs")) } returns moved
+        every { spaces.view(ownerAccess, SpaceSlug("agent-docs")) } returns SpaceView(moved, SpaceGuide.Withheld(SpaceGuideIssue.TRASHED))
 
         mockMvc
             .perform(get("/api/spaces/{slug}", "agent-docs").principal(owner))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.slug").value("adocs"))
             .andExpect(jsonPath("$.formerSlugs[0]").value("agent-docs"))
+            .andExpect(jsonPath("$.agentGuide").isEmpty)
+            .andExpect(jsonPath("$.agentGuideIssue").value("trashed"))
             .andDo(
                 documented(
                     "spaces-get",
                     pathParameters(parameterWithName("slug").description("현재 주소 또는 예전 주소")),
-                    responseFields(*spaceFields("")),
+                    responseFields(*spaceFields(""), *guidanceFields("")),
                 ),
             )
     }
@@ -128,7 +148,7 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
     @Test
     fun `change updates only the given settings`() {
         every { spaces.change(webContext, SpaceSlug("agent-docs"), SpaceChange(SpaceSlug("adocs"), null, "새 설명", null)) } returns
-            space.moveTo(SpaceSlug("adocs"))
+            SpaceView(space.moveTo(SpaceSlug("adocs")), null)
 
         mockMvc
             .perform(
@@ -147,10 +167,61 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("description").optional().description("새 설명"),
                         fieldWithPath("links").optional().type(JsonFieldType.ARRAY).description("외부 연결 전체를 이 목록으로 바꾼다"),
                         fieldWithPath("archived").optional().type(JsonFieldType.BOOLEAN).description("true면 보관, false면 보관 해제. 소유자만"),
+                        fieldWithPath("agentGuideDocumentId")
+                            .optional()
+                            .type(JsonFieldType.STRING)
+                            .description("에이전트 지침 문서 ID. 이 스페이스의 휴지통 밖 문서만 된다. null이면 해제, 빼면 그대로"),
+                        fieldWithPath("defaultRepository")
+                            .optional()
+                            .type(JsonFieldType.STRING)
+                            .description("짧은 GitHub 참조의 기본 레포. 연결한 레포 중 하나여야 한다. null이면 해제, 빼면 그대로"),
                     ),
-                    responseFields(*spaceFields("")),
+                    responseFields(*spaceFields(""), *guidanceFields("")),
                 ),
             )
+    }
+
+    @Test
+    fun `change sets the agent guide and the default repository, and null clears them`() {
+        val guide = SettingUpdate.To(guideId)
+        every {
+            spaces.change(webContext, SpaceSlug("agent-docs"), guidanceChange(guide, SettingUpdate.To("homelab/agent-docs")))
+        } returns SpaceView(guided, offered)
+        every { spaces.change(webContext, SpaceSlug("agent-docs"), guidanceChange(SettingUpdate.Clear, SettingUpdate.Clear)) } returns
+            SpaceView(space, null)
+
+        mockMvc
+            .perform(
+                patch("/api/spaces/{slug}", "agent-docs")
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"agentGuideDocumentId":"$guideId","defaultRepository":"homelab/agent-docs"}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.agentGuide.documentId").value(guideId.toString()))
+            .andExpect(jsonPath("$.agentGuide.path").value("guide"))
+            .andExpect(jsonPath("$.agentGuideIssue").isEmpty)
+        mockMvc
+            .perform(
+                patch("/api/spaces/{slug}", "agent-docs")
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"agentGuideDocumentId":null,"defaultRepository":null}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.agentGuide").isEmpty)
+            .andExpect(jsonPath("$.defaultRepository").isEmpty)
+    }
+
+    @Test
+    fun `a guide id that is not a document id is refused before the use case`() {
+        mockMvc
+            .perform(
+                patch("/api/spaces/{slug}", "agent-docs")
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"agentGuideDocumentId":"guide"}"""),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("invalid"))
+            .andExpect(jsonPath("$.detail").value("agentGuideDocumentId must be a document id"))
     }
 
     @Test
@@ -161,7 +232,7 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
                 SpaceLocator("git@github.com:homelab/agent-docs.git", "/Users/me/IdeaProjects/agent-docs"),
             )
         } returns
-            space
+            SpaceView(guided, offered)
 
         mockMvc
             .perform(
@@ -177,7 +248,7 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("remote").optional().description("git remote URL. 레포 연결이 org 연결보다 우선한다"),
                         fieldWithPath("path").optional().description("로컬 디렉터리. 가장 깊은 경로 연결이 우선한다"),
                     ),
-                    responseFields(*spaceFields("")),
+                    responseFields(*spaceFields(""), *guidanceFields("")),
                 ),
             )
     }
@@ -209,7 +280,7 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
     fun `a taken slug is a conflict and an invisible space is not found`() {
         every { spaces.create(webContext, SpaceDraft(SpaceSlug("docs"), SpaceProfile.of("Docs", "", emptyList()))) } throws
             SlugTakenException(SpaceSlug("docs"))
-        every { spaces.get(ownerAccess, SpaceSlug("hidden")) } throws SpaceNotFoundException(SpaceSlug("hidden"))
+        every { spaces.view(ownerAccess, SpaceSlug("hidden")) } throws SpaceNotFoundException(SpaceSlug("hidden"))
 
         mockMvc
             .perform(
@@ -232,3 +303,23 @@ fun workspaceProblemFields() =
             fieldWithPath("code").description("not_found, invalid, forbidden, conflict, taken, not_resolved, unauthenticated 중 하나"),
             fieldWithPath("fix").type(JsonFieldType.STRING).optional().description("고치는 법"),
         )
+
+// What a space points agents to, on every space response.
+fun guidanceFields(prefix: String) =
+    arrayOf(
+        fieldWithPath("$prefix.defaultRepository")
+            .type(JsonFieldType.STRING)
+            .optional()
+            .description("짧은 GitHub 참조(#123, 커밋, 파일 경로)의 기본 레포. 레포를 하나만 연결했으면 비워 둬도 그 레포를 쓴다"),
+        fieldWithPath("$prefix.agentGuide")
+            .type(JsonFieldType.OBJECT)
+            .optional()
+            .description("에이전트 지침 문서(작성 규칙, 용어, 템플릿). 이 스페이스의 휴지통 밖 문서일 때만 있다"),
+        fieldWithPath("$prefix.agentGuide.documentId").optional().type(JsonFieldType.STRING).description("지침 문서 ID"),
+        fieldWithPath("$prefix.agentGuide.title").optional().type(JsonFieldType.STRING).description("지침 문서 제목"),
+        fieldWithPath("$prefix.agentGuide.path").optional().type(JsonFieldType.STRING).description("지침 문서 경로"),
+        fieldWithPath("$prefix.agentGuideIssue")
+            .type(JsonFieldType.STRING)
+            .optional()
+            .description("지정한 지침을 안내하지 않는 이유. trashed는 휴지통, unavailable은 삭제되었거나 다른 스페이스로 옮겨짐"),
+    )

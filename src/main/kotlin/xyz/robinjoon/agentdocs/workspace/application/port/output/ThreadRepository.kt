@@ -1,6 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.application.port.output
 
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadCriteria
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentThread
@@ -8,6 +9,13 @@ import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 
 // add and update store the whole thread with its comments and return it read back.
 interface ThreadRepository {
+    fun lockByDocuments(documents: Set<DocumentId>): List<CommentThread>
+
+    fun moveDocuments(
+        documents: Set<DocumentId>,
+        space: SpaceId,
+    )
+
     fun add(thread: CommentThread): CommentThread
 
     fun update(thread: CommentThread): CommentThread
@@ -15,6 +23,8 @@ interface ThreadRepository {
     fun findById(id: ThreadId): CommentThread?
 
     fun findByIdForUpdate(id: ThreadId): CommentThread?
+
+    fun findByComment(id: CommentId): CommentThread?
 
     fun findByCommentForUpdate(id: CommentId): CommentThread?
 

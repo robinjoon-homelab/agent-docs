@@ -4,6 +4,7 @@ import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.batchInsert
@@ -24,6 +25,14 @@ import java.time.Instant
 import java.util.UUID
 
 class ExposedInboxRepository : InboxRepository {
+    override fun moveDocuments(
+        documents: Set<DocumentId>,
+        space: SpaceId,
+    ) {
+        if (documents.isEmpty()) return
+        InboxItemsTable.update({ InboxItemsTable.documentId inList documents.map { it.value } }) { it[spaceId] = space.value }
+    }
+
     override fun addAll(items: List<InboxItem>) {
         InboxItemsTable.batchInsert(items, shouldReturnGeneratedValues = false) { item ->
             val target = item.notice.target

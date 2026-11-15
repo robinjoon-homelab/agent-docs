@@ -19,6 +19,15 @@ internal object ActivitiesTable : Table("activities") {
     val revision = integer("revision").nullable()
     val summary = varchar("summary", 300)
     val occurredAt = timestampWithTimeZone("occurred_at")
+    val createdCommentId = javaUUID("created_comment_id").nullable()
 
     override val primaryKey = PrimaryKey(id)
+}
+
+// The logins an entry's created comment mentioned. Rows go with their entry when the log is pruned.
+internal object ActivityMentionsTable : Table("activity_mentions") {
+    val activityId = long("activity_id")
+    val login = varchar("login", 39)
+
+    override val primaryKey = PrimaryKey(activityId, login)
 }

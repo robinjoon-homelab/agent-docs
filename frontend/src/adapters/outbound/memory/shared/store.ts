@@ -12,6 +12,31 @@ import { ApiError } from '../../../../application/shared/ports/errors';
 export type StoredRevision = { readonly meta: Revision; readonly snapshot: RevisionSnapshot };
 
 /**
+ * A map keyed by document id that reports every write, so the fake raises the same "this document changed"
+ * signal the server's event stream does without each gateway having to remember to send it.
+ */
+class DocumentKeyedMap<V> extends Map<string, V> {
+  private readonly changed: (documentId: string) => void;
+
+  constructor(changed: (documentId: string) => void) {
+    super();
+    this.changed = changed;
+  }
+
+  override set(documentId: string, value: V): this {
+    super.set(documentId, value);
+    this.changed(documentId);
+    return this;
+  }
+
+  override delete(documentId: string): boolean {
+    const removed = super.delete(documentId);
+    if (removed) this.changed(documentId);
+    return removed;
+  }
+}
+
+/**
  * State of the in-memory fake backend used with VITE_FAKE_API=true for local preview without the
  * Spring Boot server. It is deliberately simple and not a reference for server behavior.
  */
@@ -20,9 +45,12 @@ export class MemoryStore {
   spaces: Space[] = [];
   /** Former slugs keep resolving to the space, like the real server. */
   slugAliases = new Map<string, string>();
-  documents = new Map<string, AgentDocument>();
+  private readonly documentListeners = new Set<(documentId: string) => void>();
+  private readonly changedDocuments = new Set<string>();
+  /** Writes here and to `threads` are reported to onDocumentChange listeners. */
+  documents: Map<string, AgentDocument> = new DocumentKeyedMap((id) => this.documentChanged(id));
   revisions = new Map<string, StoredRevision[]>();
-  threads = new Map<string, Thread[]>();
+  threads: Map<string, Thread[]> = new DocumentKeyedMap((id) => this.documentChanged(id));
   inbox: InboxItem[] = [];
   activity: Activity[] = [];
   connections: Connection[] = [];
@@ -86,6 +114,30 @@ export class MemoryStore {
 
   record(activity: Omit<Activity, 'id' | 'at' | 'actor'>): void {
     this.activity.unshift({ ...activity, id: this.nextId('act'), at: this.now(), actor: this.actor });
+  }
+
+  /**
+   * Tells the listener which documents a fake request changed, once per document and only after the request's
+   * synchronous handler finished, so a listener that reads back never sees a half-applied write.
+   */
+  onDocumentChange(listener: (documentId: string) => void): () => void {
+    this.documentListeners.add(listener);
+    return () => {
+      this.documentListeners.delete(listener);
+    };
+  }
+
+  private documentChanged(documentId: string): void {
+    // Writes nobody listens to (seeding the preview) are not reported to a listener that subscribes later.
+    if (this.documentListeners.size === 0) return;
+    if (this.changedDocuments.size === 0) queueMicrotask(() => this.reportChanges());
+    this.changedDocuments.add(documentId);
+  }
+
+  private reportChanges(): void {
+    const changed = [...this.changedDocuments];
+    this.changedDocuments.clear();
+    for (const documentId of changed) for (const listener of this.documentListeners) listener(documentId);
   }
 }
 

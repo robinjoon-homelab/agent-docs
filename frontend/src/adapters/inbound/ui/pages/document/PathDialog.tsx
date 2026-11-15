@@ -7,27 +7,35 @@ export function PathDialog({
   path,
   onClose,
   onSave,
+  onInput,
+  onCancel,
 }: {
   path: string;
   onClose: () => void;
   onSave: (path: string) => void;
+  onInput?: (path: string) => void;
+  onCancel?: () => void;
 }) {
   const [value, setValue] = useState(path);
   const normalized = normalizePath(value);
   const valid = isValidPath(normalized);
+  const cancel = () => {
+    onCancel?.();
+    onClose();
+  };
   const submit = (): void => {
     if (!valid) return;
-    if (normalized !== path) onSave(normalized);
+    onSave(normalized);
     onClose();
   };
   return (
     <Dialog
       open
       title="경로 바꾸기"
-      onClose={onClose}
+      onClose={cancel}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>
+          <button type="button" className="btn" onClick={cancel}>
             취소
           </button>
           <button type="button" className="btn btn-primary" disabled={!valid} onClick={submit}>
@@ -43,7 +51,10 @@ export function PathDialog({
           className="input mono"
           value={value}
           autoFocus
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => {
+            setValue(event.target.value);
+            onInput?.(normalizePath(event.target.value));
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') submit();
           }}

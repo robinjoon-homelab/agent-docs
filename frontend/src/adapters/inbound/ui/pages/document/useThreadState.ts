@@ -9,7 +9,12 @@ function replaceThread(threads: readonly Thread[], updated: Thread): Thread[] {
   return threads.map((thread) => (thread.id === updated.id ? updated : thread));
 }
 
-export function useThreadState(documentId: string, initial: readonly Thread[], service: ThreadUseCases) {
+export function useThreadState(
+  documentId: string,
+  initial: readonly Thread[],
+  service: ThreadUseCases,
+  onDocumentChanged?: () => Promise<void>,
+) {
   const toast = useToast();
   const [threads, setThreads] = useState<readonly Thread[]>(initial);
   const mutationGeneration = useRef(0);
@@ -45,6 +50,15 @@ export function useThreadState(documentId: string, initial: readonly Thread[], s
   };
 
   const actions = (startReanchor: (thread: Thread) => void): ThreadActions => ({
+    react: async (thread, emoji, add) => {
+      await update(() => service.react(thread.id, emoji, add));
+    },
+    suggest: async (thread, before, after) =>
+      update(() => service.suggest(thread.id, { anchor: thread.anchor, before, after })),
+    decide: async (commentId, accept) => {
+      const done = await update(() => service.decide(commentId, accept));
+      if (done && accept) await guard(async () => onDocumentChanged?.());
+    },
     reply: async (thread: Thread, body: string) => {
       const result = await guard(() => service.reply(thread, body));
       if (result === null || !result.ok) return false;

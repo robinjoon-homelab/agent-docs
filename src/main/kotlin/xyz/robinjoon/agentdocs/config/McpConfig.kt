@@ -16,6 +16,7 @@ import org.springframework.web.servlet.function.RouterFunction
 import org.springframework.web.servlet.function.ServerResponse
 import tools.jackson.databind.json.JsonMapper
 import xyz.robinjoon.agentdocs.access.application.model.UploadToken
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.EditStatisticsRecorder
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.ChangesSinceTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.CommentsQueryTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.CommentsWriteTool
@@ -26,19 +27,30 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsListTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsMoveTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsReadTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsSearchTool
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsTransferTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsUploadTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.McpInstructions
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.McpSettings
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.McpTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.McpToolSpecifications
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.NavigationTool
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.RestoreBlockTool
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.RevisionNameTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.SpacesListTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.SpacesResolveTool
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.StatsEditEndTool
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.StatsEditStartTool
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ActivityUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentAssetUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentTransferUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.EditSessionUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.NavigationUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SearchUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.SuggestionUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCase
 import java.net.URI
@@ -122,29 +134,43 @@ class McpConfig {
     fun docsListTool(queries: DocumentQueryUseCase): McpTool = DocsListTool(queries)
 
     @Bean
-    fun docsReadTool(queries: DocumentQueryUseCase): McpTool = DocsReadTool(queries)
+    fun docsReadTool(
+        queries: DocumentQueryUseCase,
+        spaces: SpaceUseCase,
+    ): McpTool = DocsReadTool(queries, spaces)
 
     @Bean
-    fun docsCreateTool(documents: DocumentUseCase): McpTool = DocsCreateTool(documents)
+    fun docsCreateTool(
+        documents: DocumentUseCase,
+        recorder: EditStatisticsRecorder,
+    ): McpTool = DocsCreateTool(documents, recorder)
 
     @Bean
-    fun docsEditTool(documents: DocumentUseCase): McpTool = DocsEditTool(documents)
+    fun docsEditTool(
+        documents: DocumentUseCase,
+        recorder: EditStatisticsRecorder,
+    ): McpTool = DocsEditTool(documents, recorder)
 
     @Bean
-    fun docsMoveTool(documents: DocumentUseCase): McpTool = DocsMoveTool(documents)
+    fun docsMoveTool(
+        documents: DocumentUseCase,
+        recorder: EditStatisticsRecorder,
+    ): McpTool = DocsMoveTool(documents, recorder)
 
     @Bean
     fun docsUploadTool(
         assets: AssetUseCase,
         uploads: UploadGrantUseCase,
         properties: AgentDocsProperties,
-    ): McpTool = DocsUploadTool(assets, uploads, "${properties.publicUrl.trimEnd('/')}${UploadToken.ENDPOINT}")
+        documentAssets: DocumentAssetUseCase,
+    ): McpTool = DocsUploadTool(assets, uploads, "${properties.publicUrl.trimEnd('/')}${UploadToken.ENDPOINT}", documentAssets)
 
     @Bean
     fun docsHistoryTool(
         queries: DocumentQueryUseCase,
         documents: DocumentUseCase,
-    ): McpTool = DocsHistoryTool(queries, documents)
+        recorder: EditStatisticsRecorder,
+    ): McpTool = DocsHistoryTool(queries, documents, recorder)
 
     @Bean
     fun commentsQueryTool(
@@ -153,14 +179,41 @@ class McpConfig {
     ): McpTool = CommentsQueryTool(threads, spaces)
 
     @Bean
-    fun commentsWriteTool(threads: ThreadUseCase): McpTool = CommentsWriteTool(threads)
+    fun commentsWriteTool(
+        threads: ThreadUseCase,
+        suggestions: SuggestionUseCase,
+    ): McpTool = CommentsWriteTool(threads, suggestions)
 
     @Bean
     fun changesSinceTool(activity: ActivityUseCase): McpTool = ChangesSinceTool(activity)
 
+    @Bean
+    fun docsTransferTool(
+        documents: DocumentTransferUseCase,
+        recorder: EditStatisticsRecorder,
+    ): McpTool = DocsTransferTool(documents, recorder)
+
+    @Bean
+    fun navigationTool(navigation: NavigationUseCase): McpTool = NavigationTool(navigation)
+
+    @Bean
+    fun revisionNameTool(documents: DocumentUseCase): McpTool = RevisionNameTool(documents)
+
+    @Bean
+    fun restoreBlockTool(
+        documents: DocumentUseCase,
+        recorder: EditStatisticsRecorder,
+    ): McpTool = RestoreBlockTool(documents, recorder)
+
+    @Bean
+    fun statsEditStartTool(sessions: EditSessionUseCase): McpTool = StatsEditStartTool(sessions)
+
+    @Bean
+    fun statsEditEndTool(sessions: EditSessionUseCase): McpTool = StatsEditEndTool(sessions)
+
     private companion object {
         const val MCP_ENDPOINT = "/mcp"
-        const val SERVER_VERSION = "0.1.0"
+        const val SERVER_VERSION = "0.2.0"
         val toolTimeout: Duration = Duration.ofMinutes(1)
     }
 }

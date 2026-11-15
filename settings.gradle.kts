@@ -7,3 +7,5 @@ pluginManagement {
 
 rootProject.name = "agent-docs"
 include(":quality-rules")
+
+include(":cli")

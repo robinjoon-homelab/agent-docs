@@ -23,6 +23,7 @@ internal object ThreadsTable : Table("threads") {
     val createdAt = timestampWithTimeZone("created_at")
     val updatedAt = timestampWithTimeZone("updated_at")
     val resolvedAt = timestampWithTimeZone("resolved_at").nullable()
+    val collaboration = text("collaboration").nullable()
     val resolver = NullableActorColumns(this, "resolver")
 
     override val primaryKey = PrimaryKey(id)

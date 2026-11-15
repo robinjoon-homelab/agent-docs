@@ -9,7 +9,7 @@ interface SpaceRepository {
     // Fails with SlugTakenException when another space holds the slug as its current or a former slug.
     fun add(space: Space): Space
 
-    // Writes the address, profile, and links of a space loaded for update in the same transaction.
+    // Writes the address, profile, links, and guidance of a space loaded for update in the same transaction.
     fun update(space: Space): Space
 
     fun findById(id: SpaceId): Space?

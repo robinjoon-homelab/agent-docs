@@ -1,3 +1,4 @@
+import type { InputTracePayload } from '../../../../domain/statistics/statistics';
 import type {
   CurrentDocument,
   SavedContent,
@@ -21,10 +22,12 @@ import type {
   Revision,
   RevisionSnapshot,
   TrashedDocument,
+  RevisionMetadata,
+  CodeReference,
 } from '../../../../domain/document/document';
 import type { HttpClient } from '../shared/httpClient';
 import { ProblemError, query, segment } from '../shared/httpClient';
-import { list, num, obj, oneOf, optStr, str, strOr, strings } from '../shared/json';
+import { list, num, obj, oneOf, optNum, optStr, str, strOr, strings } from '../shared/json';
 import {
   toActor,
   toDocumentSummary,
@@ -87,12 +90,34 @@ async function namingTakenPath<T>(request: Promise<T>): Promise<T> {
   }
 }
 
+function toCodeReference(value: unknown): CodeReference {
+  const source = obj(value);
+  return {
+    repository: str(source, 'repository'),
+    commit: optStr(source, 'commit'),
+    pullRequest: optNum(source, 'pullRequest'),
+  };
+}
+
+function toMetadata(source: Readonly<Record<string, unknown>>): RevisionMetadata {
+  const provenance = source.importProvenance == null ? null : obj(source.importProvenance);
+  return {
+    name: optStr(source, 'name'),
+    codeReferences: source.codeReferences == null ? [] : list(source.codeReferences, toCodeReference),
+    importProvenance:
+      provenance === null
+        ? null
+        : { tool: str(provenance, 'tool'), originalPath: str(provenance, 'originalPath') },
+  };
+}
+
 function toRevision(value: unknown): Revision {
   const source = obj(value, 'revision');
   return {
+    ...toMetadata(source),
     revision: num(source, 'revision'),
     actor: toActor(source.actor),
-    source: oneOf(source, 'source', ['web', 'mcp', 'rest', 'system'] as const),
+    source: oneOf(source, 'source', ['web', 'mcp', 'rest', 'cli', 'system'] as const),
     summary: strOr(source, 'summary', ''),
     changedBlockIds: strings(source, 'changedBlockIds'),
     createdAt: str(source, 'createdAt'),
@@ -103,6 +128,7 @@ function toRevision(value: unknown): Revision {
 function toSnapshot(value: unknown): RevisionSnapshot {
   const source = obj(value, 'revision');
   return {
+    ...toMetadata(source),
     revision: num(source, 'revision'),
     title: str(source, 'title'),
     path: str(source, 'path'),
@@ -182,10 +208,15 @@ export class HttpDocumentGateway implements DocumentGateway {
     documentId: string,
     baseVersion: number,
     blocks: readonly Block[],
+    inputTrace?: InputTracePayload,
   ): Promise<SaveContentResult> {
     try {
       return toSaveResult(
-        await this.http.put(`/api/documents/${segment(documentId)}/content`, { baseVersion, blocks }),
+        await this.http.put(`/api/documents/${segment(documentId)}/content`, {
+          baseVersion,
+          blocks,
+          ...(inputTrace === undefined ? {} : { inputTrace }),
+        }),
       );
     } catch (error) {
       if (
@@ -203,11 +234,20 @@ export class HttpDocumentGateway implements DocumentGateway {
     }
   }
 
-  async patch(documentId: string, baseVersion: number, patch: MetaPatch): Promise<AgentDocument> {
+  async patch(
+    documentId: string,
+    baseVersion: number,
+    patch: MetaPatch,
+    inputTrace?: InputTracePayload,
+  ): Promise<AgentDocument> {
     try {
       return toDocument(
         await namingTakenPath(
-          this.http.patch(`/api/documents/${segment(documentId)}`, { baseVersion, ...patch }),
+          this.http.patch(`/api/documents/${segment(documentId)}`, {
+            baseVersion,
+            ...patch,
+            ...(inputTrace === undefined ? {} : { inputTrace }),
+          }),
         ),
       );
     } catch (error) {
@@ -219,6 +259,19 @@ export class HttpDocumentGateway implements DocumentGateway {
       }
       throw error;
     }
+  }
+
+  async transfer(documentId: string, baseVersion: number, space: string, path: string) {
+    const result = obj(
+      await this.http.post(`/api/documents/${segment(documentId)}/transfer`, { baseVersion, space, path }),
+    );
+    return {
+      documentId: str(result, 'documentId'),
+      space: toSpaceRef(result.space),
+      path: str(result, 'path'),
+      version: num(result, 'version'),
+      revision: num(result, 'revision'),
+    };
   }
 
   async finalize(documentId: string, baseVersion: number): Promise<SavedContent> {
@@ -257,6 +310,30 @@ export class HttpDocumentGateway implements DocumentGateway {
   async restore(documentId: string, revision: number, baseVersion: number): Promise<number> {
     return num(
       obj(await this.http.post(`/api/documents/${segment(documentId)}/restore`, { revision, baseVersion })),
+      'revision',
+    );
+  }
+  async nameRevision(documentId: string, revision: number, name: string): Promise<string | null> {
+    return optStr(
+      obj(await this.http.post(`/api/documents/${segment(documentId)}/revisions/${revision}/name`, { name })),
+      'name',
+    );
+  }
+
+  async restoreBlock(
+    documentId: string,
+    revision: number,
+    blockId: string,
+    baseVersion: number,
+  ): Promise<number> {
+    return num(
+      obj(
+        await this.http.post(`/api/documents/${segment(documentId)}/restore-block`, {
+          revision,
+          blockId,
+          baseVersion,
+        }),
+      ),
       'revision',
     );
   }
