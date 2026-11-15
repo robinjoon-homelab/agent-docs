@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Block } from '../../../../domain/document/block';
 import { blocksToDoc } from './convert';
 import { CodeBlockWithView, ImageWithView } from './nodeViews';
+import type { ImageOptions } from './nodeViews';
+import { savedReferenceFixture } from './savedAssetReferences.fixture';
 import { CodeBlockNode, ImageNode, schemaExtensions } from './schema';
 
 afterEach(cleanup);
@@ -86,10 +88,21 @@ describe('mermaid code block views', () => {
   });
 });
 
-function Picture({ caption }: { caption: string }) {
-  const blocks: Block[] = [{ id: 'i000000001', type: 'image', assetId: 'asset', alt: '', caption }];
+function Picture({
+  caption,
+  assetId = 'asset',
+  options,
+}: {
+  caption: string;
+  assetId?: string;
+  options?: Partial<ImageOptions>;
+}) {
+  const blocks: Block[] = [{ id: 'i000000001', type: 'image', assetId, alt: '', caption }];
   const editor = useEditor({
-    extensions: [...schemaExtensions.filter((extension) => extension !== ImageNode), ImageWithView],
+    extensions: [
+      ...schemaExtensions.filter((extension) => extension !== ImageNode),
+      ImageWithView.configure(options ?? {}),
+    ],
     content: blocksToDoc(blocks, () => 'n000000001'),
     onCreate: ({ editor: created }) => {
       current = created;
@@ -142,5 +155,106 @@ describe('image fields', () => {
     });
 
     expect(field.value).toBe('바뀜');
+  });
+});
+
+function previewImage(): HTMLImageElement | null {
+  return document.querySelector<HTMLImageElement>('.image-frame img');
+}
+
+function replaceImageAsset(assetId: string): void {
+  const editor = current;
+  if (editor === null) throw new Error('editor not ready');
+  editor.commands.command(({ tr, state }) => {
+    tr.setNodeMarkup(0, undefined, { ...state.doc.firstChild?.attrs, assetId });
+    return true;
+  });
+}
+
+describe('saved image references', () => {
+  it('does not create img src before an included save and keeps the loaded node on unrelated saves', async () => {
+    const saved = savedReferenceFixture();
+    const options = {
+      savedReferences: saved.references,
+      contentUrl: (id: string) => `/api/documents/moved/assets/${id}/content`,
+    };
+    render(<Picture caption="" assetId="new-png" options={options} />);
+    await captionField();
+    expect(previewImage()).toBeNull();
+    expect(screen.getByText('문서 저장 후 이미지를 불러옵니다.')).toBeDefined();
+    await act(async () => {
+      saved.notify();
+      saved.save(['unrelated']);
+      await Promise.resolve();
+    });
+    expect(previewImage()).toBeNull();
+    await act(async () => {
+      saved.save(['unrelated', 'new-png']);
+      await Promise.resolve();
+    });
+    const image = previewImage();
+    expect(image?.getAttribute('src')).toBe('/api/documents/moved/assets/new-png/content');
+    await act(async () => {
+      saved.save(['new-png', 'another']);
+      saved.notify();
+      await Promise.resolve();
+    });
+    expect(previewImage()).toBe(image);
+    expect(image?.getAttribute('src')).toBe('/api/documents/moved/assets/new-png/content');
+  });
+
+  it('keeps existing logical IDs readable, waits for replacement, and ignores detached image errors', async () => {
+    const saved = savedReferenceFixture(['original-logical-id']);
+    const options = {
+      savedReferences: saved.references,
+      contentUrl: (id: string) => `/api/documents/moved/assets/${id}/content`,
+    };
+    render(<Picture caption="" assetId="original-logical-id" options={options} />);
+    await captionField();
+    const old = previewImage();
+    expect(old?.getAttribute('src')).toBe('/api/documents/moved/assets/original-logical-id/content');
+    await act(async () => {
+      replaceImageAsset('new-png');
+      await Promise.resolve();
+    });
+    expect(previewImage()).toBeNull();
+    await act(async () => {
+      saved.save(['new-png']);
+      await Promise.resolve();
+    });
+    expect(previewImage()?.getAttribute('src')).toBe('/api/documents/moved/assets/new-png/content');
+    if (old === null) throw new Error('old image missing');
+    fireEvent.error(old);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows a real load denial after its reference was saved', async () => {
+    const saved = savedReferenceFixture(['denied']);
+    render(
+      <Picture
+        caption=""
+        assetId="denied"
+        options={{ savedReferences: saved.references, contentUrl: () => '/denied' }}
+      />,
+    );
+    await captionField();
+    const image = previewImage();
+    if (image === null) throw new Error('image missing');
+    fireEvent.error(image);
+    expect(screen.getByRole('alert').textContent).toBe('이미지를 불러오지 못했습니다.');
+    expect(screen.queryByText('문서 저장 후 이미지를 불러옵니다.')).toBeNull();
+  });
+
+  it('does not resurrect an unmounted preview when saved references change', async () => {
+    const saved = savedReferenceFixture();
+    const view = render(<Picture caption="" options={{ savedReferences: saved.references }} />);
+    await captionField();
+    view.unmount();
+    await act(async () => {
+      saved.save(['asset']);
+      await Promise.resolve();
+    });
+    expect(previewImage()).toBeNull();
+    expect(screen.queryByText('문서 저장 후 이미지를 불러옵니다.')).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import { MermaidPreview } from '../blocks/MermaidPreview';
 import { CodeBlockNode, ImageNode } from './schema';
 import { HtmlMockup } from './HtmlMockup';
 import type { MockupOptions } from './HtmlMockup';
+import { useSavedAssetReference } from './savedAssetReferences';
 import { MathPreview } from '../common/InlineText';
 
 export const CODE_LANGUAGES: readonly { value: string; label: string }[] = [
@@ -161,6 +162,39 @@ function ImageField({
   );
 }
 
+function ImagePreview({
+  assetId,
+  alt,
+  editable,
+  options,
+}: {
+  assetId: string;
+  alt: string;
+  editable: boolean;
+  options: ImageOptions;
+}) {
+  const savedReference = useSavedAssetReference(assetId, options.savedReferences);
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="image-frame" data-drag-handle="">
+      {savedReference ? (
+        <img src={options.contentUrl(assetId)} alt={alt} draggable={false} onError={() => setFailed(true)} />
+      ) : (
+        <p role="status">문서 저장 후 이미지를 불러옵니다.</p>
+      )}
+      {savedReference && failed ? <p role="alert">이미지를 불러오지 못했습니다.</p> : null}
+      {editable && alt.trim() === '' ? (
+        <span
+          className="badge badge-warning image-alt-warning"
+          title="화면 낭독기 사용자를 위해 대체 텍스트를 적어 주세요"
+        >
+          대체 텍스트 없음
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function ImageView({ node, updateAttributes, editor, extension, selected }: ReactNodeViewProps) {
   const options = extension.options as ImageOptions;
   const assetId = String(node.attrs.assetId ?? '');
@@ -183,17 +217,7 @@ function ImageView({ node, updateAttributes, editor, extension, selected }: Reac
           options={options}
         />
       ) : (
-        <div className="image-frame" data-drag-handle="">
-          <img src={options.contentUrl(assetId)} alt={alt} draggable={false} />
-          {editable && alt.trim() === '' ? (
-            <span
-              className="badge badge-warning image-alt-warning"
-              title="화면 낭독기 사용자를 위해 대체 텍스트를 적어 주세요"
-            >
-              대체 텍스트 없음
-            </span>
-          ) : null}
-        </div>
+        <ImagePreview key={assetId} assetId={assetId} alt={alt} editable={editable} options={options} />
       )}
       {editable ? (
         <div className="image-fields" contentEditable={false}>
