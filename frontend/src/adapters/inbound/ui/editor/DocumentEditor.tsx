@@ -63,6 +63,7 @@ import Italic from '@tiptap/extension-italic';
 import Strike from '@tiptap/extension-strike';
 import Text from '@tiptap/extension-text';
 import './editor.css';
+import { savedAssetReferences } from './savedAssetReferences';
 import type { GitHubContext } from '../../../../domain/document/githubReferences';
 import { ContentDecorations } from './contentDecorations';
 
@@ -157,7 +158,12 @@ class EditorBridge {
 }
 
 /** Built once per editor. */
-function buildExtensions(services: Services, store: SuggestionStore, bridge: EditorBridge) {
+function buildExtensions(
+  services: Services,
+  store: SuggestionStore,
+  bridge: EditorBridge,
+  session: DocumentEditorSession,
+) {
   const docLinks = async (query: string): Promise<SuggestionItem[]> => {
     const hits = await services.search.titles(query);
     return hits.slice(0, 8).map((hit) => ({
@@ -206,6 +212,7 @@ function buildExtensions(services: Services, store: SuggestionStore, bridge: Edi
     ImageWithView.configure({
       contentUrl: (assetId: string) => services.assets.contentUrl(assetId),
       htmlSource: (assetId: string) => services.assets.htmlSource(assetId),
+      savedReferences: savedAssetReferences(session),
       replaceHtml: (blockId: string, previousAsset: string, file: File) =>
         bridge.replaceHtml(blockId, previousAsset, file),
     }),
@@ -391,7 +398,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
     else latest.current.onRequestComment(anchor);
   };
 
-  const [extensions] = useState(() => buildExtensions(services, store, bridge));
+  const [extensions] = useState(() => buildExtensions(services, store, bridge, session));
   const [initialContent] = useState(() => blocksToDoc(document.blocks, randomBlockId));
 
   const editor = useEditor(

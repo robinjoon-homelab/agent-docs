@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { htmlPreviewSource } from './htmlPreview';
+import type { SavedAssetReferences } from './savedAssetReferences';
+import { useSavedAssetReference } from './savedAssetReferences';
 
 export type MockupOptions = {
+  readonly savedReferences?: SavedAssetReferences;
   readonly htmlSource: (assetId: string) => Promise<string>;
   readonly replaceHtml: (blockId: string, previousAsset: string, file: File) => Promise<void>;
 };
@@ -26,7 +29,9 @@ export function HtmlMockup({
   const [showSource, setShowSource] = useState(false);
   const [replacement, setReplacement] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const savedReference = useSavedAssetReference(assetId, options.savedReferences);
   useEffect(() => {
+    if (!savedReference) return;
     let active = true;
     void options.htmlSource(assetId).then(
       (source) => {
@@ -39,8 +44,9 @@ export function HtmlMockup({
     return () => {
       active = false;
     };
-  }, [assetId, options]);
+  }, [assetId, options, savedReference]);
   const source = loaded?.assetId === assetId ? loaded.source : undefined;
+  const error = loaded?.assetId === assetId ? loaded.error : undefined;
   return (
     <div className="html-mockup" contentEditable={false}>
       <div className="code-block-bar">
@@ -59,10 +65,12 @@ export function HtmlMockup({
           </button>
         ) : null}
       </div>
-      {loaded?.assetId === assetId && loaded.error !== undefined ? <p role="alert">{loaded.error}</p> : null}
+      {error !== undefined ? <p role="alert">{error}</p> : null}
       {replacement !== null ? <p role="status">{replacement}</p> : null}
       {source === undefined ? (
-        <p>시안 불러오는 중…</p>
+        error === undefined ? (
+          <p>{savedReference ? '시안 불러오는 중…' : '문서 저장 후 시안을 불러옵니다.'}</p>
+        ) : null
       ) : (
         <>
           <div className="html-mockup-scroll">

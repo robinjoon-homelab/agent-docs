@@ -216,14 +216,34 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
 
     @Test
     fun `markdown reads the same annotated text docs_read gives agents, in chunks`() {
-        val request = MarkdownRequest(MarkdownFormat.PLAIN, null, null, 0)
-        every { queries.markdown(ownerAccess, documentId, request) } returns
-            MarkdownChunk(document(), "# 재시도 설계\n\n실패하면 **30초** 뒤에 다시 시도한다.\n", null, 2)
+        val markdown =
+            """
+            <!-- b:list01 h:aaaabbbb -->
+              - 들여쓴 항목
+
+            <!-- b:table1 h:ccccdddd cols:col001,col002 -->
+            | <!--r:row001-->항목 | 값 |
+            | --- | --- |
+            | <!--r:row002-->재시도 | 30초 |
+            """.trimIndent() + "\n"
+        val request = MarkdownRequest(MarkdownFormat.ANNOTATED, null, null, 0)
+        every { queries.markdown(ownerAccess, documentId, request) } returns MarkdownChunk(document(), markdown, 2, 3)
+        val plain = "# 재시도 설계\n\n실패하면 **30초** 뒤에 다시 시도한다.\n"
+        every { queries.markdown(ownerAccess, documentId, MarkdownRequest(MarkdownFormat.PLAIN, null, null, 0)) } returns
+            MarkdownChunk(document(), plain, null, 2)
 
         mockMvc
             .perform(get("/api/documents/{id}/markdown?format=plain", documentId).principal(owner))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.markdown").value("# 재시도 설계\n\n실패하면 **30초** 뒤에 다시 시도한다.\n"))
+            .andExpect(jsonPath("$.markdown").value(plain))
+        mockMvc
+            .perform(get("/api/documents/{id}/markdown?format=markdown&cursor=0", documentId).principal(owner))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.markdown").value(markdown))
+            .andExpect(jsonPath("$.documentId").value(documentId.toString()))
+            .andExpect(jsonPath("$.version").value(3))
+            .andExpect(jsonPath("$.nextCursor").value(2))
+            .andExpect(jsonPath("$.totalBlocks").value(3))
             .andDo(
                 documented(
                     "documents-markdown",
@@ -244,6 +264,15 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     ),
                 ),
             )
+    }
+
+    @Test
+    fun `the internal annotated format name is not a supported HTTP format`() {
+        mockMvc
+            .perform(get("/api/documents/{id}/markdown?format=annotated&cursor=0", documentId).principal(owner))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("invalid"))
+            .andExpect(jsonPath("$.detail").value("format must be markdown, plain, or outline"))
     }
 
     @Test

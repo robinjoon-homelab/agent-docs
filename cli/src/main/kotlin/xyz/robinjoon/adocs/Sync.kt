@@ -82,7 +82,7 @@ internal class Sync(
             val chunk =
                 http.api(
                     "GET",
-                    "/api/documents/${encoded(document)}/markdown?format=annotated&cursor=${chunks.cursor}",
+                    "/api/documents/${encoded(document)}/markdown?format=markdown&cursor=${chunks.cursor}",
                     credentials.token(),
                 )
             chunks.accept(chunk)
