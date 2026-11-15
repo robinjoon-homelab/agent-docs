@@ -5,9 +5,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import java.time.Instant
 import java.util.Collections
 
-// The current state of a document: its header, its ordered blocks, and its revision. Every change produces the next
-// revision; history is appended by the repository and never rewritten. Block ids must be unique because comments,
-// diffs, and agent edits address blocks by id. The private constructor and copy keep changes behind the methods.
+// Content versions advance on changes; confirming pending input only advances the immutable history.
 @AggregateRoot
 @ConsistentCopyVisibility
 data class Document private constructor(
@@ -35,6 +33,10 @@ data class Document private constructor(
 
     val revision: Int get() = lifecycle.revision
 
+    val version: Int get() = lifecycle.version
+
+    fun confirmRevision(): Document = copy(lifecycle = lifecycle.confirmed())
+
     val isTrashed: Boolean get() = lifecycle.trashedAt != null
 
     fun block(id: BlockId): Block? = blocks.firstOrNull { it.id == id }
@@ -47,7 +49,7 @@ data class Document private constructor(
         at: Instant,
     ): Document = rebuild(header, blocks, lifecycle.next(at))
 
-    // Replaces the content of the latest revision instead of adding one, for a person's continued typing.
+    // Advances content while a person's input awaits revision confirmation.
     fun amend(
         header: DocumentHeader,
         blocks: List<Block>,

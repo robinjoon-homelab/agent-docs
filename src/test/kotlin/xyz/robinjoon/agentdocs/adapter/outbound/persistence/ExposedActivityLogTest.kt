@@ -46,6 +46,26 @@ class ExposedActivityLogTest {
         assertThat(database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = true)) }).hasSize(1)
     }
 
+    @Test
+    fun `id cursor preserves same timestamp page boundary and initial since and space filters`() {
+        database.inTransaction {
+            log.record(record(space, -1))
+            log.record(record(null, 0))
+            repeat(101) { log.record(record(space, 0)) }
+        }
+        val since = at.minusSeconds(1)
+        val first = database.inTransaction { log.find(ActivityQuery(setOf(space), since, null, 100, true)) }
+        val second = database.inTransaction { log.find(ActivityQuery(setOf(space), since, null, 100, true, first.last().id)) }
+        val end = database.inTransaction { log.find(ActivityQuery(setOf(space), since, null, 100, true, second.last().id)) }
+
+        assertThat(first).hasSize(100)
+        assertThat(second).hasSize(1)
+        assertThat((first + second).map { it.id }).doesNotHaveDuplicates().isSorted()
+        assertThat((first + second).map { it.record.at }).containsOnly(at)
+        assertThat((first + second).map { it.record.subject.spaceId }).containsOnly(space)
+        assertThat(end).isEmpty()
+    }
+
     private fun record(
         spaceId: UUID?,
         offset: Long,

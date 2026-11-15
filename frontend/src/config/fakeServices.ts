@@ -9,7 +9,6 @@ import {
   simulateAgentEdit,
 } from '../adapters/outbound/memory/document/MemoryDocumentGateway';
 import { MemoryInboxGateway } from '../adapters/outbound/memory/inbox/MemoryInboxGateway';
-import { MemoryMetricsGateway } from '../adapters/outbound/memory/metrics/MemoryMetricsGateway';
 import { MemorySearchGateway } from '../adapters/outbound/memory/search/MemorySearchGateway';
 import { MemorySessionGateway } from '../adapters/outbound/memory/session/MemorySessionGateway';
 import { seededStore } from '../adapters/outbound/memory/shared/seed';
@@ -40,7 +39,6 @@ export function createFakeServices(): Services {
       activity: new MemoryActivityGateway(store),
       connections: new MemoryConnectionGateway(store),
       oauthRequests: new MemoryOAuthRequestGateway(store),
-      metrics: new MemoryMetricsGateway(store),
     },
     systemClock,
     true,

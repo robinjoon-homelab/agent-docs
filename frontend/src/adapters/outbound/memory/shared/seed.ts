@@ -145,6 +145,7 @@ function architectureDocument(): AgentDocument {
     status: 'in_review',
     tags: ['설계', '백엔드'],
     assignee: 'robinjoon',
+    version: 15,
     revision: 15,
     createdAt: ago(10 * DAY),
     updatedAt: ago(2 * 60 * 1000),
@@ -163,6 +164,7 @@ function setupDocument(): AgentDocument {
     status: 'confirmed',
     tags: ['가이드'],
     assignee: null,
+    version: 4,
     revision: 4,
     createdAt: ago(8 * DAY),
     updatedAt: ago(3 * DAY),
@@ -487,16 +489,5 @@ export function seededStore(): MemoryStore {
     requestedScope: 'edit',
     expiresAt: inDays(1 / 144),
   });
-  store.usage = {
-    weeks: [0, 1, 2, 3].map((week) => ({
-      weekStart: new Date(Date.now() - (3 - week) * 7 * DAY).toISOString().slice(0, 10),
-      spaces: [
-        { slug: 'agent-docs', name: 'Agent Docs', documents: 2 + week, comments: 3 + week * 2 },
-        { slug: 'personal', name: '개인 메모', documents: week % 2, comments: 0 },
-      ],
-    })),
-    agentResponseMinutesMedian: 12,
-    revisitedDocuments: 5,
-  };
   return store;
 }

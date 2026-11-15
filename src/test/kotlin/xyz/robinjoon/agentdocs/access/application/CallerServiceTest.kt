@@ -16,6 +16,7 @@ import xyz.robinjoon.agentdocs.access.application.port.output.UserRepository
 import xyz.robinjoon.agentdocs.access.application.service.CallerService
 import xyz.robinjoon.agentdocs.access.domain.TokenHash
 import xyz.robinjoon.agentdocs.access.domain.connection.ConnectionId
+import xyz.robinjoon.agentdocs.access.domain.user.Allowlist
 import xyz.robinjoon.agentdocs.access.domain.user.GitHubAccount
 import xyz.robinjoon.agentdocs.access.domain.user.User
 import xyz.robinjoon.agentdocs.access.domain.user.UserId
@@ -25,8 +26,25 @@ import java.util.UUID
 class CallerServiceTest {
     private val connections = mockk<ConnectionRepository>()
     private val users = mockk<UserRepository>()
-    private val service = CallerService(connections, users, clock)
+    private val service = CallerService(connections, users, clock, Allowlist("robinjoon", emptySet()))
     private val user = User.restore(UserId(ownerId), GitHubAccount(42, "robinjoon"), UserProfile(null, null), now)
+
+    @Test
+    fun `old connections cannot authenticate access script or upload after owner removal or demotion`() {
+        val active = connection("adt_a_token", "adt_r_token")
+        every { connections.findByAccessHash(TokenHash.of("adt_a_token")) } returns active
+        every { connections.findByAccessHash(TokenHash.of("adt_s_token")) } returns active
+        every { connections.findById(active.id) } returns active
+        every { users.findById(UserId(ownerId)) } returns user
+        val removed = CallerService(connections, users, clock, Allowlist("new-owner", emptySet()))
+        val demoted = CallerService(connections, users, clock, Allowlist("new-owner", setOf("robinjoon")))
+
+        for (changed in listOf(removed, demoted)) {
+            assertThat(changed.callerFor("adt_a_token")).isNull()
+            assertThat(changed.callerFor("adt_s_token")).isNull()
+            assertThat(changed.callerForUpload(UploadToken.of(active.id.value, "secret"))).isNull()
+        }
+    }
 
     @Test
     fun `a valid token resolves to the agent, named with its client host, with exactly its granted spaces and scope`() {

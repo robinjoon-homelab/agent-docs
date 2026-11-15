@@ -246,3 +246,20 @@
     max-height: 320px;
   }
 }
+.history-inline-diff {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 8px 12px;
+  border-left: 2px solid var(--border);
+}
+
+.history-inline-diff ins {
+  background: #d5f5df;
+  color: #14532d;
+  text-decoration: underline;
+}
+
+.history-inline-diff del {
+  background: #ffe0e0;
+  color: #7f1d1d;
+}

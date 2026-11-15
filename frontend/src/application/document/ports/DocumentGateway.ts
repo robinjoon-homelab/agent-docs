@@ -7,7 +7,6 @@ import type {
   DocumentSummary,
   Revision,
   RevisionSnapshot,
-  SaveConflict,
   TrashedDocument,
 } from '../../../domain/document/document';
 
@@ -31,19 +30,28 @@ export type MetaPatch = Partial<DocumentMeta>;
 
 export type SavedContent = {
   readonly kind: 'saved';
+  readonly version: number;
   readonly revision: number;
-  /** The server folded this save into the previous revision (same person within 30 seconds). */
-  readonly amended: boolean;
-  /**
-   * The save was based on an older revision and the server kept other writers' blocks; `blocks` then
-   * differ from what was sent and become the new base.
-   */
-  readonly merged: boolean;
   /** The stored document body after this save. */
   readonly blocks: readonly StoredBlock[];
 };
 
-export type ContentConflict = { readonly kind: 'conflict'; readonly conflicts: readonly SaveConflict[] };
+export type CurrentDocument = Omit<AgentDocument, 'space' | 'blockChanges'>;
+
+export type ContentConflict = {
+  readonly kind: 'conflict';
+  readonly currentVersion: number;
+  readonly currentDocument: CurrentDocument;
+};
+
+export class StaleDocumentError extends Error {
+  constructor(
+    readonly currentVersion: number,
+    readonly currentDocument: CurrentDocument,
+  ) {
+    super('문서가 그사이 바뀌었습니다.');
+  }
+}
 
 export type SaveContentResult = SavedContent | ContentConflict;
 
@@ -57,9 +65,10 @@ export interface DocumentGateway {
   listTrash(spaceSlug: string): Promise<TrashedDocument[]>;
   create(spaceSlug: string, document: NewDocument): Promise<AgentDocument>;
   get(documentId: string): Promise<AgentDocument>;
-  /** Returns a conflict result (not an error) when someone changed the same blocks first. */
-  saveContent(documentId: string, baseRevision: number, blocks: readonly Block[]): Promise<SaveContentResult>;
-  patch(documentId: string, baseRevision: number, patch: MetaPatch): Promise<AgentDocument>;
+  /** Returns the current document when the base version is stale. */
+  saveContent(documentId: string, baseVersion: number, blocks: readonly Block[]): Promise<SaveContentResult>;
+  patch(documentId: string, baseVersion: number, patch: MetaPatch): Promise<AgentDocument>;
+  finalize(documentId: string, baseVersion: number): Promise<SavedContent>;
   trash(documentId: string): Promise<void>;
   untrash(documentId: string): Promise<void>;
   destroy(documentId: string): Promise<void>;
@@ -67,6 +76,6 @@ export interface DocumentGateway {
   revision(documentId: string, revision: number): Promise<RevisionSnapshot>;
   /** `to` omitted compares with the current document. */
   diff(documentId: string, from: number, to?: number): Promise<DocumentDiff>;
-  /** `baseRevision` is the revision the user was looking at; a stale one is rejected with a conflict. */
-  restore(documentId: string, revision: number, baseRevision: number): Promise<number>;
+  /** `baseVersion` is the document version the user was looking at; stale writes are rejected. */
+  restore(documentId: string, revision: number, baseVersion: number): Promise<number>;
 }

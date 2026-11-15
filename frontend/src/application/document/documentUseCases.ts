@@ -25,7 +25,7 @@ export type Comparison = {
   readonly toBlocks: readonly Block[];
 };
 
-export type MovableDocument = { readonly id: string; readonly path: string; readonly revision: number };
+export type MovableDocument = { readonly id: string; readonly path: string; readonly version: number };
 
 export type RecentDocument<S> = { readonly space: S; readonly document: DocumentSummary };
 
@@ -46,7 +46,7 @@ export interface DocumentUseCases {
   revision(documentId: string, revision: number): Promise<RevisionSnapshot>;
   /** Diff plus both block lists so the view can place removed blocks; `to` null means current. */
   compare(documentId: string, from: number, to: number | null): Promise<Comparison>;
-  restore(documentId: string, revision: number, baseRevision: number): Promise<number>;
+  restore(documentId: string, revision: number, baseVersion: number): Promise<number>;
   /** Moves a document into `folder` ('' = space root) keeping its name; null when nothing changes. */
   move(document: MovableDocument, folder: string): Promise<Result<AgentDocument | null, NewDocumentError[]>>;
 }
@@ -91,12 +91,12 @@ export function createDocumentUseCases(gateway: DocumentGateway): DocumentUseCas
       ]);
       return { diff, fromBlocks: fromSnapshot.blocks, toBlocks };
     },
-    restore: (documentId, revision, baseRevision) => gateway.restore(documentId, revision, baseRevision),
+    restore: (documentId, revision, baseVersion) => gateway.restore(documentId, revision, baseVersion),
     async move(document, folder) {
       const path = movedPath(document.path, folder);
       if (path === document.path) return ok(null);
       if (!isValidPath(path)) return failure(['path_invalid']);
-      return ok(await gateway.patch(document.id, document.revision, { path }));
+      return ok(await gateway.patch(document.id, document.version, { path }));
     },
   };
 }

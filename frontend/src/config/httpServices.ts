@@ -6,7 +6,6 @@ import {
 } from '../adapters/outbound/http/connection/HttpConnectionGateway';
 import { HttpDocumentGateway } from '../adapters/outbound/http/document/HttpDocumentGateway';
 import { HttpInboxGateway } from '../adapters/outbound/http/inbox/HttpInboxGateway';
-import { HttpMetricsGateway } from '../adapters/outbound/http/metrics/HttpMetricsGateway';
 import { HttpSearchGateway } from '../adapters/outbound/http/search/HttpSearchGateway';
 import { HttpSessionGateway } from '../adapters/outbound/http/session/HttpSessionGateway';
 import { HttpClient } from '../adapters/outbound/http/shared/httpClient';
@@ -32,7 +31,6 @@ export function createHttpServices(): Services {
       activity: new HttpActivityGateway(http),
       connections: new HttpConnectionGateway(http),
       oauthRequests: new HttpOAuthRequestGateway(http),
-      metrics: new HttpMetricsGateway(http),
     },
     systemClock,
     false,

@@ -104,7 +104,7 @@ internal class DocumentTree(
     ): List<RelatedWrite> =
         moves.map { (document, target) ->
             val now = journal.now()
-            val revised = document.revise(document.header.copy(path = target), document.blocks, now)
+            val revised = PendingEdits(documents).confirm(document).revise(document.header.copy(path = target), document.blocks, now)
             val change = RevisionChange.of(originOf(context), MOVED_ALONG, emptyList(), now)
             val saved = documents.update(revised, Revision.of(revised, change), amended = false)
             journal.record(context, "document.revised", subjectOf(saved), "${saved.header.title}: $MOVED_ALONG")
@@ -182,7 +182,7 @@ internal class DocumentTree(
         along: Along,
         at: Instant,
     ): Document {
-        val moved = along.transition.apply(document, at) ?: return document
+        val moved = along.transition.apply(PendingEdits(documents).confirm(document), at) ?: return document
         val change = RevisionChange.of(originOf(context), along.summary, emptyList(), at).withKind(RevisionKind.TRANSITION)
         val saved = documents.update(moved, Revision.of(moved, change), amended = false)
         journal.record(context, along.transition.kind, subjectOf(saved), "${saved.header.title}: ${along.summary}")

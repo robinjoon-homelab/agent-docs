@@ -1,7 +1,9 @@
 package xyz.robinjoon.agentdocs.workspace.application.port.input
 
-// The writer based a change on a revision the document has already moved past.
+import xyz.robinjoon.agentdocs.workspace.domain.document.Document
+
 class StaleRevisionException(
     base: Int,
     current: Int,
-) : RuntimeException("the change was based on revision $base but the document is at revision $current")
+    val document: Document? = null,
+) : RuntimeException("the change was based on version $base but the document is at version $current")

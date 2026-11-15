@@ -10,6 +10,8 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
 internal object DocumentRevisionsTable : Table("document_revisions") {
     val documentId = javaUUID("document_id")
     val revision = integer("revision")
+    val version = integer("content_version")
+    val pending = bool("pending")
     val spaceId = javaUUID("space_id")
     val path = varchar("doc_path", 300)
     val title = varchar("title", 200)

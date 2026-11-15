@@ -29,7 +29,7 @@ class DocsCreateTool(
             description =
                 "Creates a document from markdown. Images must already be uploaded with docs_upload and referenced as ![alt](asset:ID). " +
                     "The leading segments of the path are parent documents; missing ones are created empty and listed in alsoChanged. " +
-                    "A retry with the same opId answers with an empty alsoChanged; use docs_list to see them.",
+                    "A retry with the same opId replays the original result including alsoChanged.",
             properties =
                 mapOf(
                     "space" to Schemas.string("Space slug"),
@@ -117,8 +117,8 @@ class DocsMoveTool(
             description =
                 "Changes a document's path inside its space, its title, status, tags, or assignee. The document id stays the same, so " +
                     "links, history, and comments follow. A new path takes the documents under it along and creates missing parents; " +
-                    "alsoChanged lists them, except on a retry with the same opId. If any of them would land on a path in use, nothing " +
-                    "moves.",
+                    "alsoChanged lists them, including on a retry with the same opId. " +
+                    "If any of them would land on a path in use, nothing moves.",
             properties =
                 mapOf(
                     "document" to Schemas.string("Document id"),
@@ -127,10 +127,10 @@ class DocsMoveTool(
                     "status" to Schemas.choice("New status", listOf("draft", "in_review", "confirmed", "archived")),
                     "tags" to Schemas.strings("Replace the tags"),
                     "assignee" to Schemas.string("GitHub login of the assignee; empty string clears"),
-                    "baseRevision" to Schemas.integer("The revision you last read; a field a person changed since is a conflict"),
+                    "baseVersion" to Schemas.integer("The content version you last read; any later change is a conflict"),
                     "opId" to Schemas.operationId,
                 ),
-            required = listOf("document", "baseRevision"),
+            required = listOf("document", "baseVersion"),
             readOnly = false,
         )
 
@@ -146,13 +146,13 @@ class DocsMoveTool(
                 statusOf(arguments.optionalString("status")),
                 arguments.strings("tags"),
                 assignee,
-                arguments.optionalInt("baseRevision") ?: throw InvalidRequestException("docs_move needs baseRevision", READ_FIRST),
+                arguments.optionalInt("baseVersion") ?: throw InvalidRequestException("docs_move needs baseVersion", READ_FIRST),
             )
         return WriteResults.of(documents.changeHeader(context, DocumentId(arguments.uuid("document")), change), all = false)
     }
 }
 
-internal const val READ_FIRST = "read the document with docs_read and pass the revision it shows"
+internal const val READ_FIRST = "read the document with docs_read and pass the version it shows"
 
 internal fun statusOf(value: String?): DocumentStatus? =
     value?.let { name ->
@@ -179,6 +179,7 @@ internal object WriteResults {
             mapOf(
                 "documentId" to written.document.id.value,
                 "revision" to written.revision,
+                "version" to written.document.version,
                 "unchanged" to written.unchanged,
                 "changedBlockIds" to written.changedBlocks.map { it.value },
                 "blocks" to blocks,
@@ -193,6 +194,7 @@ internal object WriteResults {
             "path" to related.document.header.path.value,
             "title" to related.document.header.title,
             "revision" to related.document.revision,
+            "version" to related.document.version,
             "change" to related.change.name.lowercase(),
         )
 }

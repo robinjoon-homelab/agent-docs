@@ -52,6 +52,7 @@ export function toDocumentSummary(value: unknown): DocumentSummary {
     status: toStatus(source),
     tags: strings(source, 'tags'),
     assignee: optStr(source, 'assignee'),
+    version: num(source, 'version'),
     revision: num(source, 'revision'),
     updatedAt: str(source, 'updatedAt'),
     updatedBy: toActor(source.updatedBy),

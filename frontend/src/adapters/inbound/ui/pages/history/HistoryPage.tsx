@@ -29,6 +29,7 @@ import { useLoad } from '../../hooks/useLoad';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { useSpace } from '../../hooks/useSpace';
 import './history.css';
+import { InlineDiff } from './InlineDiff';
 
 const FILTERS: readonly RevisionActorFilter[] = ['all', 'human', 'agent'];
 
@@ -144,6 +145,9 @@ function DiffBlocks({ comparison, onlyChanged }: { comparison: Comparison; onlyC
               ordinal={ordinals.get(row.block.id)}
             />
             {row.marker === 'modified' && row.before !== null && row.block.type !== 'table' ? (
+              <InlineDiff before={row.before} after={row.block} />
+            ) : null}
+            {row.marker === 'modified' && row.before !== null && row.block.type !== 'table' ? (
               <details className="history-before">
                 <summary>이전 내용</summary>
                 <BlockView block={row.before} />
@@ -159,7 +163,7 @@ function DiffBlocks({ comparison, onlyChanged }: { comparison: Comparison; onlyC
 function RestoreDialog({
   documentId,
   revision,
-  baseRevision,
+  baseVersion,
   comparison,
   threads,
   onClose,
@@ -167,8 +171,8 @@ function RestoreDialog({
 }: {
   documentId: string;
   revision: number;
-  /** The document revision this page showed; the server refuses the restore if it moved on. */
-  baseRevision: number;
+  /** The document version this page showed; the server refuses the restore if it moved on. */
+  baseVersion: number;
   comparison: Comparison;
   threads: readonly Thread[];
   onClose: () => void;
@@ -183,7 +187,7 @@ function RestoreDialog({
     setBusy(true);
     setError(null);
     try {
-      await services.documents.restore(documentId, revision, baseRevision);
+      await services.documents.restore(documentId, revision, baseVersion);
       onRestored();
     } catch (failure) {
       setError(failure);
@@ -425,7 +429,7 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
         <RestoreDialog
           documentId={document.id}
           revision={selected}
-          baseRevision={document.revision}
+          baseVersion={document.version}
           comparison={comparison.data}
           threads={threadList}
           onClose={() => setRestoreOpen(false)}

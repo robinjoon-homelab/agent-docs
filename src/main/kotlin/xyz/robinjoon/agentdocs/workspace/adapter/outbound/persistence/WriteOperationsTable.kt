@@ -3,6 +3,7 @@ package xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence
 import org.jetbrains.exposed.v1.core.Table
 import org.jetbrains.exposed.v1.core.java.javaUUID
 import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
 
 internal object WriteOperationsTable : Table("write_operations") {
     val writer = varchar("writer", 60)
@@ -10,6 +11,8 @@ internal object WriteOperationsTable : Table("write_operations") {
     val kind = varchar("kind", 40)
     val targetId = javaUUID("target_id")
     val revision = integer("revision").nullable()
+    val payload = text("payload").nullable()
+    val resultState = enumerationByName<OperationResultState>("result_state", 16)
     val createdAt = timestampWithTimeZone("created_at")
 
     override val primaryKey = PrimaryKey(writer, operationId)

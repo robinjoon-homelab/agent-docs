@@ -22,9 +22,13 @@ import xyz.robinjoon.agentdocs.workspace.application.model.AnchorRequest
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationKey
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadChange
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadCriteria
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadQuery
+import xyz.robinjoon.agentdocs.workspace.application.model.ThreadView
+import xyz.robinjoon.agentdocs.workspace.application.port.input.LegacyOperationException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.InboxRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.OperationStore
@@ -70,11 +74,13 @@ class ThreadServiceTest {
     init {
         every { activity.record(any()) } just runs
         every { inbox.addAll(any()) } just runs
+        every { documents.confirmPending(any()) } answers { firstArg() }
     }
 
     @Test
     fun `a quote that occurs once is anchored at its offsets`() {
         every { documents.findById(documentId) } returns current
+        every { documents.findByIdForUpdate(documentId) } returns current
         every { threads.add(any()) } answers { firstArg() }
 
         val view = service.open(context(ownerAccess), documentId, AnchorRequest.Text(intro.id, "a delay", null), "How long?")
@@ -87,7 +93,7 @@ class ThreadServiceTest {
     @Test
     fun `a thread on a whole block keeps the start of the block's text as its quote`() {
         val diagram = CodeBlock(BlockId("diag01"), "mermaid", "flowchart LR\n" + "  A --> B\n".repeat(40))
-        every { documents.findById(documentId) } returns document(listOf(intro, diagram), revision = 5)
+        every { documents.findByIdForUpdate(documentId) } returns document(listOf(intro, diagram), revision = 5)
         every { threads.add(any()) } answers { firstArg() }
 
         val view = service.open(context(ownerAccess), documentId, AnchorRequest.Whole(diagram.id), "Is the order right?")
@@ -98,6 +104,7 @@ class ThreadServiceTest {
     @Test
     fun `a quote that occurs more than once needs its start`() {
         every { documents.findById(documentId) } returns current
+        every { documents.findByIdForUpdate(documentId) } returns current
 
         assertThatThrownBy { service.open(context(ownerAccess), documentId, AnchorRequest.Text(intro.id, "retry", null), "Which one?") }
             .isInstanceOf(InvalidRequestException::class.java)
@@ -108,6 +115,7 @@ class ThreadServiceTest {
     fun `an agent cannot resolve a thread a person opened`() {
         every { threads.findByIdForUpdate(threadId) } returns thread(owner)
         every { documents.findById(documentId) } returns current
+        every { documents.findByIdForUpdate(documentId) } returns current
 
         assertThatThrownBy {
             service.change(
@@ -124,6 +132,7 @@ class ThreadServiceTest {
     fun `an agent reply can mark the thread answered and a person's reply opens it again`() {
         every { threads.findByIdForUpdate(threadId) } returns thread(owner)
         every { documents.findById(documentId) } returns current
+        every { documents.findByIdForUpdate(documentId) } returns current
         every { threads.update(any()) } answers { firstArg() }
 
         val answered = service.reply(context(agentAccess, ChangeSource.MCP), threadId, "Changed to 30 seconds.", markAnswered = true)
@@ -152,6 +161,7 @@ class ThreadServiceTest {
     @Test
     fun `a commenter who may only read is refused`() {
         every { documents.findById(documentId) } returns current
+        every { documents.findByIdForUpdate(documentId) } returns current
 
         assertThatThrownBy {
             service.open(context(agentAccess(Permission.READ, setOf(spaceId)), ChangeSource.MCP), documentId, AnchorRequest.Document, "Hi")
@@ -159,40 +169,165 @@ class ThreadServiceTest {
     }
 
     @Test
-    fun `a retried comment edit answers with the comment as it is without editing it again`() {
+    fun `a legacy comment key reports the successful operation without reapplying it`() {
         val opened = thread(owner)
         val comment = opened.comments.first().id
         every { operations.find(OperationKey(WorkspaceFixtures.ownerId.toString(), "op-edit")) } returns
             OperationRecord("comment.edit", comment.value, null)
         every { threads.findByCommentForUpdate(comment) } returns opened
         every { documents.findById(documentId) } returns current
+        every { documents.findByIdForUpdate(documentId) } returns current
 
-        val view = service.editComment(context(ownerAccess, operationId = "op-edit"), comment, "Edited again?")
-
-        assertThat(view.written).isEqualTo(comment)
-        assertThat(
-            view.thread.comments
-                .first()
-                .body,
-        ).isEqualTo("How long?")
+        repeat(2) {
+            assertThatThrownBy { service.editComment(context(ownerAccess, operationId = "op-edit"), comment, "Edited again?") }
+                .isInstanceOf(LegacyOperationException::class.java)
+                .hasMessageContaining("already succeeded")
+        }
+        assertThat(opened.comments.first().body).isEqualTo("How long?")
+        assertThat(current.version).isEqualTo(5)
     }
 
     @Test
-    fun `a retried thread change answers with the thread as it is`() {
+    fun `a legacy thread key cannot reapply the old operation`() {
         every { operations.find(OperationKey(WorkspaceFixtures.connectionId.toString(), "op-answer")) } returns
             OperationRecord("thread.change", threadId.value, null)
         every { threads.findById(threadId) } returns thread(owner)
         every { documents.findById(documentId) } returns current
+        every { documents.findByIdForUpdate(documentId) } returns current
 
-        val view =
-            service.change(
-                context(agentAccess, ChangeSource.MCP, "op-answer"),
-                threadId,
-                ThreadChange(status = ThreadStatus.ANSWERED),
-            )
+        repeat(2) {
+            assertThatThrownBy {
+                service.change(context(agentAccess, ChangeSource.MCP, "op-answer"), threadId, ThreadChange(status = ThreadStatus.ANSWERED))
+            }.isInstanceOf(LegacyOperationException::class.java)
+        }
+    }
 
-        assertThat(view.thread.status).isEqualTo(ThreadStatus.OPEN)
-        assertThat(view.written).isNull()
+    @Test
+    fun `a replay returns the original thread and anchor resolution after later replies and edits`() {
+        val original = thread(owner)
+        val first = ThreadView(original, AnchorResolution.Attached(12, 19), null, original.comments.first().id)
+        every { operations.find(any()) } returns OperationRecord("thread.open", threadId.value, null, threadView = first)
+        every { threads.findById(threadId) } returns
+            original.reply(Comment.write(CommentId(UUID.randomUUID()), owner, "Later reply", now), now)
+        every { documents.findById(documentId) } returns document(emptyList(), revision = 6)
+
+        val replayed = service.open(context(ownerAccess, operationId = "same"), documentId, AnchorRequest.Document, "Ignored")
+
+        assertThat(replayed).isEqualTo(first)
+        assertThat(replayed.thread.comments).hasSize(1)
+        assertThat(replayed.resolution).isEqualTo(AnchorResolution.Attached(12, 19))
+    }
+
+    @Test
+    fun `a replayed edit still requires the current comment author`() {
+        val original = thread(owner)
+        val comment = original.comments.first().id
+        val snapshot = ThreadView(original, AnchorResolution.Attached(12, 19), null)
+        every { operations.find(any()) } returns OperationRecord("comment.edit", comment.value, null, threadView = snapshot)
+        every { threads.findByCommentForUpdate(comment) } returns
+            thread(agentAccess.actor).let {
+                CommentThread.restore(
+                    it.id,
+                    it.location,
+                    it.progress,
+                    listOf(Comment.write(comment, agentAccess.actor, "Different author", now)),
+                )
+            }
+        every { documents.findById(documentId) } returns current
+
+        assertThatThrownBy { service.editComment(context(ownerAccess, operationId = "same"), comment, "Ignored") }
+            .isInstanceOf(ThreadActionException::class.java)
+            .hasMessage("only the author can change a comment")
+    }
+
+    @Test
+    fun `a deleted comment replay returns its successful result with no history`() {
+        val original = thread(owner)
+        val comment = original.comments.first().id
+        val deleted = original.editComment(comment, owner, "Secret edit", now).deleteComment(comment, owner, now)
+        val snapshot = ThreadView(deleted, AnchorResolution.Attached(12, 19), null)
+        every { operations.find(any()) } returns OperationRecord("comment.delete", comment.value, null, threadView = snapshot)
+        every { threads.findByCommentForUpdate(comment) } returns deleted
+        every { documents.findById(documentId) } returns current
+
+        val replayed = service.deleteComment(context(ownerAccess, operationId = "same"), comment)
+
+        assertThat(replayed).isEqualTo(snapshot)
+        assertThat(replayed.thread.comment(comment)?.body).isEmpty()
+        assertThat(
+            replayed.thread
+                .comment(comment)
+                ?.history
+                ?.edits,
+        ).isEmpty()
+    }
+
+    @Test
+    fun `opening a thread anchors to the confirmed pending revision`() {
+        val confirmed = current.revise(current.header, current.blocks, now)
+        every { documents.findByIdForUpdate(documentId) } returns current
+        every { documents.confirmPending(current) } returns confirmed
+        every { threads.add(any()) } answers { firstArg() }
+
+        val view = service.open(context(ownerAccess), documentId, AnchorRequest.Document, "Question")
+
+        assertThat(view.thread.location.anchoredRevision).isEqualTo(confirmed.revision)
+    }
+
+    @Test
+    fun `a replayed thread write is refused after comment permission is revoked`() {
+        val original = thread(owner)
+        val snapshot = ThreadView(original, AnchorResolution.Attached(12, 19), null)
+        every { operations.find(any()) } returns OperationRecord("thread.open", threadId.value, null, threadView = snapshot)
+        every { threads.findById(threadId) } returns original
+        val readOnly = agentAccess(Permission.READ, setOf(spaceId))
+
+        assertThatThrownBy {
+            service.open(context(readOnly, operationId = "same"), documentId, AnchorRequest.Document, "Ignored")
+        }.hasMessage("commenting needs comment permission")
+    }
+
+    @Test
+    fun `an anchor change uses the confirmed pending revision`() {
+        val original = thread(owner)
+        val confirmed = current.revise(current.header, current.blocks, now)
+        every { threads.findById(threadId) } returns original
+        every { documents.findByIdForUpdate(documentId) } returns current
+        every { threads.findByIdForUpdate(threadId) } returns original
+        every { documents.confirmPending(current) } returns confirmed
+        every { threads.update(any()) } answers { firstArg() }
+
+        val moved = service.change(context(ownerAccess), threadId, ThreadChange(anchor = AnchorRequest.Document))
+
+        assertThat(moved.thread.location.anchor).isEqualTo(Anchor.Document)
+        assertThat(moved.thread.location.anchoredRevision).isEqualTo(confirmed.revision)
+    }
+
+    @Test
+    fun `a removed comment result reports prior success after checking current author`() {
+        val original = thread(owner)
+        val comment = original.comments.first().id
+        val deleted = original.deleteComment(comment, owner, now)
+        val record = OperationRecord("comment.delete", comment.value, null, state = OperationResultState.REMOVED)
+        every { operations.find(any()) } returns record
+        every { threads.findByCommentForUpdate(comment) } returns deleted
+        every { documents.findById(documentId) } returns current
+
+        assertThatThrownBy { service.deleteComment(context(ownerAccess, operationId = "removed"), comment) }
+            .isInstanceOfSatisfying(ResultRemovedException::class.java) { assertThat(it.record).isEqualTo(record) }
+        assertThat(deleted.comment(comment)?.history?.edits).isEmpty()
+    }
+
+    @Test
+    fun `removed results do not reveal prior success after comment permission is revoked`() {
+        val record = OperationRecord("thread.change", threadId.value, null, state = OperationResultState.REMOVED)
+        every { operations.find(any()) } returns record
+        every { threads.findById(threadId) } returns thread(owner)
+        val readOnly = agentAccess(Permission.READ, setOf(spaceId))
+
+        assertThatThrownBy {
+            service.change(context(readOnly, operationId = "removed"), threadId, ThreadChange(status = ThreadStatus.ANSWERED))
+        }.hasMessage("commenting needs comment permission")
     }
 
     private fun query(spaces: Set<SpaceId>? = setOf(spaceId)): ThreadQuery =

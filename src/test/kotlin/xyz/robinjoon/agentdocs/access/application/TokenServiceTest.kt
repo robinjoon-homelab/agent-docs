@@ -13,6 +13,7 @@ import xyz.robinjoon.agentdocs.access.application.AccessFixtures.now
 import xyz.robinjoon.agentdocs.access.application.AccessFixtures.ownerId
 import xyz.robinjoon.agentdocs.access.application.AccessFixtures.settings
 import xyz.robinjoon.agentdocs.access.application.AccessFixtures.space
+import xyz.robinjoon.agentdocs.access.application.model.AccessSettings
 import xyz.robinjoon.agentdocs.access.application.model.CodeGrant
 import xyz.robinjoon.agentdocs.access.application.model.OAuthException
 import xyz.robinjoon.agentdocs.access.application.model.RefreshGrant
@@ -20,7 +21,9 @@ import xyz.robinjoon.agentdocs.access.application.port.output.AuthorizationReque
 import xyz.robinjoon.agentdocs.access.application.port.output.ConnectionRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.OAuthClientRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.SecretSource
+import xyz.robinjoon.agentdocs.access.application.port.output.UserRepository
 import xyz.robinjoon.agentdocs.access.application.service.AccessJournal
+import xyz.robinjoon.agentdocs.access.application.service.TokenPolicy
 import xyz.robinjoon.agentdocs.access.application.service.TokenService
 import xyz.robinjoon.agentdocs.access.domain.TokenHash
 import xyz.robinjoon.agentdocs.access.domain.authorization.Approval
@@ -31,7 +34,10 @@ import xyz.robinjoon.agentdocs.access.domain.authorization.AuthorizationRequestI
 import xyz.robinjoon.agentdocs.access.domain.authorization.PkceChallenge
 import xyz.robinjoon.agentdocs.access.domain.connection.ConnectionScope
 import xyz.robinjoon.agentdocs.access.domain.connection.Grant
+import xyz.robinjoon.agentdocs.access.domain.user.GitHubAccount
+import xyz.robinjoon.agentdocs.access.domain.user.User
 import xyz.robinjoon.agentdocs.access.domain.user.UserId
+import xyz.robinjoon.agentdocs.access.domain.user.UserProfile
 import java.time.Duration
 import java.util.UUID
 
@@ -40,7 +46,14 @@ class TokenServiceTest {
     private val connections = mockk<ConnectionRepository>()
     private val clients = mockk<OAuthClientRepository>()
     private val secrets = mockk<SecretSource>()
-    private val service = TokenService(requests, connections, clients, secrets, AccessJournal(mockk(), clock), settings)
+    private val users = mockk<UserRepository>()
+    private val service = TokenService(requests, connections, clients, secrets, AccessJournal(mockk(), clock), TokenPolicy(users, settings))
+
+    init {
+        every { users.findById(UserId(ownerId)) } returns
+            User.restore(UserId(ownerId), GitHubAccount(42, "robinjoon"), UserProfile(null, null), now)
+    }
+
     private val verifier = "dBjftJeZ4CVP-mB92K1uhbHmnd17tLmcpf1Or0dfHq4"
     private val redirect = "http://localhost:50111/callback"
 
@@ -86,6 +99,27 @@ class TokenServiceTest {
         assertThat(tokens.refreshToken).isEqualTo("adt_r_new-refresh")
         assertThatThrownBy { service.refresh(RefreshGrant(CLAUDE_CODE, "adt_r_unknown", emptyList())) }
             .isInstanceOfSatisfying(OAuthException::class.java) { assertThat(it.error).isEqualTo("invalid_grant") }
+    }
+
+    @Test
+    fun `removed or demoted delegators cannot refresh or exchange an already approved code`() {
+        every { connections.findByRefreshHashForUpdate(TokenHash.of("adt_r_old")) } returns connection("adt_a_old", "adt_r_old")
+        every { requests.findByCodeForUpdate(TokenHash.of("adt_c_code")) } returns approvedRequest()
+        for (members in listOf(emptySet(), setOf("robinjoon"))) {
+            val changed =
+                TokenService(
+                    requests,
+                    connections,
+                    clients,
+                    secrets,
+                    AccessJournal(mockk(), clock),
+                    TokenPolicy(users, AccessSettings("new-owner", members, settings.issuer)),
+                )
+            assertThatThrownBy { changed.refresh(RefreshGrant(CLAUDE_CODE, "adt_r_old", emptyList())) }
+                .isInstanceOfSatisfying(OAuthException::class.java) { assertThat(it.error).isEqualTo("invalid_grant") }
+            assertThatThrownBy { changed.exchange(CodeGrant(CLAUDE_CODE, "adt_c_code", verifier, redirect, emptyList())) }
+                .isInstanceOfSatisfying(OAuthException::class.java) { assertThat(it.error).isEqualTo("invalid_grant") }
+        }
     }
 
     private fun approvedRequest(): AuthorizationRequest {

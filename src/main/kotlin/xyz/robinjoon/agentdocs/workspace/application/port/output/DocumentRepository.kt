@@ -19,13 +19,28 @@ interface DocumentRepository {
         revision: Revision,
     ): Document
 
-    // Writes a document loaded for update in the same transaction. A new revision is appended; an amended revision
-    // replaces the latest one, which must have the same number.
+    // Writes a locked document and appends immutable history. Only pending snapshots can be replaced.
     fun update(
         document: Document,
         revision: Revision,
         amended: Boolean,
     ): Document
+
+    fun pending(id: DocumentId): Revision?
+
+    fun savePending(
+        document: Document,
+        revision: Revision,
+    ): Document
+
+    fun confirmPending(document: Document): Document
+
+    fun expiredPending(now: Instant): List<DocumentId>
+
+    fun lockTrashedUnder(
+        space: SpaceId,
+        path: DocumentPath,
+    ): List<Document>
 
     fun findById(id: DocumentId): Document?
 

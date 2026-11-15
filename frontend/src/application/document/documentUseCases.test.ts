@@ -45,14 +45,14 @@ describe('document use cases', () => {
     const useCases = createDocumentUseCases(
       gateway({ patch: (_id, _revision, patch) => Promise.resolve(document({ path: patch.path ?? '' })) }),
     );
-    const moved = await useCases.move({ id: 'd1', path: 'guides/setup', revision: 4 }, 'design');
+    const moved = await useCases.move({ id: 'd1', path: 'guides/setup', version: 4 }, 'design');
     expect(moved.ok && moved.value?.path).toBe('design/setup');
-    expect(await useCases.move({ id: 'd1', path: 'guides/setup', revision: 4 }, 'guides')).toEqual({
+    expect(await useCases.move({ id: 'd1', path: 'guides/setup', version: 4 }, 'guides')).toEqual({
       ok: true,
       value: null,
     });
     const deep = Array.from({ length: 10 }, () => 'f').join('/');
-    expect(await useCases.move({ id: 'd1', path: 'a', revision: 4 }, deep)).toEqual({
+    expect(await useCases.move({ id: 'd1', path: 'a', version: 4 }, deep)).toEqual({
       ok: false,
       error: ['path_invalid'],
     });

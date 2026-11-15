@@ -177,11 +177,16 @@ class ChangesSinceTool(
             name = "changes_since",
             title = "What changed",
             description =
-                "Document and comment changes in the spaces this connection sees after an ISO-8601 instant, oldest first. Pass " +
-                    "nextSince to continue.",
+                "Document and comment changes in the spaces this connection sees after an ISO-8601 instant, in insertion order. " +
+                    "Continue with initialSince as since and nextCursor as cursor, including changes at the same instant. " +
+                    "nextSince advances legacy timestamp-only consumers and can skip changes sharing the page boundary timestamp.",
             properties =
                 mapOf(
-                    "since" to Schemas.string("ISO-8601 instant"),
+                    "since" to
+                        Schemas.string(
+                            "Initial ISO-8601 instant; use response initialSince unchanged when continuing with a cursor",
+                        ),
+                    "cursor" to Schemas.integer("Continue after this activity ID, from nextCursor"),
                     "limit" to Schemas.integer("At most this many entries, default 100"),
                 ),
             required = listOf("since"),
@@ -193,8 +198,21 @@ class ChangesSinceTool(
         context: WriteContext,
     ): McpToolResult {
         val since = arguments.optionalInstant("since") ?: Instant.EPOCH
-        val feed = activity.changesSince(context.access, since, arguments.optionalInt("limit") ?: DEFAULT_LIMIT)
-        return McpToolResult.data(mapOf("entries" to feed.entries.map(WorkspaceJson::activity), "nextSince" to feed.nextSince))
+        val feed = activity.changesSince(context.access, since, arguments.optionalInt("limit") ?: DEFAULT_LIMIT, cursor(arguments))
+        return McpToolResult.data(
+            mapOf(
+                "entries" to feed.entries.map(WorkspaceJson::activity),
+                "nextSince" to feed.nextSince,
+                "nextCursor" to feed.nextCursor,
+                "initialSince" to feed.initialSince,
+            ),
+        )
+    }
+
+    private fun cursor(arguments: Arguments): Long? {
+        val value = arguments.node.get("cursor")?.takeUnless { it.isNull } ?: return null
+        if (!value.isInt && !value.isLong) throw InvalidRequestException("argument cursor must be an integer")
+        return value.longValue()
     }
 
     private companion object {

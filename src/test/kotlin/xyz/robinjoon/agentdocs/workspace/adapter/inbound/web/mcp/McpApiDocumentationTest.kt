@@ -37,6 +37,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.StaleRevisionException
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
@@ -127,7 +128,7 @@ class McpApiDocumentationTest : RestDocsWebTest() {
     @Test
     fun `a document read returns the markdown as the only text and no structured content`() {
         val request = MarkdownRequest(MarkdownFormat.ANNOTATED, null, null, 0)
-        val markdown = "---\nid: $documentId\nrevision: 3\n---\n\n<!-- b:para01 h:1a2b3c4d -->\n본문\n"
+        val markdown = "---\nid: $documentId\nversion: 3\n---\n\n<!-- b:para01 h:1a2b3c4d -->\n본문\n"
         every { queries.markdown(agentAccess, documentId, request) } returns MarkdownChunk(document(), markdown, null, 2)
 
         call("""{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"docs_read","arguments":{"document":"$documentId"}}}""")
@@ -183,6 +184,21 @@ class McpApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
+    fun `a stale move returns the current content and version as a tool conflict`() {
+        every { documents.changeHeader(mcpContext, documentId, HeaderChange(null, DocumentPath("billing"), null, null, null, 2)) } throws
+            StaleRevisionException(2, 3, document())
+
+        call(
+            """{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"docs_move","arguments":{"document":"$documentId",""" +
+                """"path":"billing","baseVersion":2}}}""",
+        ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(true))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"currentVersion\":3")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"currentDocument\":")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"blocks\":")))
+    }
+
+    @Test
     fun `a move answers with the documents it moved along`() {
         val child =
             document().let {
@@ -200,7 +216,7 @@ class McpApiDocumentationTest : RestDocsWebTest() {
 
         call(
             """{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"docs_move","arguments":{"document":"$documentId",""" +
-                """"path":"billing","baseRevision":3}}}""",
+                """"path":"billing","baseVersion":3}}}""",
         ).andExpect(jsonPath("$.result.isError").value(false))
             .andExpect(jsonPath("$.result.content[0].text", containsString("\"documentId\":\"${child.id}\"")))
             .andExpect(jsonPath("$.result.content[0].text", containsString("\"path\":\"billing/x\"")))

@@ -13,7 +13,6 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUse
 import xyz.robinjoon.agentdocs.workspace.application.port.input.RevisionNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
-import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentViewReporter
 import xyz.robinjoon.agentdocs.workspace.application.port.output.RevisionCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepository
@@ -23,9 +22,6 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.Revision
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionDiff
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
-import java.time.Clock
-import java.time.LocalDate
-import java.time.ZoneOffset
 
 @Transactional(readOnly = true)
 class DocumentQueryService(
@@ -33,19 +29,13 @@ class DocumentQueryService(
     private val revisions: RevisionCatalog,
     private val spaces: SpaceRepository,
     private val threads: ThreadRepository,
-    private val views: DocumentViewReporter,
-    private val clock: Clock,
 ) : DocumentQueryUseCase {
-    @Transactional
     override fun open(
         access: Access,
         id: DocumentId,
     ): DocumentView {
         val document = readable(access, id)
         val space = spaces.findById(document.spaceId) ?: throw DocumentNotFoundException(id)
-        if (!access.actor.isAgent) {
-            views.record(id, access.actor.login, LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC))
-        }
         return DocumentView(document, space, revisions.marks(id))
     }
 

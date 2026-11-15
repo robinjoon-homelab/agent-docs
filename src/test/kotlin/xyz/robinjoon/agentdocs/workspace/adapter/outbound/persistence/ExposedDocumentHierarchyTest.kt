@@ -55,6 +55,34 @@ class ExposedDocumentHierarchyTest {
     }
 
     @Test
+    fun `all trashed descendants are selected regardless of when they were trashed`() {
+        val first = trash(add("payments/retry"), at.plusSeconds(1))
+        val second = trash(add("payments/retry/backoff"), at.plusSeconds(10))
+        trash(add("payments-old/notes"), at.plusSeconds(1))
+        trash(add("payments_x/notes"), at.plusSeconds(1))
+        add("payments/live")
+        val elsewhere = document(other.id, "payments/other", emptyList())
+        database.inTransaction { documents.add(elsewhere, revisionOf(elsewhere)) }
+        trash(elsewhere, at.plusSeconds(1))
+
+        val found = database.inTransaction { documents.lockTrashedUnder(space.id, DocumentPath("payments")) }
+
+        assertThat(found.map { it.id }).containsExactlyInAnyOrder(first.id, second.id)
+    }
+
+    @Test
+    fun `expiry selects the old parent but preserves a recently trashed child under a reused path`() {
+        val oldParent = trash(add("p"), at)
+        add("p")
+        val recent = trash(add("p/x"), at.plusSeconds(29 * 86_400L))
+
+        val expired = database.inTransaction { documents.trashedBefore(at.plusSeconds(1)) }
+
+        assertThat(expired).containsExactly(oldParent.id)
+        assertThat(database.inTransaction { documents.findById(recent.id) }).isEqualTo(recent)
+    }
+
+    @Test
     fun `the last trashed document at a path is the one trashed most recently`() {
         trash(add("notes"), at.plusSeconds(1))
         val latest = trash(add("notes"), at.plusSeconds(2))

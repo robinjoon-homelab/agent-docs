@@ -18,9 +18,6 @@ import type { DocumentGateway } from '../application/document/ports/DocumentGate
 import type { InboxUseCases } from '../application/inbox/inboxUseCases';
 import { createInboxUseCases } from '../application/inbox/inboxUseCases';
 import type { InboxGateway } from '../application/inbox/ports/InboxGateway';
-import type { MetricsUseCases } from '../application/metrics/metricsUseCases';
-import { createMetricsUseCases } from '../application/metrics/metricsUseCases';
-import type { MetricsGateway } from '../application/metrics/ports/MetricsGateway';
 import type { SearchGateway } from '../application/search/ports/SearchGateway';
 import type { SearchUseCases } from '../application/search/searchUseCases';
 import { createSearchUseCases } from '../application/search/searchUseCases';
@@ -47,7 +44,6 @@ export type Services = {
   readonly inbox: InboxUseCases;
   readonly activity: ActivityUseCases;
   readonly connections: ConnectionUseCases;
-  readonly metrics: MetricsUseCases;
   readonly clock: Clock;
   readonly openEditor: (document: AgentDocument) => DocumentEditorSession;
   /** True when running against the in-memory fake backend (VITE_FAKE_API=true). */
@@ -65,7 +61,6 @@ export type Gateways = {
   readonly activity: ActivityGateway;
   readonly connections: ConnectionGateway;
   readonly oauthRequests: OAuthRequestGateway;
-  readonly metrics: MetricsGateway;
 };
 
 export const systemClock: Clock = { now: () => new Date() };
@@ -81,7 +76,6 @@ export function assembleServices(gateways: Gateways, clock: Clock, fake: boolean
     inbox: createInboxUseCases(gateways.inbox),
     activity: createActivityUseCases(gateways.activity),
     connections: createConnectionUseCases(gateways.connections, gateways.oauthRequests, clock),
-    metrics: createMetricsUseCases(gateways.metrics),
     clock,
     openEditor: (document) => createEditorSession(gateways.documents, clock, document),
     fake,

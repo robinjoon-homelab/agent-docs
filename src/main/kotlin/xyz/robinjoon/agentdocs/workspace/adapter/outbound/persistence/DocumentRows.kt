@@ -32,6 +32,7 @@ internal object DocumentRows {
         statement[DocumentsTable.searchText] =
             (listOf(header.title) + document.blocks.map { it.plainText() }).joinToString("\n").lowercase()
         statement[DocumentsTable.revision] = document.revision
+        statement[DocumentsTable.version] = document.version
         statement[DocumentsTable.updatedAt] = document.lifecycle.updatedAt.utc()
         statement[DocumentsTable.trashedAt] = document.lifecycle.trashedAt?.utc()
     }
@@ -53,6 +54,7 @@ internal object DocumentRows {
             row[DocumentsTable.createdAt].toInstant(),
             row[DocumentsTable.updatedAt].toInstant(),
             row[DocumentsTable.trashedAt]?.toInstant(),
+            row[DocumentsTable.version],
         )
 
     fun bodyOf(blocks: List<Block>): String = BlockMarkdown.write(blocks, annotated = true)

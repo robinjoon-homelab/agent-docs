@@ -3,7 +3,6 @@ import { documentHref } from '../../../../../domain/document/document';
 import type { Space } from '../../../../../domain/space/space';
 import { isArchived, spaceInitial } from '../../../../../domain/space/space';
 import { useServices } from '../../../../../config/ServicesContext';
-import { useSession } from '../../app/SessionContext';
 import { ActorChip } from '../../common/ActorChip';
 import { Icon } from '../../common/Icon';
 import { RelativeTime } from '../../common/RelativeTime';
@@ -12,7 +11,6 @@ import { StatusBadge } from '../../common/StatusBadge';
 import { useLoad } from '../../hooks/useLoad';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { NewSpaceDialog } from './NewSpaceDialog';
-import { UsageCard } from './UsageCard';
 import './home.css';
 
 const RECENT_LIMIT = 10;
@@ -73,10 +71,9 @@ function RecentDocuments({ spaces }: { spaces: readonly Space[] }) {
   );
 }
 
-/** S2: my spaces, recent documents across spaces and, for the owner, usage metrics. */
+/** S2: my spaces and recent documents across spaces. */
 export function HomePage() {
   const services = useServices();
-  const { me } = useSession();
   const [params, setParams] = useSearchParams();
   const spaces = useLoad('home:spaces', () => services.spaces.list());
   usePageTitle('홈');
@@ -149,14 +146,6 @@ export function HomePage() {
             </section>
           ) : null}
         </>
-      ) : null}
-      {me.owner ? (
-        <section className="section" aria-labelledby="home-usage">
-          <h2 className="section-title" id="home-usage">
-            사용 현황
-          </h2>
-          <UsageCard />
-        </section>
       ) : null}
       {dialogOpen ? <NewSpaceDialog onClose={closeDialog} /> : null}
     </div>

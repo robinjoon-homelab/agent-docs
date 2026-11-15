@@ -19,6 +19,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionChange
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.SampleBlocks
 
@@ -42,24 +43,77 @@ class ExposedDocumentRepositoryTest {
     }
 
     @Test
-    fun `a new revision is appended and an amended revision replaces the latest one`() {
+    fun `pending edits update content versions while confirmed history remains immutable`() {
         val created = document(space.id, "notes", listOf(paragraph("para01", "one")))
         database.inTransaction { documents.add(created, revisionOf(created)) }
-        val revised = created.revise(created.header, listOf(paragraph("para01", "two")), at.plusSeconds(5))
-        database.inTransaction { documents.update(revised, revisionOf(revised, agent), amended = false) }
-        val amended = revised.amend(revised.header, listOf(paragraph("para01", "three")), at.plusSeconds(10))
+        val typed = created.amend(created.header, listOf(paragraph("para01", "two")), at.plusSeconds(5))
+        val pending = revisionOf(typed).copy(number = 2)
+        database.inTransaction { documents.savePending(typed, pending) }
+        val continued = typed.amend(typed.header, listOf(paragraph("para01", "three")), at.plusSeconds(10))
+        val incoming = revisionOf(continued)
+        val latest = incoming.copy(number = 2, change = pending.change.amendedWith(incoming.change, incoming.change.summary))
+        database.inTransaction { documents.savePending(continued, latest) }
 
-        database.inTransaction { documents.update(amended, revisionOf(amended, agent), amended = true) }
+        assertThat(database.inTransaction { documents.findById(created.id) }).isEqualTo(continued)
+        assertThat(continued.version).isEqualTo(3)
+        assertThat(continued.revision).isEqualTo(1)
+        assertThat(database.inTransaction { documents.pending(created.id) }).isEqualTo(latest)
+        assertThat(database.inTransaction { revisions.find(created.id, 2) }).isNull()
+        assertThat(database.inTransaction { revisions.list(created.id, RevisionFilter(null, null, null)) }.map { it.number })
+            .containsExactly(1)
+        assertThat(database.inTransaction { revisions.find(created.id, 1) }?.content?.blocks).isEqualTo(created.blocks)
 
-        val history = database.inTransaction { revisions.list(created.id, RevisionFilter(null, null, null)) }
-        assertThat(history.map { it.number }).containsExactly(2, 1)
-        assertThat(database.inTransaction { revisions.find(created.id, 2) }?.content?.blocks).containsExactly(paragraph("para01", "three"))
-        assertThat(
-            database
-                .inTransaction {
-                    revisions.list(created.id, RevisionFilter(ActorKind.AGENT, null, null))
-                }.map { it.number },
-        ).containsExactly(2)
+        val confirmed = database.inTransaction { documents.confirmPending(continued) }
+
+        assertThat(confirmed.revision).isEqualTo(2)
+        assertThat(confirmed.version).isEqualTo(3)
+        assertThat(database.inTransaction { documents.pending(created.id) }).isNull()
+        assertThat(database.inTransaction { revisions.find(created.id, 2) }).isEqualTo(latest)
+        assertThat(database.inTransaction { documents.confirmPending(confirmed) }).isEqualTo(confirmed)
+    }
+
+    @Test
+    fun `an amendment cannot overwrite a confirmed revision`() {
+        val created = document(space.id, "notes", listOf(paragraph("para01", "one")))
+        database.inTransaction { documents.add(created, revisionOf(created)) }
+        val changed = created.amend(created.header, listOf(paragraph("para01", "replacement")), at.plusSeconds(1))
+
+        assertThatThrownBy { database.inTransaction { documents.update(changed, revisionOf(changed), amended = true) } }
+            .isInstanceOf(IllegalStateException::class.java)
+        assertThat(database.inTransaction { revisions.find(created.id, 1) }?.content?.blocks).isEqualTo(created.blocks)
+        assertThat(database.inTransaction { documents.findById(created.id) }).isEqualTo(created)
+    }
+
+    @Test
+    fun `pending expiry includes exactly thirty idle seconds and ten minutes total`() {
+        val idle = document(space.id, "idle", emptyList())
+        val capped = document(space.id, "capped", emptyList())
+        val active = document(space.id, "active", emptyList())
+        database.inTransaction {
+            listOf(idle, capped, active).forEach { documents.add(it, revisionOf(it)) }
+            val idleEdit = idle.amend(idle.header, listOf(paragraph("para01", "idle")), at)
+            documents.savePending(idleEdit, revisionOf(idleEdit).copy(number = 2))
+            val cappedEdit = capped.amend(capped.header, listOf(paragraph("para01", "capped")), at.plusSeconds(29))
+            val cappedRevision =
+                revisionOf(cappedEdit).let {
+                    it.copy(
+                        number = 2,
+                        change =
+                            RevisionChange.restore(
+                                it.change.origin,
+                                it.change.summary,
+                                it.change.changedBlocks,
+                                it.change.period.copy(createdAt = at.minusSeconds(570)),
+                            ),
+                    )
+                }
+            documents.savePending(cappedEdit, cappedRevision)
+            val activeEdit = active.amend(active.header, listOf(paragraph("para01", "active")), at.plusSeconds(1))
+            documents.savePending(activeEdit, revisionOf(activeEdit).copy(number = 2))
+        }
+
+        assertThat(database.inTransaction { documents.expiredPending(at.plusSeconds(29)) }).isEmpty()
+        assertThat(database.inTransaction { documents.expiredPending(at.plusSeconds(30)) }).containsExactlyInAnyOrder(idle.id, capped.id)
     }
 
     @Test

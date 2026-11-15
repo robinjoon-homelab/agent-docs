@@ -35,6 +35,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.RevisionFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionSummary
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.StaleRevisionException
 import xyz.robinjoon.agentdocs.workspace.domain.ActorKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
@@ -109,6 +110,7 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
                     pathParameters(parameterWithName("id").description("문서 ID"), parameterWithName("number").description("리비전 번호")),
                     responseFields(
                         fieldWithPath("revision").description("리비전 번호"),
+                        fieldWithPath("version").description("이 리비전이 확정한 내용 버전"),
                         fieldWithPath("title").description("제목"),
                         fieldWithPath("path").description("경로"),
                         blocksSubsection("blocks"),
@@ -151,6 +153,32 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
+    fun `restore requires a baseVersion`() {
+        mockMvc
+            .perform(
+                post("/api/documents/{id}/restore", documentId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"revision":2}"""),
+            ).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `a stale restore returns the current version and content`() {
+        every { documents.restore(webContext, documentId, 2, 3) } throws StaleRevisionException(3, 4, document(revision = 4))
+
+        mockMvc
+            .perform(
+                post("/api/documents/{id}/restore", documentId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"revision":2,"baseVersion":3}"""),
+            ).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.currentVersion").value(4))
+            .andExpect(jsonPath("$.currentDocument.blocks[1].text").value("실패하면 **30초** 뒤에 다시 시도한다."))
+    }
+
+    @Test
     fun `restore writes the old content as a new revision`() {
         every { documents.restore(webContext, documentId, 2, 4) } returns
             DocumentWrite(document(revision = 5), 5, listOf(body.id), amended = false, unchanged = false)
@@ -160,7 +188,7 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
                 post(
                     "/api/documents/{id}/restore",
                     documentId,
-                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"revision":2,"baseRevision":4}"""),
+                ).principal(owner).contentType(MediaType.APPLICATION_JSON).content("""{"revision":2,"baseVersion":4}"""),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.revision").value(5))
             .andDo(
@@ -169,12 +197,13 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
                     requestFields(
                         fieldWithPath("revision").description("되돌릴 리비전. 이력은 되감지 않고 새 리비전을 만든다"),
                         fieldWithPath(
-                            "baseRevision",
-                        ).optional().type(JsonFieldType.NUMBER).description("화면이 보여 준 현재 리비전. 그 뒤 다른 변경이 있으면 409"),
+                            "baseVersion",
+                        ).type(JsonFieldType.NUMBER).description("화면이 보여 준 현재 version. 다르면 409"),
                         fieldWithPath("opId").optional().type(JsonFieldType.STRING).description("멱등 키"),
                     ),
                     responseFields(
                         fieldWithPath("revision").description("새 리비전"),
+                        fieldWithPath("version").description("복원 후 내용 버전"),
                         fieldWithPath("changedBlockIds").description("바뀐 블록 ID"),
                     ),
                 ),

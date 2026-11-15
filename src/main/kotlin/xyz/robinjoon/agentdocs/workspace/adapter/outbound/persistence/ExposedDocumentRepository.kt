@@ -8,6 +8,7 @@ import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.less
+import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.core.like
 import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.core.or
@@ -68,6 +69,51 @@ class ExposedDocumentRepository : DocumentRepository {
         writeMarks(document, revision)
         return selectById(document.id).single().let(DocumentRows::document)
     }
+
+    override fun pending(id: DocumentId): Revision? =
+        DocumentRevisionsTable
+            .selectAll()
+            .where {
+                (DocumentRevisionsTable.documentId eq id.value) and (DocumentRevisionsTable.pending eq true)
+            }.singleOrNull()
+            ?.let(RevisionRows::revision)
+
+    override fun savePending(
+        document: Document,
+        revision: Revision,
+    ): Document {
+        DocumentsTable.update({ DocumentsTable.id eq document.id.value }) { DocumentRows.write(it, document) }
+        if (pending(document.id) == null) RevisionRows.insert(revision, pending = true) else RevisionRows.replace(revision)
+        writeMarks(document, revision)
+        return document
+    }
+
+    override fun confirmPending(document: Document): Document {
+        val pending = pending(document.id) ?: return document
+        check(pending.number == document.revision + 1 && pending.version == document.version)
+        val confirmed = document.confirmRevision()
+        DocumentRevisionsTable.update({
+            (DocumentRevisionsTable.documentId eq document.id.value) and (DocumentRevisionsTable.pending eq true)
+        }) { it[this.pending] = false }
+        DocumentsTable.update({ DocumentsTable.id eq document.id.value }) { DocumentRows.write(it, confirmed) }
+        return confirmed
+    }
+
+    override fun expiredPending(now: Instant): List<DocumentId> =
+        DocumentRevisionsTable
+            .select(DocumentRevisionsTable.documentId)
+            .where {
+                (DocumentRevisionsTable.pending eq true) and
+                    (
+                        (DocumentRevisionsTable.updatedAt lessEq now.minusSeconds(30).utc()) or
+                            (DocumentRevisionsTable.createdAt lessEq now.minusSeconds(600).utc())
+                    )
+            }.map { DocumentId(it[DocumentRevisionsTable.documentId]) }
+
+    override fun lockTrashedUnder(
+        space: SpaceId,
+        path: DocumentPath,
+    ): List<Document> = under(space, path).andWhere { DocumentsTable.trashedAt.isNotNull() }.forUpdate().map(DocumentRows::document)
 
     override fun findById(id: DocumentId): Document? = selectById(id).singleOrNull()?.let(DocumentRows::document)
 
@@ -153,7 +199,7 @@ class ExposedDocumentRepository : DocumentRepository {
         if (spaces.isEmpty()) return emptyList()
         val latest =
             DocumentsTable.join(DocumentRevisionsTable, JoinType.INNER, additionalConstraint = {
-                (DocumentsTable.id eq DocumentRevisionsTable.documentId) and (DocumentsTable.revision eq DocumentRevisionsTable.revision)
+                (DocumentsTable.id eq DocumentRevisionsTable.documentId) and (DocumentsTable.version eq DocumentRevisionsTable.version)
             })
         val columns = DocumentsTable.columns - DocumentsTable.body - DocumentsTable.searchText + DocumentRevisionsTable.actor.columns
         val query = latest.select(columns).where { DocumentsTable.spaceId inList spaces.map { it.value } }
@@ -182,7 +228,6 @@ class ExposedDocumentRepository : DocumentRepository {
         val threads = ThreadsTable.select(ThreadsTable.id).where { ThreadsTable.documentId eq id.value }.map { it[ThreadsTable.id] }
         ThreadRows.deleteThreads(threads)
         InboxItemsTable.deleteWhere { InboxItemsTable.documentId eq id.value }
-        DocumentViewsTable.deleteWhere { DocumentViewsTable.documentId eq id.value }
         DocumentBlockMarksTable.deleteWhere { DocumentBlockMarksTable.documentId eq id.value }
         DocumentRevisionsTable.deleteWhere { DocumentRevisionsTable.documentId eq id.value }
         DocumentsTable.deleteWhere { DocumentsTable.id eq id.value }

@@ -3,7 +3,6 @@ import { human } from '../test-support/fixtures';
 import { activityHref } from './activity/activity';
 import type { Connection } from './connection/connection';
 import { grantedSpaceNames, validateApproval, validateScriptToken } from './connection/connection';
-import { weeklyTotals } from './metrics/usage';
 import { highlightSnippet } from './search/search';
 import { loginHref } from './session/me';
 import type { Space } from './space/space';
@@ -148,29 +147,5 @@ describe('loginHref', () => {
   it('keeps same-origin next paths only', () => {
     expect(loginHref('/oauth/authorize?request=1')).toBe('/login?next=%2Foauth%2Fauthorize%3Frequest%3D1');
     expect(loginHref('//evil.example')).toBe('/login');
-  });
-});
-
-describe('weeklyTotals', () => {
-  it('sums spaces per week in date order', () => {
-    expect(
-      weeklyTotals({
-        agentResponseMinutesMedian: null,
-        revisitedDocuments: 0,
-        weeks: [
-          { weekStart: '2026-10-12', spaces: [{ slug: 'a', name: 'A', documents: 2, comments: 3 }] },
-          {
-            weekStart: '2026-10-05',
-            spaces: [
-              { slug: 'a', name: 'A', documents: 1, comments: 0 },
-              { slug: 'b', name: 'B', documents: 4, comments: 1 },
-            ],
-          },
-        ],
-      }),
-    ).toEqual([
-      { weekStart: '2026-10-05', documents: 5, comments: 1 },
-      { weekStart: '2026-10-12', documents: 2, comments: 3 },
-    ]);
   });
 });

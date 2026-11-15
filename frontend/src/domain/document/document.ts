@@ -21,6 +21,7 @@ export type DocumentSummary = {
   readonly status: DocumentStatus;
   readonly tags: readonly string[];
   readonly assignee: string | null;
+  readonly version: number;
   readonly revision: number;
   readonly updatedAt: string;
   readonly updatedBy: Actor;
@@ -46,6 +47,7 @@ export type DocumentMeta = {
 export type AgentDocument = DocumentMeta & {
   readonly id: string;
   readonly space: SpaceRef;
+  readonly version: number;
   readonly revision: number;
   readonly createdAt: string;
   readonly updatedAt: string;

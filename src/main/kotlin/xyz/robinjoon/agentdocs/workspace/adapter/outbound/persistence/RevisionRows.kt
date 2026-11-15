@@ -20,10 +20,14 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionContent
 
 // How a revision maps to its row. Changed block ids are stored space-separated.
 internal object RevisionRows {
-    fun insert(revision: Revision) {
+    fun insert(
+        revision: Revision,
+        pending: Boolean = false,
+    ) {
         DocumentRevisionsTable.insert {
             it[documentId] = revision.documentId.value
             it[this.revision] = revision.number
+            it[this.pending] = pending
             it[createdAt] =
                 revision.change.period.createdAt
                     .utc()
@@ -35,7 +39,8 @@ internal object RevisionRows {
     fun replace(revision: Revision) {
         val updated =
             DocumentRevisionsTable.update({
-                (DocumentRevisionsTable.documentId eq revision.documentId.value) and (DocumentRevisionsTable.revision eq revision.number)
+                (DocumentRevisionsTable.documentId eq revision.documentId.value) and
+                    (DocumentRevisionsTable.revision eq revision.number) and (DocumentRevisionsTable.pending eq true)
             }) { write(it, revision) }
         check(updated == 1) { "Revision to replace does not exist: ${revision.documentId} rev ${revision.number}" }
     }
@@ -58,7 +63,13 @@ internal object RevisionRows {
                 DocumentRows.blocksOf(row[DocumentRevisionsTable.body]),
                 row[DocumentRevisionsTable.trashed],
             )
-        return Revision(DocumentId(row[DocumentRevisionsTable.documentId]), row[DocumentRevisionsTable.revision], content, change(row))
+        return Revision(
+            DocumentId(row[DocumentRevisionsTable.documentId]),
+            row[DocumentRevisionsTable.revision],
+            content,
+            change(row),
+            row[DocumentRevisionsTable.version],
+        )
     }
 
     fun change(row: ResultRow): RevisionChange =
@@ -74,6 +85,7 @@ internal object RevisionRows {
         statement: UpdateBuilder<*>,
         revision: Revision,
     ) {
+        statement[DocumentRevisionsTable.version] = revision.version
         val header = revision.content.header
         statement[DocumentRevisionsTable.spaceId] = header.spaceId.value
         statement[DocumentRevisionsTable.path] = header.path.value

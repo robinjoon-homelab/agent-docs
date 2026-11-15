@@ -36,6 +36,7 @@ import { blockDecorationsKey } from './plugins/blockDecorations';
 import { clearDuplicateIds } from './plugins/blockIds';
 import { unmergePastedTables } from './plugins/tableSpans';
 import { pastedImageUrls } from './pastedImages';
+import { pasteStructuredText } from './paste';
 import { threadMarksInput, threadMarksKey } from './plugins/threadMarks';
 import { anchorForSelection, blockAtPos } from './positions';
 import {
@@ -370,6 +371,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
             void importImage(text.trim());
             return true;
           }
+          if (pasteStructuredText(view, event)) return true;
           // The editor drops <img> from pasted web content; the server downloads each image after the text is in.
           const images = pastedImageUrls(event.clipboardData?.getData('text/html') ?? '');
           if (images.length > 0) setTimeout(() => void importImages(images), 0);
@@ -388,8 +390,8 @@ export function DocumentEditor(props: DocumentEditorProps) {
           return true;
         },
       },
-      onUpdate: () => {
-        session.markEdited();
+      onUpdate: ({ editor }) => {
+        session.markEdited(savableBlocks(editor, session));
         autosave.call();
         latest.current.onContentChange();
       },

@@ -5,11 +5,12 @@ import type {
   NewDocument,
   RevisionFilter,
   SaveContentResult,
+  SavedContent,
 } from '../../../../application/document/ports/DocumentGateway';
+import { StaleDocumentError } from '../../../../application/document/ports/DocumentGateway';
 import { ApiError } from '../../../../application/shared/ports/errors';
 import type { Block, StoredBlock } from '../../../../domain/document/block';
 import { blocksEqual, withoutHash } from '../../../../domain/document/block';
-import { mergeAfterConflict } from '../../../../domain/document/merge';
 import { blockPreview } from '../../../../domain/document/blockText';
 import type {
   AgentDocument,
@@ -19,14 +20,11 @@ import type {
   DocumentSummary,
   Revision,
   RevisionSnapshot,
-  SaveConflict,
   TrashedDocument,
 } from '../../../../domain/document/document';
 import type { Actor } from '../../../../domain/shared/actor';
 import type { MemoryStore, StoredRevision } from '../shared/store';
 import { respond } from '../shared/store';
-
-const AMEND_WINDOW_MS = 30_000;
 
 function hashOf(block: Block): string {
   let hash = 0x811c9dc5;
@@ -92,6 +90,7 @@ function unified(from: number, to: number, changes: readonly BlockDiff[]): strin
 
 export class MemoryDocumentGateway implements DocumentGateway {
   private readonly store: MemoryStore;
+  private readonly pending = new Set<string>();
 
   constructor(store: MemoryStore) {
     this.store = store;
@@ -133,6 +132,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
         status: input.status ?? 'draft',
         tags: input.tags ?? [],
         assignee: input.assignee ?? null,
+        version: 1,
         revision: 1,
         createdAt: now,
         updatedAt: now,
@@ -160,34 +160,29 @@ export class MemoryDocumentGateway implements DocumentGateway {
     return respond(() => this.store.document(documentId));
   }
 
-  saveContent(
-    documentId: string,
-    baseRevision: number,
-    blocks: readonly Block[],
-  ): Promise<SaveContentResult> {
+  saveContent(documentId: string, baseVersion: number, blocks: readonly Block[]): Promise<SaveContentResult> {
     return respond((): SaveContentResult => {
       const document = this.store.document(documentId);
-      const conflicts = this.conflicts(document, baseRevision, blocks);
-      if (conflicts.length > 0) return { kind: 'conflict', conflicts };
-      // Like the server: a save based on an older revision keeps other writers' non-conflicting blocks.
-      const merged = baseRevision !== document.revision;
-      const body = merged
-        ? mergeAfterConflict(
-            this.blocksAt(documentId, baseRevision),
-            blocks,
-            document.blocks.map(withoutHash),
-            new Map(),
-          )
-        : blocks;
-      const changes = computeDiff(document.blocks, body);
-      const stored = withHashes(body);
-      const amended = !merged && this.amendable(document);
-      const revision = amended ? document.revision : document.revision + 1;
+      if (baseVersion !== document.version) {
+        return { kind: 'conflict', currentVersion: document.version, currentDocument: document };
+      }
+      const changes = computeDiff(document.blocks, blocks);
+      if (JSON.stringify(document.blocks.map(withoutHash)) === JSON.stringify(blocks.map(withoutHash))) {
+        return {
+          kind: 'saved',
+          version: document.version,
+          revision: document.revision,
+          blocks: document.blocks,
+        };
+      }
+      const stored = withHashes(blocks);
+      const revision = document.revision;
       const now = this.store.now();
       const changedIds = new Set(changes.map((change) => change.blockId));
       const updated: AgentDocument = {
         ...document,
         blocks: stored,
+        version: document.version + 1,
         revision,
         updatedAt: now,
         blockChanges: [
@@ -196,44 +191,71 @@ export class MemoryDocumentGateway implements DocumentGateway {
         ],
       };
       this.store.documents.set(documentId, updated);
-      if (amended) this.replaceLastRevision(updated, changes);
-      else
-        this.pushRevision(
-          updated,
-          `블록 ${changes.length}개 변경`,
-          changes.map((change) => change.blockId),
-        );
+      this.pending.add(documentId);
       this.store.touchSpace(document.space.id);
-      return { kind: 'saved', revision, amended, merged, blocks: stored };
+      return { kind: 'saved', version: updated.version, revision, blocks: stored };
     });
   }
 
-  patch(documentId: string, baseRevision: number, patch: MetaPatch): Promise<AgentDocument> {
+  patch(documentId: string, baseVersion: number, patch: MetaPatch): Promise<AgentDocument> {
     return respond(() => {
       const document = this.store.document(documentId);
-      if (this.metaConflicts(document, baseRevision, patch)) {
-        throw new ApiError('conflict', 409, '같은 항목을 다른 사람이 먼저 바꿨습니다.');
-      }
-      const updated = { ...document, ...patch, revision: document.revision + 1, updatedAt: this.store.now() };
+      if (baseVersion !== document.version) throw new StaleDocumentError(document.version, document);
+      if (
+        Object.entries(patch).every(
+          ([key, value]) => JSON.stringify(document[key as keyof AgentDocument]) === JSON.stringify(value),
+        )
+      )
+        return document;
+      const updated = { ...document, ...patch, version: document.version + 1, updatedAt: this.store.now() };
       this.store.documents.set(documentId, updated);
-      this.pushRevision(updated, '문서 정보 변경', []);
+      this.pending.add(documentId);
       return updated;
     });
   }
 
-  trash(documentId: string): Promise<void> {
+  finalize(documentId: string, baseVersion: number): Promise<SavedContent> {
     return respond(() => {
-      this.store.documents.set(documentId, {
-        ...this.store.document(documentId),
-        trashedAt: this.store.now(),
-      });
+      const current = this.store.document(documentId);
+      const document = current.version === baseVersion ? this.confirm(documentId) : current;
+      return {
+        kind: 'saved',
+        version: document.version,
+        revision: document.revision,
+        blocks: document.blocks,
+      };
     });
   }
 
+  private confirm(documentId: string): AgentDocument {
+    const document = this.store.document(documentId);
+    if (!this.pending.delete(documentId)) return document;
+    const updated = { ...document, revision: document.revision + 1 };
+    this.store.documents.set(documentId, updated);
+    this.pushRevision(updated, '문서 편집', []);
+    return updated;
+  }
+
+  trash(documentId: string): Promise<void> {
+    return respond(() => this.setTrashed(documentId, this.store.now()));
+  }
+
   untrash(documentId: string): Promise<void> {
-    return respond(() => {
-      this.store.documents.set(documentId, { ...this.store.document(documentId), trashedAt: null });
-    });
+    return respond(() => this.setTrashed(documentId, null));
+  }
+
+  private setTrashed(documentId: string, trashedAt: string | null): void {
+    const document = this.confirm(documentId);
+    if ((document.trashedAt === null) === (trashedAt === null)) return;
+    const updated = {
+      ...document,
+      trashedAt,
+      version: document.version + 1,
+      revision: document.revision + 1,
+      updatedAt: this.store.now(),
+    };
+    this.store.documents.set(documentId, updated);
+    this.pushRevision(updated, trashedAt === null ? '휴지통에서 복원' : '휴지통으로 이동', []);
   }
 
   destroy(documentId: string): Promise<void> {
@@ -271,18 +293,20 @@ export class MemoryDocumentGateway implements DocumentGateway {
     });
   }
 
-  restore(documentId: string, revision: number, baseRevision: number): Promise<number> {
+  restore(documentId: string, revision: number, baseVersion: number): Promise<number> {
     return respond(() => {
       const document = this.store.document(documentId);
-      if (baseRevision !== document.revision) {
-        throw new ApiError('conflict', 409, '문서가 그사이 바뀌었습니다. 기록을 새로 불러오세요.');
+      if (baseVersion !== document.version) {
+        throw new StaleDocumentError(document.version, document);
       }
+      const confirmed = this.confirm(documentId);
       const snapshot = this.snapshot(documentId, revision);
       const changes = computeDiff(document.blocks, snapshot.blocks);
       const updated = {
         ...document,
         blocks: snapshot.blocks,
-        revision: document.revision + 1,
+        version: document.version + 1,
+        revision: confirmed.revision + 1,
         updatedAt: this.store.now(),
       };
       this.store.documents.set(documentId, updated);
@@ -308,6 +332,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
       status: document.status,
       tags: document.tags,
       assignee: document.assignee,
+      version: document.version,
       revision: document.revision,
       updatedAt: document.updatedAt,
       updatedBy: last?.meta.actor ?? this.store.actor,
@@ -322,54 +347,6 @@ export class MemoryDocumentGateway implements DocumentGateway {
     const entry = this.history(documentId).find((candidate) => candidate.meta.revision === revision);
     if (entry === undefined) throw new ApiError('not_found', 404, `rev ${revision}을 찾을 수 없습니다.`);
     return entry.snapshot;
-  }
-
-  /** Blocks someone else changed after `baseRevision` that this save also changed differently. */
-  private conflicts(document: AgentDocument, baseRevision: number, blocks: readonly Block[]): SaveConflict[] {
-    if (baseRevision === document.revision) return [];
-    const base =
-      this.history(document.id).find((entry) => entry.meta.revision === baseRevision)?.snapshot.blocks ?? [];
-    const baseById = new Map(base.map((block) => [block.id, block]));
-    return document.blocks
-      .filter((current) => {
-        const before = baseById.get(current.id);
-        const mine = blocks.find((block) => block.id === current.id);
-        // A conflict needs both sides to have changed the block, to different results.
-        const theyChanged = before === undefined || !blocksEqual(before, current);
-        const iChanged = mine !== undefined && (before === undefined || !blocksEqual(before, mine));
-        return mine !== undefined && theyChanged && iChanged && !blocksEqual(mine, current);
-      })
-      .map((current) => ({
-        blockId: current.id,
-        currentHash: current.hash,
-        current: withoutHash(current),
-        currentMarkdown: null,
-      }));
-  }
-
-  private blocksAt(documentId: string, revision: number): Block[] {
-    const entry = this.history(documentId).find((candidate) => candidate.meta.revision === revision);
-    return (entry?.snapshot.blocks ?? []).map(withoutHash);
-  }
-
-  /** A stale metadata change conflicts only when someone else changed the same field since then. */
-  private metaConflicts(document: AgentDocument, baseRevision: number, patch: MetaPatch): boolean {
-    if (baseRevision === document.revision) return false;
-    const base = this.history(document.id).find((entry) => entry.meta.revision === baseRevision)?.snapshot;
-    if (base === undefined) return true;
-    return (
-      (patch.title !== undefined && base.title !== document.title) ||
-      (patch.path !== undefined && base.path !== document.path)
-    );
-  }
-
-  private amendable(document: AgentDocument): boolean {
-    const last = this.history(document.id).at(-1)?.meta;
-    if (last === undefined || last.actor.kind !== 'human' || last.revision !== document.revision)
-      return false;
-    return (
-      Date.now() - new Date(document.updatedAt).getTime() < AMEND_WINDOW_MS && last.summary.startsWith('블록')
-    );
   }
 
   private pushRevision(document: AgentDocument, summary: string, changedBlockIds: readonly string[]): void {
@@ -395,19 +372,6 @@ export class MemoryDocumentGateway implements DocumentGateway {
       },
     });
     this.store.revisions.set(document.id, history);
-  }
-
-  private replaceLastRevision(document: AgentDocument, changes: readonly BlockDiff[]): void {
-    const history = this.history(document.id);
-    const last = history.pop();
-    if (last === undefined) return;
-    const changedBlockIds = [
-      ...new Set([...last.meta.changedBlockIds, ...changes.map((change) => change.blockId)]),
-    ];
-    history.push({
-      meta: { ...last.meta, changedBlockIds, summary: `블록 ${changedBlockIds.length}개 변경` },
-      snapshot: { ...last.snapshot, blocks: document.blocks },
-    });
   }
 }
 
@@ -436,6 +400,7 @@ export function simulateAgentEdit(
   const updated: AgentDocument = {
     ...document,
     blocks,
+    version: document.version + 1,
     revision,
     updatedAt: now,
     blockChanges: [

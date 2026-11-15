@@ -107,6 +107,10 @@ export class HttpClient {
     return this.request('POST', path, json === undefined ? null : { json });
   }
 
+  postKeepalive(path: string): Promise<unknown> {
+    return this.request('POST', path, null, true);
+  }
+
   put(path: string, json: unknown): Promise<unknown> {
     return this.request('PUT', path, { json });
   }
@@ -133,7 +137,7 @@ export class HttpClient {
     return headers;
   }
 
-  private async request(method: string, path: string, body: Body): Promise<unknown> {
+  private async request(method: string, path: string, body: Body, keepalive = false): Promise<unknown> {
     // Redirects are not followed: for API calls a redirect means the session is gone and Spring
     // Security is sending the browser to the login flow.
     const init: RequestInit = {
@@ -142,6 +146,7 @@ export class HttpClient {
       credentials: 'same-origin',
       redirect: 'manual',
     };
+    if (keepalive) init.keepalive = true;
     if (body !== null) init.body = 'json' in body ? JSON.stringify(body.json) : body.form;
     let response: Response;
     try {

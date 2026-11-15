@@ -3,7 +3,6 @@ import type { Asset } from '../../../../domain/asset/asset';
 import type { Connection, OAuthRequest } from '../../../../domain/connection/connection';
 import type { AgentDocument, Revision, RevisionSnapshot } from '../../../../domain/document/document';
 import type { InboxItem } from '../../../../domain/inbox/inbox';
-import type { Usage } from '../../../../domain/metrics/usage';
 import type { Me } from '../../../../domain/session/me';
 import type { Actor } from '../../../../domain/shared/actor';
 import type { Space } from '../../../../domain/space/space';
@@ -29,7 +28,6 @@ export class MemoryStore {
   connections: Connection[] = [];
   oauthRequests = new Map<string, OAuthRequest>();
   assets = new Map<string, { readonly asset: Asset; readonly url: string }>();
-  usage: Usage = { weeks: [], agentResponseMinutesMedian: null, revisitedDocuments: 0 };
   private counter = 0;
 
   constructor(me: Me) {
