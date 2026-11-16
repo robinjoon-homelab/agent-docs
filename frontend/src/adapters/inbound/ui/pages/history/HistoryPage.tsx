@@ -289,20 +289,38 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
   const requestedText = searchParams.get('rev');
   const requested =
     requestedText === null || Number.isNaN(Number(requestedText)) ? null : Number(requestedText);
-  const revisions = useLoad(`revisions:${document.id}:${filter}:${fromDate}:${toDate}`, () =>
-    services.documents.revisions(document.id, {
+  const revisions = useLoad(`revisions:${document.id}:${filter}:${fromDate}:${toDate}`, async () => {
+    const items = await services.documents.revisions(document.id, {
       ...(filter === 'all' ? {} : { actor: filter }),
       ...revisionPeriod(fromDate, toDate),
-    }),
-  );
+    });
+    // Leaving the editor can finalize a revision after the page's first document read.
+    const current = await services.documents.get(document.id);
+    return { documentId: document.id, items, currentRevision: current.revision };
+  });
+  const currentRevision = revisions.state === 'ready' ? revisions.data.currentRevision : document.revision;
   const threads = useLoad(`history-threads:${document.id}`, () => services.threads.list(document.id));
   const selected =
-    revisions.state === 'ready' ? defaultRevision(revisions.data, document.revision, requested) : null;
+    revisions.state === 'ready' ? defaultRevision(revisions.data.items, currentRevision, requested) : null;
   const range = mode === 'pair' ? orderedPair(pair) : selected === null ? null : { from: selected, to: null };
-  const comparisonKey = range === null ? 'none' : `${document.id}:${range.from}:${range.to ?? 'current'}`;
-  const comparison = useLoad<Comparison | null>(`compare:${comparisonKey}`, () =>
-    range === null ? Promise.resolve(null) : services.documents.compare(document.id, range.from, range.to),
-  );
+  const comparisonKey =
+    range === null ? 'none' : `${document.id}:${range.from}:${range.to ?? `current:${currentRevision}`}`;
+  const comparison = useLoad<Comparison | null>(`compare:${comparisonKey}`, async () => {
+    if (range === null) return null;
+    const result = await services.documents.compare(document.id, range.from, range.to);
+    if (range.to === null) {
+      revisions.setData((current) =>
+        current.documentId === document.id && result.diff.to > current.currentRevision
+          ? { ...current, currentRevision: Math.max(current.currentRevision, result.diff.to) }
+          : current,
+      );
+    }
+    return result;
+  });
+
+  const compared = comparison.state === 'ready' ? comparison.data?.diff : undefined;
+  const displayedCurrentRevision =
+    mode === 'current' && compared !== undefined ? Math.max(currentRevision, compared.to) : currentRevision;
 
   const select = (revision: number): void => {
     if (mode === 'pair') {
@@ -327,7 +345,7 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
 
   const selectedRevision =
     revisions.state === 'ready'
-      ? revisions.data.find((revision) => revision.revision === range?.from)
+      ? revisions.data.items.find((revision) => revision.revision === range?.from)
       : undefined;
   const threadList = threads.state === 'ready' ? threads.data : [];
   const counts =
@@ -409,16 +427,16 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
           {revisions.state === 'error' ? (
             <ErrorBox error={revisions.error} onRetry={revisions.reload} />
           ) : null}
-          {revisions.state === 'ready' && revisions.data.length === 0 ? (
+          {revisions.state === 'ready' && revisions.data.items.length === 0 ? (
             <p className="muted small">해당하는 리비전이 없습니다.</p>
           ) : null}
           {revisions.state === 'ready' ? (
             <ul className="list history-revisions">
-              {revisions.data.map((revision) => (
+              {revisions.data.items.map((revision) => (
                 <RevisionRow
                   key={revision.revision}
                   revision={revision}
-                  current={revision.revision === document.revision}
+                  current={revision.revision === displayedCurrentRevision}
                   mode={mode}
                   selected={
                     mode === 'pair' ? pair.includes(revision.revision) : revision.revision === selected
@@ -450,7 +468,7 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
                 ? mode === 'pair'
                   ? '비교할 리비전 두 개를 고르세요'
                   : '리비전을 고르세요'
-                : `rev ${range.from} → ${range.to === null ? `현재 (rev ${document.revision})` : `rev ${range.to}`}`}
+                : `rev ${compared?.from ?? range.from} → ${range.to === null ? `현재 (rev ${compared?.to ?? currentRevision})` : `rev ${compared?.to ?? range.to}`}`}
             </strong>
             {counts === null ? null : (
               <span className="history-counts small">
@@ -476,7 +494,10 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
                   마크다운
                 </button>
               </div>
-              {editable && mode === 'current' && selected !== null && selected !== document.revision ? (
+              {editable &&
+              mode === 'current' &&
+              selected !== null &&
+              selected !== displayedCurrentRevision ? (
                 <button
                   type="button"
                   className="btn btn-small"
