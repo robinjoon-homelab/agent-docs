@@ -5,7 +5,12 @@ import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import xyz.robinjoon.agentdocs.workspace.application.model.AssetContentMissingException
+import xyz.robinjoon.agentdocs.workspace.application.model.ExportAsset
+import xyz.robinjoon.agentdocs.workspace.application.model.ExportAssetMissingException
 import xyz.robinjoon.agentdocs.workspace.application.model.WorkspaceExport
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ExportIncompleteException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ExportArchive
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ExportCatalog
@@ -22,6 +27,31 @@ class ExportServiceTest {
     private val archive = mockk<ExportArchive>()
     private val service = ExportService(catalog, archive)
     private val user = UUID.randomUUID()
+
+    @Test
+    fun `a missing export original becomes a public incomplete failure without losing its context`() {
+        val asset = ExportAsset("asset-id", "html", "missing-hash")
+        val missing = AssetContentMissingException(asset.sha256)
+        val archiveFailure = ExportAssetMissingException(asset, missing)
+        val snapshot = WorkspaceExport(emptyMap(), emptyMap(), listOf(asset))
+        every { catalog.snapshot(null) } returns snapshot
+        every { archive.zip(snapshot) } throws archiveFailure
+
+        val failure =
+            assertThrows<ExportIncompleteException> {
+                service.export(Access(Actor.human(user, "owner"), SpaceScope.AllSpaces, Permission.OWNER), null)
+            }
+
+        assertThat(failure.failedAsset).isEqualTo(asset)
+        assertThat(failure.cause).isSameAs(archiveFailure)
+        assertThat(failure.cause?.cause).isSameAs(missing)
+    }
+
+    @Test
+    fun `a human without owner permission cannot export`() {
+        assertThatThrownBy { service.export(Access(Actor.human(user, "member"), SpaceScope.AllSpaces, Permission.READ), null) }
+            .isInstanceOf(PermissionDeniedException::class.java)
+    }
 
     @Test
     fun `a missing projection space preserves the public not found failure and its cause`() {

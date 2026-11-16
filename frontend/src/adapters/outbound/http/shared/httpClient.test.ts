@@ -20,6 +20,27 @@ const csrfServer: FetchLike = (_url, init) => {
 };
 
 describe('HttpClient', () => {
+  it('preserves an incomplete export problem and its first attachment context', async () => {
+    const body = {
+      code: 'export_incomplete',
+      detail: 'export could not include all attachment originals',
+      fix: 'restore a verified original; retain metadata and history',
+      failedAsset: { id: 'first-asset', sha256: 'a'.repeat(64) },
+      scanComplete: false,
+    };
+    const client = new HttpClient({
+      fetch: () => Promise.resolve(json(500, body, 'application/problem+json')),
+      cookies: () => '',
+    });
+    await expect(client.get('/api/spaces/docs/export.zip')).rejects.toMatchObject({
+      code: 'export_incomplete',
+      status: 500,
+      message: body.detail,
+      fix: body.fix,
+      body,
+    });
+  });
+
   it('sends the XSRF cookie value on mutating requests', async () => {
     const withCookie = new HttpClient({ fetch: csrfServer, cookies: () => 'a=1; XSRF-TOKEN=tok%2Fen%3D' });
     expect(await withCookie.post('/api/spaces', { name: 'x' })).toEqual({

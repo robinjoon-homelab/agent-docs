@@ -1,6 +1,8 @@
 package xyz.robinjoon.agentdocs.workspace.application.service
 
 import org.springframework.transaction.annotation.Transactional
+import xyz.robinjoon.agentdocs.workspace.application.model.ExportAssetMissingException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ExportIncompleteException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ExportUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ExportArchive
@@ -24,6 +26,8 @@ class ExportService(
         } catch (unavailable: xyz.robinjoon.agentdocs.workspace.application.model.ExportSpaceUnavailableException) {
             throw xyz.robinjoon.agentdocs.workspace.application.port.input
                 .SpaceNotFoundException(unavailable.space, unavailable)
+        } catch (missing: ExportAssetMissingException) {
+            throw ExportIncompleteException(missing.asset, missing)
         }
     }
 }
