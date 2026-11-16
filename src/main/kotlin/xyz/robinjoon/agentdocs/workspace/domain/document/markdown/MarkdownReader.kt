@@ -7,6 +7,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Callout
 import xyz.robinjoon.agentdocs.workspace.domain.document.CalloutKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
+import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Heading
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
@@ -152,14 +153,19 @@ class MarkdownReader private constructor(
     private fun readImage(
         id: BlockId,
         line: String,
-    ): ImageBlock {
+    ): Block {
         val match =
             imagePattern.matchEntire(line) ?: throw InvalidDocumentException(
                 "images must reference an uploaded asset as ![alt](asset:ID \"caption\"); upload the file first and use its asset id",
             )
         index++
         val asset = AssetId(UUID.fromString(match.groupValues[2]))
-        return ImageBlock(id, asset, unescape(match.groupValues[1]), unescape(match.groupValues[3]))
+        val alt = unescape(match.groupValues[1])
+        val caption = unescape(match.groupValues[3])
+        // Only an exact drawing caption names a scene. Anything else, even a near miss, stays an image so that stored
+        // bodies always read back.
+        val scene = DrawingBlock.sceneIn(asset, caption)
+        return if (scene == null) ImageBlock(id, asset, alt, caption) else DrawingBlock(id, asset, scene, alt)
     }
 
     private fun readListItem(id: BlockId): ListItem {

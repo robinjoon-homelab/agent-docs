@@ -91,6 +91,12 @@ function blockMarkdown(block: DraftBlock, assetUrl: (assetId: string) => string,
       return tableMarkdown(block);
     case 'image':
       return imageMarkdown(block, assetUrl);
+    case 'drawing':
+      // Outside the app only the picture is meaningful; pasting inside the editor keeps the node itself.
+      return imageMarkdown(
+        { id: block.id, type: 'image', assetId: block.svgAssetId, alt: block.alt, caption: '' },
+        assetUrl,
+      );
     case 'divider':
       return '---';
   }

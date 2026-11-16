@@ -26,7 +26,6 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.RevisionCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepository
 import xyz.robinjoon.agentdocs.workspace.domain.Access
-import xyz.robinjoon.agentdocs.workspace.domain.Actor
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceScope
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
@@ -158,7 +157,7 @@ class ThreadService(
         val now = journal.now()
         if (change.linkRevision != null || change.status == ThreadStatus.ANSWERED) current.requireAvailable(context.access.actor, now)
         val moved = change.anchor?.let { current.moveTo(AnchorPlacement.place(it, document), document.revision, now) } ?: current
-        val updated = change.status?.let { statusChanged(moved, it, context.access.actor, now) } ?: moved
+        val updated = change.status?.let { statusChanged(moved, it, context.access, now) } ?: moved
         val linked = change.linkRevision?.let { linked(updated, it, document, now) } ?: updated
         if (linked == current) return remembered(context, OperationRecord(CHANGE, thread.value, null), viewOf(current, document))
         val saved = threads.update(linked)
@@ -179,16 +178,27 @@ class ThreadService(
         val revision: Int?,
     )
 
+    // A person who may comment but not edit the space resolves only their own threads. Agents keep their own rule in
+    // the thread: they never resolve a thread a person opened.
     private fun statusChanged(
         thread: CommentThread,
         status: ThreadStatus,
-        actor: Actor,
+        access: Access,
         now: Instant,
     ): CommentThread? =
         when (status) {
-            ThreadStatus.OPEN -> thread.reopen(now)
-            ThreadStatus.ANSWERED -> thread.markAnswered(now)
-            ThreadStatus.RESOLVED -> thread.resolve(actor, now)
+            ThreadStatus.OPEN -> {
+                thread.reopen(now)
+            }
+
+            ThreadStatus.ANSWERED -> {
+                thread.markAnswered(now)
+            }
+
+            ThreadStatus.RESOLVED -> {
+                val onlyOwn = !access.actor.isAgent && !access.allows(thread.location.spaceId, Permission.EDIT)
+                thread.resolve(access.actor, now, onlyOwn)
+            }
         }
 
     private fun linked(

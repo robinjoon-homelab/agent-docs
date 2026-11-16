@@ -3,14 +3,20 @@ package xyz.robinjoon.agentdocs.workspace.application.service
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.model.VerifiedImage
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ImageVerifier
+import xyz.robinjoon.agentdocs.workspace.application.port.output.SceneVerifier
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetContent
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
 import xyz.robinjoon.agentdocs.workspace.domain.asset.InvalidAssetException
 
-// Unknown formats are downloads, never trusted as executable MIME types.
+// Unknown formats are downloads, never trusted as executable MIME types. A drawing scene keeps its exact bytes.
 internal class AttachmentVerifier(
     private val images: ImageVerifier,
+    private val scenes: SceneVerifier,
 ) {
+    // A public image address may only bring in an image.
+    fun image(bytes: ByteArray): VerifiedImage =
+        images.verify(bytes) ?: throw InvalidAssetException("only PNG, JPEG, GIF, WebP, and SVG images can be uploaded")
+
     fun verify(file: UploadedFile): VerifiedImage {
         if (file.bytes.isEmpty() || file.bytes.size > AssetContent.MAX_SIZE) {
             throw InvalidAssetException("a file must be 1 byte to 20MB")
@@ -40,6 +46,7 @@ internal class AttachmentVerifier(
             return AssetMediaType.PDF
         }
         if (declared == "application/pdf") throw InvalidAssetException("PDF content must start with %PDF-")
+        if (declared == AssetMediaType.EXCALIDRAW.mime || name.endsWith(".excalidraw")) return scene(file, declared)
         if (declared == "text/html" || name.endsWith(".html") || name.endsWith(".htm")) {
             val text = textOf(file.bytes)
             if (!htmlStart.containsMatchIn(text)) throw InvalidAssetException("HTML must contain markup")
@@ -51,6 +58,15 @@ internal class AttachmentVerifier(
             return AssetMediaType.TEXT
         }
         return AssetMediaType.BINARY
+    }
+
+    private fun scene(
+        file: UploadedFile,
+        declared: String,
+    ): AssetMediaType {
+        if (declared !in sceneDeclarations) throw InvalidAssetException("file content does not match declared type $declared")
+        scenes.verify(file.bytes)
+        return AssetMediaType.EXCALIDRAW
     }
 
     private fun isPdf(bytes: ByteArray): Boolean =
@@ -75,6 +91,9 @@ internal class AttachmentVerifier(
 
     private companion object {
         const val PDF_HEADER = "%PDF-"
+
+        // curl and browsers send an unknown extension as octet-stream, and Excalidraw's own files may come as JSON.
+        val sceneDeclarations = setOf("", "application/octet-stream", "application/json", AssetMediaType.EXCALIDRAW.mime)
         val htmlStart = Regex("<[!a-zA-Z][^>]*>")
     }
 }

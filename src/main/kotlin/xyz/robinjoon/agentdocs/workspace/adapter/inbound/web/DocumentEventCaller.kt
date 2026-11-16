@@ -35,7 +35,10 @@ class DocumentEventCaller(
             } else {
                 Actor.agent(caller.userId, caller.login, AgentIdentity(connection.id, connection.name))
             }
-        val spaces = caller.spaces?.let { SpaceScope.Listed(it.map(::SpaceId).toSet()) } ?: SpaceScope.AllSpaces
+        val spaces =
+            caller.spaces?.let { grants ->
+                SpaceScope.Listed(grants.mapKeys { SpaceId(it.key) }.mapValues { permission(it.value) })
+            } ?: SpaceScope.AllSpaces
         return Access(actor, spaces, permission(caller.scope))
     }
 

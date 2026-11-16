@@ -47,8 +47,8 @@ class SuggestionService(
         thread: ThreadId,
         request: SuggestionRequest,
     ): ThreadView {
-        journal.replayed(context, SUGGEST)?.let { return replay(context, it) }
-        val (current, document) = locked(context, thread)
+        journal.replayed(context, SUGGEST)?.let { return replay(context, it, Permission.COMMENT) }
+        val (current, document) = locked(context, thread, Permission.COMMENT)
         current.requireAvailable(context.access.actor, journal.now())
         val anchor = AnchorPlacement.place(request.anchor, document)
         val block = document.block(SuggestionPatch.blockId(anchor)) ?: throw InvalidRequestException("block not found")
@@ -73,10 +73,10 @@ class SuggestionService(
         comment: CommentId,
         accept: Boolean,
     ): ThreadView {
-        requireHumanOwner(context)
-        journal.replayed(context, DECIDE)?.let { return replay(context, it) }
+        requireHuman(context)
+        journal.replayed(context, DECIDE)?.let { return replay(context, it, Permission.EDIT) }
         val known = threads.findByComment(comment) ?: throw CommentNotFoundException(comment)
-        val (current, document) = locked(context, known.id)
+        val (current, document) = locked(context, known.id, Permission.EDIT)
         val suggestion =
             current.collaboration.suggestions.firstOrNull { it.comment == comment }
                 ?: throw InvalidRequestException("comment has no suggestion")
@@ -148,36 +148,39 @@ class SuggestionService(
         return saved
     }
 
+    // Suggesting needs comment permission in the thread's space; deciding needs edit permission there, which the owner
+    // and editors hold.
     private fun locked(
         context: WriteContext,
         id: ThreadId,
+        needed: Permission,
     ): Pair<CommentThread, Document> {
         val known = threads.findById(id)?.takeIf { context.access.sees(it.location.spaceId) } ?: throw ThreadNotFoundException(id)
         val document =
             documents
                 .findByIdForUpdate(known.location.documentId)
                 ?.takeIf { context.access.sees(it.spaceId) } ?: throw ThreadNotFoundException(id)
-        Permissions.require(context.access, document.spaceId, Permission.COMMENT, "suggesting changes")
+        val action = if (needed == Permission.EDIT) "deciding suggestions" else "suggesting changes"
+        Permissions.require(context.access, document.spaceId, needed, action)
         val current = threads.findByIdForUpdate(id) ?: throw ThreadNotFoundException(id)
         return current to document
     }
 
-    private fun requireHumanOwner(context: WriteContext) {
-        Permissions.requireOwner(context.access, "deciding suggestions")
+    // Agents never decide, even with edit permission: a person accepts or rejects what is proposed.
+    private fun requireHuman(context: WriteContext) {
         if (context.access.actor.isAgent) {
-            throw PermissionDeniedException(
-                Permission.OWNER,
-                "only the current human owner decides suggestions",
-            )
+            throw PermissionDeniedException(Permission.EDIT, "deciding suggestions, which only a person does,")
         }
     }
 
+    // A retried request passes the same check as the first attempt before it gets the first answer back.
     private fun replay(
         context: WriteContext,
         record: OperationRecord,
+        needed: Permission,
     ): ThreadView {
         val known = threads.findById(ThreadId(record.target)) ?: throw ThreadNotFoundException(record.target)
-        locked(context, known.id)
+        locked(context, known.id, needed)
         if (record.state == OperationResultState.REMOVED) throw ResultRemovedException(record)
         return record.threadView ?: throw LegacyOperationException(record)
     }

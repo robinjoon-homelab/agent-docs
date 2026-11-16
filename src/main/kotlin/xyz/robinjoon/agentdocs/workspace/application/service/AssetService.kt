@@ -12,7 +12,6 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
-import xyz.robinjoon.agentdocs.workspace.application.port.output.ImageVerifier
 import xyz.robinjoon.agentdocs.workspace.application.port.output.RemoteImageSource
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.domain.Access
@@ -21,7 +20,6 @@ import xyz.robinjoon.agentdocs.workspace.domain.asset.Asset
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetContent
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetOrigin
-import xyz.robinjoon.agentdocs.workspace.domain.asset.InvalidAssetException
 import xyz.robinjoon.agentdocs.workspace.domain.space.Space
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import java.util.UUID
@@ -29,17 +27,16 @@ import java.util.UUID
 // Every upload or import is its own asset with its own name and source address; identical bytes are stored once under
 // their hash, which every asset with that content shares. The bytes go to the store before the row is written, so if
 // the row then fails they are an unreferenced copy a retry reuses.
+// The constructor is internal because its verifier is: only this module's configuration assembles the service.
 @Transactional(readOnly = true)
-class AssetService(
+class AssetService internal constructor(
     private val spaces: SpaceRepository,
     private val assets: AssetRepository,
     private val store: AssetStore,
-    private val verifier: ImageVerifier,
+    private val attachments: AttachmentVerifier,
     private val remote: RemoteImageSource,
     private val journal: WriteJournal,
 ) : AssetUseCase {
-    private val attachments = AttachmentVerifier(verifier)
-
     @Transactional
     override fun upload(
         context: WriteContext,
@@ -63,7 +60,7 @@ class AssetService(
         val image =
             remote.fetch(url)
                 ?: throw InvalidRequestException("could not download a public image from $url", "download it and upload the file")
-        return keep(context, target, verified(image.bytes), Source(url.substringBefore('?').substringAfterLast('/'), url))
+        return keep(context, target, attachments.image(image.bytes), Source(url.substringBefore('?').substringAfterLast('/'), url))
     }
 
     override fun content(
@@ -93,9 +90,6 @@ class AssetService(
         journal.record(context, "asset.uploaded", ActivitySubject(space.id.value, null, null, null), "첨부 업로드: $name")
         return kept
     }
-
-    private fun verified(bytes: ByteArray): VerifiedImage =
-        verifier.verify(bytes) ?: throw InvalidAssetException("only PNG, JPEG, GIF, WebP, and SVG images can be uploaded")
 
     private fun writable(
         access: Access,

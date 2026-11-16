@@ -12,7 +12,10 @@ import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.agentAcce
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.context
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.document
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.documentId
+import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.member
+import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.memberAccess
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.now
+import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.otherSpaceId
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.owner
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.ownerAccess
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.paragraph
@@ -29,6 +32,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.ThreadQuery
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadView
 import xyz.robinjoon.agentdocs.workspace.application.port.input.LegacyOperationException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.InboxRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.OperationStore
@@ -127,6 +131,27 @@ class ThreadServiceTest {
         }.isInstanceOfSatisfying(ThreadActionException::class.java) {
             assertThat(it.fix).isEqualTo("mark the thread answered; the person who opened it resolves it")
         }
+    }
+
+    @Test
+    fun `an editor resolves any thread, a commenter only one they opened, and another space stays unseen`() {
+        every { documents.findById(documentId) } returns current
+        every { documents.findByIdForUpdate(documentId) } returns current
+        every { threads.update(any()) } answers { firstArg() }
+        val resolve = ThreadChange(status = ThreadStatus.RESOLVED)
+        val editor = memberAccess(mapOf(spaceId to Permission.EDIT))
+        val commenter = memberAccess(mapOf(spaceId to Permission.COMMENT, otherSpaceId to Permission.EDIT))
+
+        every { threads.findByIdForUpdate(threadId) } returns thread(owner)
+        assertThat(service.change(context(editor), threadId, resolve).thread.status).isEqualTo(ThreadStatus.RESOLVED)
+        assertThatThrownBy { service.change(context(commenter), threadId, resolve) }
+            .isInstanceOf(ThreadActionException::class.java)
+            .hasMessage("a commenter can resolve only a thread they opened")
+        assertThatThrownBy { service.change(context(memberAccess(mapOf(otherSpaceId to Permission.EDIT))), threadId, resolve) }
+            .isInstanceOf(ThreadNotFoundException::class.java)
+
+        every { threads.findByIdForUpdate(threadId) } returns thread(member)
+        assertThat(service.change(context(commenter), threadId, resolve).thread.status).isEqualTo(ThreadStatus.RESOLVED)
     }
 
     @Test

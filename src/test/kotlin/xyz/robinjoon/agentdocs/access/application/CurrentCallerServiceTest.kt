@@ -37,4 +37,30 @@ class CurrentCallerServiceTest {
         every { sessions.currentCaller("test-session") } returns null
         assertThat(service.current(credential)).isNull()
     }
+
+    @Test
+    fun `snapshots retain distinct space grants and the global ceiling`() {
+        val edited = UUID.randomUUID()
+        val commented = UUID.randomUUID()
+        val member =
+            Caller(
+                caller.userId,
+                "member",
+                false,
+                null,
+                mapOf(edited to CallerScope.EDIT, commented to CallerScope.COMMENT),
+                CallerScope.EDIT,
+            )
+        every { sessions.currentCaller("member-session") } returns member
+
+        val snapshot = requireNotNull(service.current(Credential(Credential.Kind.WEB_SESSION, "member-session")))
+
+        assertThat(
+            snapshot.spaces,
+        ).containsExactlyInAnyOrderEntriesOf(
+            mapOf(edited to CurrentCallerSnapshot.Scope.EDIT, commented to CurrentCallerSnapshot.Scope.COMMENT),
+        )
+        assertThat(snapshot.scope).isEqualTo(CurrentCallerSnapshot.Scope.EDIT)
+        assertThat(snapshot.connection).isNull()
+    }
 }

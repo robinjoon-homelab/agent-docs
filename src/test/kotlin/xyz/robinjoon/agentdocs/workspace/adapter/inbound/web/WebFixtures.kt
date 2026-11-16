@@ -36,6 +36,10 @@ import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import java.time.Instant
 import java.util.UUID
 
+// How the web app reads the caller's permission in a space or a document's space.
+const val PERMISSION =
+    "이 호출자의 지금 권한. read, comment, edit, owner. edit 이상이면 본문을 고치고 comment 이상이면 댓글을 단다. 사람 소유자는 owner, 초대한 편집자는 edit, 댓글 작성자는 comment"
+
 // Shared values for the workspace HTTP tests: the signed-in owner, one agent connection, one space, one document.
 object WebFixtures {
     val at: Instant = Instant.parse("2026-10-18T09:00:00Z")
@@ -49,16 +53,32 @@ object WebFixtures {
             "robinjoon",
             false,
             CallerAgent(connectionId, "Claude Code"),
-            setOf(UUID.fromString("33333333-3333-4333-8333-333333333333")),
+            mapOf(UUID.fromString("33333333-3333-4333-8333-333333333333") to CallerScope.EDIT),
             CallerScope.EDIT,
         )
     val agent = CallerAuthentication(agentCaller)
     val ownerAccess = Access(Actor.human(userId, "robinjoon"), SpaceScope.AllSpaces, Permission.OWNER)
     val agentActor = Actor.agent(userId, "robinjoon", AgentIdentity(connectionId, "Claude Code"))
     val agentAccess =
-        Access(agentActor, SpaceScope.Listed(setOf(SpaceId(UUID.fromString("33333333-3333-4333-8333-333333333333")))), Permission.EDIT)
+        Access(
+            agentActor,
+            SpaceScope.Listed(mapOf(SpaceId(UUID.fromString("33333333-3333-4333-8333-333333333333")) to Permission.EDIT)),
+            Permission.EDIT,
+        )
     val webContext = WriteContext(ownerAccess, ChangeSource.WEB, null, null)
     val spaceId = SpaceId(UUID.fromString("33333333-3333-4333-8333-333333333333"))
+
+    // A person the owner invited to the space as a commenter.
+    val memberCaller =
+        Caller(
+            UUID.fromString("77777777-7777-4777-8777-777777777777"),
+            "bob",
+            false,
+            null,
+            mapOf(spaceId.value to CallerScope.COMMENT),
+            CallerScope.COMMENT,
+        )
+    val member = CallerAuthentication(memberCaller)
     val space =
         Space.create(
             spaceId,
@@ -134,6 +154,7 @@ object WebFixtures {
                     .type(JsonFieldType.STRING)
                     .optional()
                     .description("보관한 시각. 보관한 스페이스는 목록·검색·에이전트의 스페이스 찾기에서 빠지고 주소로는 열린다"),
+                fieldWithPath("$prefix.permission").description(PERMISSION),
             )
 
     fun headerFields(prefix: String): Array<FieldDescriptor> =

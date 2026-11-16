@@ -66,7 +66,8 @@ management:
       enabled: true
 
 # The owner is the GitHub login allowed to sign in with full rights; the application refuses to start without one.
-# members may sign in but see nothing until invitations exist. public-url is the address MCP clients and browsers use.
+# members may sign in and see only the spaces they were invited to; an owner's space invitation also lets its login
+# sign in. public-url is the address MCP clients and browsers use.
 agent-docs:
   public-url: ${AGENT_DOCS_PUBLIC_URL:http://localhost:8080}
   owner: ${AGENT_DOCS_OWNER:}

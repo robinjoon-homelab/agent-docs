@@ -7,14 +7,19 @@ import io.mockk.runs
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import xyz.robinjoon.agentdocs.access.application.AccessFixtures.clock
+import xyz.robinjoon.agentdocs.access.application.AccessFixtures.memberId
+import xyz.robinjoon.agentdocs.access.application.AccessFixtures.membership
 import xyz.robinjoon.agentdocs.access.application.AccessFixtures.now
 import xyz.robinjoon.agentdocs.access.application.AccessFixtures.ownerId
+import xyz.robinjoon.agentdocs.access.application.AccessFixtures.space
 import xyz.robinjoon.agentdocs.access.application.model.CallerScope
 import xyz.robinjoon.agentdocs.access.application.port.output.SecretSource
+import xyz.robinjoon.agentdocs.access.application.port.output.SpaceMembershipRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.UserRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.WebSessionRepository
 import xyz.robinjoon.agentdocs.access.application.service.WebSessionService
 import xyz.robinjoon.agentdocs.access.domain.TokenHash
+import xyz.robinjoon.agentdocs.access.domain.membership.SpaceRole
 import xyz.robinjoon.agentdocs.access.domain.session.SessionTerm
 import xyz.robinjoon.agentdocs.access.domain.session.WebSession
 import xyz.robinjoon.agentdocs.access.domain.session.WebSessionId
@@ -30,10 +35,19 @@ class WebSessionServiceTest {
     private val sessions = mockk<WebSessionRepository>()
     private val users = mockk<UserRepository>()
     private val secrets = mockk<SecretSource>()
+    private val memberships = mockk<SpaceMembershipRepository>()
     private val owner = User.restore(UserId(ownerId), GitHubAccount(42, "robinjoon"), UserProfile(null, null), now)
+    private val bob = User.restore(UserId(memberId), GitHubAccount(77, "bob"), UserProfile(null, null), now)
+
+    init {
+        every { memberships.findActiveByMember(any()) } returns emptyList()
+    }
 
     private fun service(allowlist: Allowlist = Allowlist("robinjoon", emptySet())) =
-        WebSessionService(sessions, users, allowlist, secrets, clock)
+        WebSessionService(sessions, users, memberships, allowlist, secrets, clock)
+
+    private fun memberSession(token: String): WebSession =
+        WebSession.restore(WebSessionId(UUID.randomUUID()), UserId(memberId), TokenHash.of(token), SessionTerm(now, now))
 
     private fun session(
         token: String,
@@ -113,5 +127,33 @@ class WebSessionServiceTest {
         assertThat(service().callerFor("adt_a_agent_token")).isNull()
         assertThat(service().callerFor("adt_w_stale")).isNull()
         assertThat(service(Allowlist("someone-else", emptySet())).callerFor("adt_w_removed")).isNull()
+    }
+
+    @Test
+    fun `an invited member sees exactly the joined spaces with their roles on every request`() {
+        every { sessions.findByTokenHash(TokenHash.of("adt_w_member")) } returns memberSession("adt_w_member")
+        every { users.findById(UserId(memberId)) } returns bob
+        every { memberships.findActiveByMember(UserId(memberId)) } returns listOf(membership(space, "bob", SpaceRole.COMMENTER, memberId))
+
+        val current = requireNotNull(service().currentCaller("adt_w_member"))
+        val used = requireNotNull(service().callerFor("adt_w_member"))
+
+        assertThat(current.owner).isFalse()
+        assertThat(current.spaces).containsExactlyEntriesOf(mapOf(space to CallerScope.COMMENT))
+        assertThat(current.scope).isEqualTo(CallerScope.COMMENT)
+        assertThat(used.caller).isEqualTo(current)
+        assertThat(used.renewed).isFalse()
+    }
+
+    @Test
+    fun `a member whose last membership was revoked is let in only while the allowlist still names them`() {
+        every { sessions.findByTokenHash(TokenHash.of("adt_w_member")) } returns memberSession("adt_w_member")
+        every { users.findById(UserId(memberId)) } returns bob
+
+        assertThat(service().currentCaller("adt_w_member")).isNull()
+        assertThat(service().callerFor("adt_w_member")).isNull()
+        val listed = requireNotNull(service(Allowlist("robinjoon", setOf("BOB"))).currentCaller("adt_w_member"))
+        assertThat(listed.spaces).isEmpty()
+        assertThat(listed.scope).isEqualTo(CallerScope.READ)
     }
 }

@@ -19,14 +19,17 @@ import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestExcepti
 import xyz.robinjoon.agentdocs.workspace.application.model.RemoteImage
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.model.VerifiedImage
+import xyz.robinjoon.agentdocs.workspace.application.model.VerifiedScene
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ImageVerifier
 import xyz.robinjoon.agentdocs.workspace.application.port.output.OperationStore
 import xyz.robinjoon.agentdocs.workspace.application.port.output.RemoteImageSource
+import xyz.robinjoon.agentdocs.workspace.application.port.output.SceneVerifier
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.service.AssetService
+import xyz.robinjoon.agentdocs.workspace.application.service.AttachmentVerifier
 import xyz.robinjoon.agentdocs.workspace.application.service.WriteJournal
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.asset.Asset
@@ -42,10 +45,18 @@ class AssetServiceTest {
     private val assets = mockk<AssetRepository>()
     private val store = mockk<AssetStore>()
     private val verifier = mockk<ImageVerifier>()
+    private val scenes = mockk<SceneVerifier>()
     private val remote = mockk<RemoteImageSource>()
     private val activity = mockk<ActivityReporter>()
     private val service =
-        AssetService(spaces, assets, store, verifier, remote, WriteJournal(activity, mockk<OperationStore>(), WorkspaceFixtures.clock))
+        AssetService(
+            spaces,
+            assets,
+            store,
+            AttachmentVerifier(verifier, scenes),
+            remote,
+            WriteJournal(activity, mockk<OperationStore>(), WorkspaceFixtures.clock),
+        )
     private val png = byteArrayOf(1, 2, 3)
     private val content = AssetContent.of(AssetMediaType.PNG, png)
 
@@ -64,6 +75,20 @@ class AssetServiceTest {
 
         assertThat(asset.content).isEqualTo(content)
         assertThat(asset.origin).isEqualTo(AssetOrigin("flow.png", null, owner, now))
+    }
+
+    @Test
+    fun `a drawing scene is kept byte for byte as an Excalidraw attachment`() {
+        val scene = """{"type":"excalidraw","elements":[]}""".toByteArray()
+        val stored = AssetContent.of(AssetMediaType.EXCALIDRAW, scene)
+        every { verifier.verify(scene) } returns null
+        every { scenes.verify(scene) } returns VerifiedScene(0, 0, emptyList())
+        every { store.put(stored.sha256, "application/vnd.excalidraw+json", scene) } just runs
+        every { assets.add(any()) } answers { firstArg() }
+
+        val asset = service.upload(context(ownerAccess), space.slug, UploadedFile("draw0001.excalidraw", "application/octet-stream", scene))
+
+        assertThat(asset.content).isEqualTo(stored)
     }
 
     @Test
@@ -95,7 +120,14 @@ class AssetServiceTest {
     fun `a file name that cannot be kept leaves no bytes behind, because storage has no rollback`() {
         val kept = KeptFiles()
         val keeping =
-            AssetService(spaces, assets, kept, verifier, remote, WriteJournal(activity, mockk<OperationStore>(), WorkspaceFixtures.clock))
+            AssetService(
+                spaces,
+                assets,
+                kept,
+                AttachmentVerifier(verifier, scenes),
+                remote,
+                WriteJournal(activity, mockk<OperationStore>(), WorkspaceFixtures.clock),
+            )
         every { verifier.verify(png) } returns VerifiedImage(AssetMediaType.PNG, png)
 
         assertThatThrownBy { keeping.upload(context(ownerAccess), space.slug, UploadedFile("a/b.png", "image/png", png)) }

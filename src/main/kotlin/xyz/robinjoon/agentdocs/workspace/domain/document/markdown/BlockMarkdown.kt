@@ -4,6 +4,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.Callout
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
+import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Heading
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.ListItem
@@ -63,6 +64,7 @@ object BlockMarkdown {
             is CodeBlock -> code(block)
             is TableBlock -> table(block)
             is ImageBlock -> image(block)
+            is DrawingBlock -> drawing(block)
             is Divider -> "---"
         }
 
@@ -104,6 +106,13 @@ object BlockMarkdown {
         val alt = block.alt.replace("\\", "\\\\").replace("]", "\\]")
         val caption = if (block.caption.isEmpty()) "" else " \"" + block.caption.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
         return "![$alt](asset:${block.asset}$caption)"
+    }
+
+    // A plain GFM viewer shows the SVG. The caption keeps the scene as an asset: reference, so the export rewrite and
+    // transfer bindings resolve it the same way as any other reference.
+    private fun drawing(block: DrawingBlock): String {
+        val alt = block.alt.replace("\\", "\\\\").replace("]", "\\]")
+        return "![$alt](asset:${block.svg} \"${DrawingBlock.CAPTION_PREFIX}${block.scene}\")"
     }
 
     // The reader undoes exactly the escape the writer added, so reading written markdown gives back the same text.

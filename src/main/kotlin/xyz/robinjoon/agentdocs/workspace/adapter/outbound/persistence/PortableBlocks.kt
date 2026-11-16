@@ -4,6 +4,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.Callout
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
+import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Heading
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.ListItem
@@ -66,6 +67,10 @@ internal object PortableBlocks {
                 mapOf("assetId" to block.asset.value, "alt" to block.alt, "caption" to block.caption)
             }
 
+            is DrawingBlock -> {
+                mapOf("svgAssetId" to block.svg.value, "sceneAssetId" to block.scene.value, "alt" to block.alt)
+            }
+
             else -> {
                 emptyMap()
             }
@@ -89,6 +94,7 @@ internal object PortableBlocks {
             is CodeBlock -> "code"
             is TableBlock -> "table"
             is ImageBlock -> "image"
+            is DrawingBlock -> "drawing"
             is Divider -> "divider"
         }
 

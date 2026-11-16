@@ -8,6 +8,9 @@ export type Asset = {
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
+/** The stored original of a hand-drawn diagram. */
+export const EXCALIDRAW_SCENE_MEDIA_TYPE = 'application/vnd.excalidraw+json';
+
 /** Media types the server accepts (it checks the file signature too). */
 export const IMAGE_MEDIA_TYPES: readonly string[] = [
   'image/png',

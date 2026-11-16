@@ -182,9 +182,9 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
                 xyz.robinjoon.agentdocs.workspace.domain.asset
                     .AssetOrigin("preview.html", null, agentAccess.actor, at),
             )
-        every { documentAssets.content(agentAccess, documentId, id) } returns
+        every { documentAssets.source(agentAccess, documentId, id) } returns
             xyz.robinjoon.agentdocs.workspace.application.model
-                .AssetFile(asset, bytes)
+                .AssetSource(asset, bytes.toString(Charsets.UTF_8), null)
         call("docs_upload", """{"space":"agent-docs","document":"$documentId","assetId":"$id"}""")
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.result.isError").value(false))
@@ -218,7 +218,7 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
         val id =
             xyz.robinjoon.agentdocs.workspace.domain.asset
                 .AssetId(UUID.randomUUID())
-        every { documentAssets.content(agentAccess, documentId, id) } throws
+        every { documentAssets.source(agentAccess, documentId, id) } throws
             xyz.robinjoon.agentdocs.workspace.application.port.input
                 .AssetNotFoundException(id)
         call("docs_upload", """{"space":"agent-docs","document":"$documentId","assetId":"$id"}""")

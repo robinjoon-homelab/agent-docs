@@ -79,7 +79,7 @@ class AssetController(
             .ok()
             .contentType(MediaType.parseMediaType(file.asset.content.mediaType.mime))
             .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePrivate().immutable())
-            .header("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+            .header("Content-Security-Policy", ImageUploads.ATTACHMENT_POLICY)
             .header("X-Content-Type-Options", "nosniff")
             .header("Content-Disposition", if (file.asset.content.mediaType.isImage) "inline" else "attachment")
             .body(file.bytes)

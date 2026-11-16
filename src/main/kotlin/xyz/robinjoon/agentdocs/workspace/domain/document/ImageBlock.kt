@@ -12,6 +12,12 @@ data class ImageBlock(
 ) : Block {
     init {
         listOf(alt, caption).forEach(::requireSingleLine)
+        // Stored as markdown, this image would read back as a drawing whose assets no write check ever saw.
+        if (DrawingBlock.sceneIn(asset, caption) != null) {
+            throw InvalidDocumentException(
+                "the caption \"${DrawingBlock.CAPTION_PREFIX}ID\" marks a drawing; send a drawing block with svgAssetId and sceneAssetId",
+            )
+        }
     }
 
     override fun withId(id: BlockId): Block = copy(id = id)

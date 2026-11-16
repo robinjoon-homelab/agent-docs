@@ -1,0 +1,53 @@
+/* Excalidraw exports its stylesheet only under the development/production conditions, which Vite resolves here. */
+@import '@excalidraw/excalidraw/index.css';
+
+.drawing-dialog {
+  display: flex;
+  flex-direction: column;
+  width: calc(100vw - 32px);
+  height: calc(100vh - 32px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.drawing-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.drawing-dialog-header h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.drawing-dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.drawing-dialog-notice {
+  margin: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sunken);
+  font-size: 13px;
+}
+
+/* Excalidraw fills its container, so the canvas area needs a real height. */
+.drawing-dialog-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 0.18.1 has no option to hide the library's "Browse libraries" link to libraries.excalidraw.com. */
+.drawing-dialog .library-menu-browse-button {
+  display: none;
+}

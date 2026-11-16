@@ -25,6 +25,9 @@ import org.springframework.restdocs.request.RequestDocumentation.queryParameters
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import xyz.robinjoon.agentdocs.access.adapter.inbound.web.CallerAuthentication
+import xyz.robinjoon.agentdocs.access.application.model.Caller
+import xyz.robinjoon.agentdocs.access.application.model.CallerScope
 import xyz.robinjoon.agentdocs.support.web.RestDocsWebTest
 import xyz.robinjoon.agentdocs.support.web.documented
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.actorFields
@@ -37,6 +40,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.body
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.document
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.documentId
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.headerFields
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.member
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.owner
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.ownerAccess
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.space
@@ -66,8 +70,12 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDenied
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.StaleRevisionException
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
+import xyz.robinjoon.agentdocs.workspace.domain.document.Document
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentHeader
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentLifecycle
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
@@ -76,6 +84,8 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Paragraph
 import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
+import xyz.robinjoon.agentdocs.workspace.domain.space.Space
+import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceProfile
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 import java.util.UUID
@@ -285,6 +295,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.blocks[1].hash").value(BlockMarkdown.hash(body)))
             .andExpect(jsonPath("$.blocks[1].text").value("실패하면 **30초** 뒤에 다시 시도한다."))
+            .andExpect(jsonPath("$.permission").value("owner"))
             .andDo(
                 documented(
                     "documents-open",
@@ -292,6 +303,71 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     responseFields(*documentFields()),
                 ),
             )
+    }
+
+    @Test
+    fun `a retried write answers with the permission of the space the document is in now, not of its first result`() {
+        val moved =
+            Space.create(
+                SpaceId(UUID.fromString("44444444-4444-4444-8444-444444444444")),
+                SpaceSlug("payments"),
+                SpaceProfile.of("Payments", "", emptyList()),
+                at,
+            )
+        val current =
+            Document.restore(
+                documentId,
+                DocumentHeader(moved.id, DocumentPath("retry"), "재시도 설계", WebFixtures.properties),
+                listOf(title, body),
+                DocumentLifecycle(9, at.minusSeconds(3_600), at, null),
+            )
+        val grants = mapOf(space.id.value to CallerScope.COMMENT, moved.id.value to CallerScope.EDIT)
+        val mixed =
+            CallerAuthentication(
+                Caller(UUID.fromString("77777777-7777-4777-8777-777777777777"), "bob", false, null, grants, CallerScope.EDIT),
+            )
+        val first =
+            DocumentWrite(
+                document(revision = 4),
+                4,
+                emptyList(),
+                amended = false,
+                unchanged = false,
+                space = SpaceReference(space.id, space.slug, "Agent Docs"),
+            )
+        every { documents.changeHeader(any(), documentId, any()) } returns first
+        every { documents.create(any(), SpaceSlug("agent-docs"), any()) } returns first
+        every { queries.open(any(), documentId) } returns DocumentView(current, moved, emptyList())
+
+        mockMvc
+            .perform(
+                patch("/api/documents/{id}", documentId)
+                    .principal(mixed)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"baseVersion":3,"title":"재시도 정책","opId":"op-header"}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.permission").value("edit"))
+            .andExpect(jsonPath("$.revision").value(4))
+            .andExpect(jsonPath("$.space.id").value(space.id.value.toString()))
+        mockMvc
+            .perform(
+                post("/api/spaces/{slug}/documents", "agent-docs")
+                    .principal(mixed)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"path":"payments/retry","title":"재시도 설계","opId":"op-create"}"""),
+            ).andExpect(status().isCreated)
+            .andExpect(jsonPath("$.permission").value("edit"))
+            .andExpect(jsonPath("$.space.slug").value("agent-docs"))
+    }
+
+    @Test
+    fun `an invited commenter opens the document with comment permission for its space`() {
+        every { queries.open(any(), documentId) } returns DocumentView(document(), space, emptyList())
+
+        mockMvc
+            .perform(get("/api/documents/{id}", documentId).principal(member))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.permission").value("comment"))
     }
 
     @Test
@@ -634,6 +710,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
             fieldWithPath("blockChanges[].revision").optional().type(JsonFieldType.NUMBER).description("그 변경의 리비전"),
             fieldWithPath("blockChanges[].at").optional().type(JsonFieldType.STRING).description("변경 시각"),
             *actorFields("blockChanges[].actor").map { it.optional() }.toTypedArray(),
+            fieldWithPath("permission").description(PERMISSION),
         )
 
     private fun writeFields(): Array<FieldDescriptor> =

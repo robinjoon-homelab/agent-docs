@@ -48,7 +48,11 @@ class DocumentEventsApiDocumentationTest : RestDocsWebTest() {
                 documented(
                     "document-events",
                     pathParameters(
-                        parameterWithName("id").description("문서 ID. invalidate 이벤트마다 기존 문서·댓글 API로 재조회. heartbeat는 주석이며 재연결은 최신 상태로 수렴."),
+                        parameterWithName("id").description(
+                            "문서 ID. invalidate({})마다 기존 문서·댓글 API로 재조회. permission({\"permission\":\"comment\"})은 이 스페이스 권한이 바뀌었다는 뜻이고 " +
+                                "edit 미만이면 자동 저장을 멈춘다. revoked({\"reason\":\"not_found\"|\"unauthenticated\"}) 뒤 서버가 스트림을 끝내므로 " +
+                                "재연결·자동 저장을 멈추고 저장 안 된 입력은 남긴다. heartbeat는 주석이며 재연결은 최신 상태로 수렴.",
+                        ),
                     ),
                 ),
             )

@@ -1,3 +1,4 @@
+import { toPermission } from '../shared/mappers';
 import type { SpaceGateway, SpacePatch } from '../../../../application/space/ports/SpaceGateway';
 import type {
   Space,
@@ -28,6 +29,7 @@ export function toSpace(value: unknown): Space {
   const source = obj(value, 'space');
   return {
     id: str(source, 'id'),
+    permission: toPermission(source.permission),
     slug: str(source, 'slug'),
     name: str(source, 'name'),
     description: strOr(source, 'description', ''),
@@ -54,7 +56,8 @@ export class HttpSpaceGateway implements SpaceGateway {
   }
 
   async create(draft: SpaceDraft): Promise<Space> {
-    return toSpace(await this.http.post('/api/spaces', draft));
+    const { slug, name, description, links } = draft;
+    return toSpace(await this.http.post('/api/spaces', { slug, name, description, links }));
   }
 
   async get(slug: string): Promise<Space> {
@@ -62,6 +65,25 @@ export class HttpSpaceGateway implements SpaceGateway {
   }
 
   async update(slug: string, patch: SpacePatch): Promise<Space> {
-    return toSpace(await this.http.patch(`/api/spaces/${segment(slug)}`, patch));
+    const {
+      slug: nextSlug,
+      name,
+      description,
+      links,
+      archived,
+      agentGuideDocumentId,
+      defaultRepository,
+    } = patch;
+    return toSpace(
+      await this.http.patch(`/api/spaces/${segment(slug)}`, {
+        slug: nextSlug,
+        name,
+        description,
+        links,
+        archived,
+        agentGuideDocumentId,
+        defaultRepository,
+      }),
+    );
   }
 }

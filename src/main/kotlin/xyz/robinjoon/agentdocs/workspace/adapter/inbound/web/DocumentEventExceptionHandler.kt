@@ -31,13 +31,23 @@ class DocumentEventExceptionHandler {
             } catch (error: IOException) {
                 emitter.completeWithError(error)
             } catch (error: RuntimeException) {
-                if (error is UnauthenticatedException || error is DocumentNotFoundException) {
-                    emitter.complete()
-                } else {
-                    emitter.completeWithError(error)
-                }
+                val last = DocumentEventSignals.ended(error)
+                if (last == null) emitter.completeWithError(error) else end(emitter, last)
             }
             return false
+        }
+
+        // The browser keeps what it has not saved; this last signal only tells it to stop saving and reconnecting.
+        private fun end(
+            emitter: SseEmitter,
+            last: DocumentEventSignals.Signal,
+        ) {
+            try {
+                emitter.send(SseEmitter.event().name(last.name).data(last.data))
+                emitter.complete()
+            } catch (error: IOException) {
+                emitter.completeWithError(error)
+            }
         }
     }
 }

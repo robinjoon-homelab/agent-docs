@@ -12,6 +12,7 @@ export function DocumentAssetScope({ documentId, children }: { documentId: strin
         ...services.assets,
         contentUrl: (assetId: string) => services.assets.contentUrl(assetId, documentId),
         htmlSource: (assetId: string) => services.assets.htmlSource(assetId, documentId),
+        sceneSource: (assetId: string) => services.assets.sceneSource(assetId, documentId),
       },
     }),
     [services, documentId],

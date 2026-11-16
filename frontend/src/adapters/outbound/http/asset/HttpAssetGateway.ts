@@ -48,6 +48,14 @@ export class HttpAssetGateway implements AssetGateway {
     return str(value, 'source');
   }
 
+  async sceneSource(assetId: string, documentId: string): Promise<string> {
+    const value = obj(
+      await this.http.get(`/api/documents/${segment(documentId)}/assets/${segment(assetId)}/source`),
+      'drawing scene',
+    );
+    return str(value, 'source');
+  }
+
   contentUrl(assetId: string, documentId?: string): string {
     return documentId === undefined
       ? contentPath(assetId)

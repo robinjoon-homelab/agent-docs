@@ -1,6 +1,7 @@
 import type { Editor, Range } from '@tiptap/core';
 import type { TextBlockType } from './commands';
 import { convertBlock, insertBlock, newTableJSON } from './commands';
+import { blockAtPos } from './positions';
 import type { SuggestionItem } from './suggestions';
 
 type SlashEntry = {
@@ -18,7 +19,11 @@ function convert(target: TextBlockType) {
 }
 
 /** The "/" menu. Each entry first removes the typed "/query" and then changes or inserts a block. */
-export function slashItems(newId: () => string, pickImage: () => void): (query: string) => SuggestionItem[] {
+export function slashItems(
+  newId: () => string,
+  pickImage: () => void,
+  openDrawing: (anchorBlockId: string | null) => void = () => undefined,
+): (query: string) => SuggestionItem[] {
   const entries: readonly SlashEntry[] = [
     {
       key: 'h1',
@@ -95,6 +100,15 @@ export function slashItems(newId: () => string, pickImage: () => void): (query: 
       apply: (editor) => insertBlock(editor, newTableJSON(newId)),
     },
     { key: 'mockup', label: '시안', aliases: ['mockup', 'html'], apply: () => pickImage() },
+    {
+      key: 'drawing',
+      label: '손그림',
+      aliases: ['drawing', 'excalidraw', 'sketch', '그림'],
+      apply: (editor) => {
+        const block = blockAtPos(editor.state.doc, editor.state.selection.from);
+        openDrawing(block === null ? null : String(block.node.attrs.id));
+      },
+    },
     {
       key: 'attachment',
       label: '파일 첨부',

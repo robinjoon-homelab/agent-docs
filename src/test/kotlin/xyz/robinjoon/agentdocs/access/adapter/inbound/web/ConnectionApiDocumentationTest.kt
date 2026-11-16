@@ -50,7 +50,7 @@ class ConnectionApiDocumentationTest : RestDocsWebTest() {
     private val owner = CallerAuthentication(ownerCaller)
     private val agent =
         CallerAuthentication(
-            Caller(userId, "robinjoon", false, CallerAgent(UUID.randomUUID(), "Claude Code"), emptySet(), CallerScope.READ),
+            Caller(userId, "robinjoon", false, CallerAgent(UUID.randomUUID(), "Claude Code"), emptyMap(), CallerScope.READ),
         )
     private val space = UUID.fromString("33333333-3333-4333-8333-333333333333")
     private val at = Instant.parse("2026-10-18T09:00:00Z")

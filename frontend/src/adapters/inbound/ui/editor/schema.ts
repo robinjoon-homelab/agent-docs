@@ -316,6 +316,37 @@ export const ImageNode = Node.create({
   ],
 });
 
+/** An attribute kept in a data attribute, so copying a node within the app brings it back unchanged. */
+function dataAttribute(attribute: string, html: string) {
+  return {
+    default: '',
+    parseHTML: (element: HTMLElement) => element.getAttribute(html) ?? '',
+    renderHTML: (attributes: Record<string, unknown>) => {
+      const value = attributes[attribute];
+      return { [html]: typeof value === 'string' ? value : '' };
+    },
+  };
+}
+
+/**
+ * A hand-drawn diagram; the node only points at its stored SVG and scene, never at drawing data. Both ids and the
+ * alt text round-trip through the HTML clipboard, so a copy pasted in the editor is the same drawing under a new id.
+ */
+export const DrawingNode = Node.create({
+  name: 'drawing',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  addAttributes: () => ({
+    ...idAttribute,
+    svgAssetId: dataAttribute('svgAssetId', 'data-drawing-svg'),
+    sceneAssetId: dataAttribute('sceneAssetId', 'data-drawing-scene'),
+    alt: dataAttribute('alt', 'data-drawing-alt'),
+  }),
+  parseHTML: () => [{ tag: 'figure[data-drawing-svg]' }],
+  renderHTML: ({ HTMLAttributes }) => ['figure', HTMLAttributes],
+});
+
 export const DividerNode = Node.create({
   name: 'divider',
   group: 'block',
@@ -354,6 +385,7 @@ export const schemaExtensions = [
   TableRowNode,
   TableCellNode,
   ImageNode,
+  DrawingNode,
   DividerNode,
   HardBreak,
   Bold,

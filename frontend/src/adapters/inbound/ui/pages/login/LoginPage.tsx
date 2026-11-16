@@ -6,7 +6,7 @@ import './login.css';
 
 const ERROR_TEXT = {
   not_allowed:
-    '이 GitHub 계정은 허용 목록에 없습니다. 서버 관리자에게 계정을 허용 목록에 추가해 달라고 요청하세요.',
+    '이 GitHub 계정은 허용 목록에 없고 초대도 받지 않았습니다. 소유자에게 스페이스 초대를 요청하세요.',
   unknown: '로그인하지 못했습니다. 잠시 후 다시 시도하세요.',
 } as const;
 

@@ -27,7 +27,8 @@ class EmergencyConsoleConfig {
         val ports = AccessPorts()
         val settings = AccessSettings(properties.owner, properties.members.toSet(), properties.publicUrl)
         val clock = Clock.systemUTC()
-        val sessions = WebSessionService(ports.sessions, ports.users, Allowlist(settings.owner, settings.members), ports.secrets, clock)
+        val allowlist = Allowlist(settings.owner, settings.members)
+        val sessions = WebSessionService(ports.sessions, ports.users, ports.memberships, allowlist, ports.secrets, clock)
         return EmergencyLoginService(ports.emergency, ports.users, ports.secrets, sessions, settings, clock)
     }
 

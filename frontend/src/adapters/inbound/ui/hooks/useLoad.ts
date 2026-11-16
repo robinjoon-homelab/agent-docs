@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { RetainedDocumentContext } from './RetainedDocumentContext';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { isApiError } from '../../../../application/shared/ports/errors';
 import { loginHref } from '../../../../domain/session/me';
 
@@ -26,6 +27,13 @@ export function redirectIfUnauthenticated(error: unknown): boolean {
  * input the loader reads. The loader runs again on `reload()`; results of stale requests are dropped.
  */
 export function useLoad<T>(key: string, loader: () => Promise<T>): LoadResult<T> {
+  const retention = useContext(RetainedDocumentContext);
+  const retentionRef = useRef(retention);
+  const retainedId = retention?.documentId;
+  const revoked = retention?.revoked === true;
+  useEffect(() => {
+    retentionRef.current = retention;
+  });
   const [load, setLoad] = useState<{ key: string; version: number; value: Load<T> }>({
     key,
     version: 0,
@@ -43,20 +51,27 @@ export function useLoad<T>(key: string, loader: () => Promise<T>): LoadResult<T>
   }
 
   useEffect(() => {
+    const retained = retentionRef.current;
+    if (retained !== null && !retained.canLoad()) return;
     let current = true;
     latestLoader.current().then(
       (data) => {
         if (current) setLoad({ key, version, value: { state: 'ready', data, error: null } });
       },
       (error: unknown) => {
-        if (!current || redirectIfUnauthenticated(error)) return;
+        if (!current) return;
+        if (isApiError(error, 'unauthenticated')) {
+          if (retained !== null) {
+            if (retained.canLoad()) retained.unauthenticated();
+          } else if (redirectIfUnauthenticated(error)) return;
+        }
         setLoad({ key, version, value: { state: 'error', data: null, error } });
       },
     );
     return () => {
       current = false;
     };
-  }, [key, version]);
+  }, [key, version, retainedId, revoked]);
 
   const reload = useCallback(() => setVersion((value) => value + 1), []);
   const setData = useCallback((update: (current: T) => T) => {

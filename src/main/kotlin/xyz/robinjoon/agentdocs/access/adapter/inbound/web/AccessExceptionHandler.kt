@@ -13,15 +13,17 @@ import xyz.robinjoon.agentdocs.access.application.model.OAuthException
 import xyz.robinjoon.agentdocs.access.application.port.input.AuthorizationRequestNotFoundException
 import xyz.robinjoon.agentdocs.access.application.port.input.ConnectionNotFoundException
 import xyz.robinjoon.agentdocs.access.application.port.input.OwnerOnlyException
+import xyz.robinjoon.agentdocs.access.application.port.input.SpaceMembershipNotFoundException
 import xyz.robinjoon.agentdocs.access.domain.InvalidAccessException
 import xyz.robinjoon.agentdocs.access.domain.authorization.AuthorizationFailedException
+import xyz.robinjoon.agentdocs.access.domain.membership.MembershipTakenException
 
 // Applies only to the access controllers. OAuth endpoints answer in the OAuth error shape; the rest use problem
 // details with a code the web app and agents can branch on.
 @RestControllerAdvice(
     assignableTypes = [
         AuthorizationController::class, TokenController::class, RegistrationController::class, ConnectionController::class,
-        MeController::class, OAuthMetadataController::class,
+        MeController::class, OAuthMetadataController::class, SpaceMembershipController::class,
     ],
 )
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -40,7 +42,11 @@ class AccessExceptionHandler : ResponseEntityExceptionHandler() {
     @ExceptionHandler(OwnerOnlyException::class)
     fun handleOwnerOnly(exception: OwnerOnlyException): ProblemDetail = problem(HttpStatus.FORBIDDEN, "forbidden", exception, null)
 
-    @ExceptionHandler(ConnectionNotFoundException::class, AuthorizationRequestNotFoundException::class)
+    @ExceptionHandler(
+        ConnectionNotFoundException::class,
+        AuthorizationRequestNotFoundException::class,
+        SpaceMembershipNotFoundException::class,
+    )
     fun handleNotFound(exception: RuntimeException): ProblemDetail = problem(HttpStatus.NOT_FOUND, "not_found", exception, null)
 
     @ExceptionHandler(InvalidAccessException::class)
@@ -50,6 +56,14 @@ class AccessExceptionHandler : ResponseEntityExceptionHandler() {
     @ExceptionHandler(AuthorizationFailedException::class)
     fun handleAuthorizationFailed(exception: AuthorizationFailedException): ProblemDetail =
         problem(HttpStatus.CONFLICT, "conflict", exception, "start the connection again from the client")
+
+    // existing names the live membership the request collided with, so the screen can offer to change its role.
+    @ExceptionHandler(MembershipTakenException::class)
+    fun handleMembershipTaken(exception: MembershipTakenException): ProblemDetail {
+        val problem = problem(HttpStatus.CONFLICT, "conflict", exception, "change the role of the existing membership instead")
+        exception.existing?.let { problem.setProperty("membershipId", it.value) }
+        return problem
+    }
 
     private fun problem(
         status: HttpStatus,

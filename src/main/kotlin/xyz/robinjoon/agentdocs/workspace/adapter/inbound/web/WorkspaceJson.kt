@@ -6,7 +6,9 @@ import xyz.robinjoon.agentdocs.workspace.application.model.ActivityView
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListing
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentView
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceOverview
+import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.Actor
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentHeader
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentLifecycle
@@ -33,6 +35,13 @@ object WorkspaceJson {
                     )
                 },
         )
+
+    // The caller's current permission in a space it sees, which the web app uses to decide what it offers there: read,
+    // comment, edit, or owner. MCP answers leave it out.
+    fun permission(
+        access: Access,
+        space: SpaceId,
+    ): Map<String, Any?> = mapOf("permission" to access.permissionIn(space)?.name?.lowercase())
 
     fun spaceRef(space: Space): Map<String, Any> = mapOf("id" to space.id.value, "slug" to space.slug.value, "name" to space.profile.name)
 

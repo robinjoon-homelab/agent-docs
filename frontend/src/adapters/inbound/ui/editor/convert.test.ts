@@ -31,6 +31,7 @@ const blocks: Block[] = [
     ],
   },
   { id: 'i000000001', type: 'image', assetId: 'asset-1', alt: 'diagram', caption: 'cap' },
+  { id: 'w000000001', type: 'drawing', svgAssetId: 'svg-1', sceneAssetId: 'scene-1', alt: '흐름' },
   { id: 'd000000001', type: 'divider' },
 ];
 

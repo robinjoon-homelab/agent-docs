@@ -17,6 +17,8 @@ export function blockPlainText(block: Block): string {
       return block.code;
     case 'image':
       return block.caption;
+    case 'drawing':
+      return block.alt;
     case 'table':
       return block.rows.map((row) => row.cells.map(plainText).join('\t')).join('\n');
     case 'divider':

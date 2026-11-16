@@ -23,6 +23,9 @@ internal object McpInstructions {
             "opened.\n\n" +
             "Images: upload with docs_upload first and always give alt text. For a local file, call it with no content and run the curl " +
             "command it returns; write out contentBase64 only without a shell and only up to about 5KB, because long base64 gets " +
-            "mistyped. Use opId on writes you might retry. Document links are " +
+            "mistyped. A hand-drawn diagram is ![alt](asset:SVG \"excalidraw asset:SCENE\"); read its SVG or text elements with " +
+            "docs_upload assetId and document, and add includeSource for the scene JSON. To change one, keep every scene field you " +
+            "did not change, upload the new .excalidraw scene and its matching .svg, and replace the same block id with both new " +
+            "ids. Use opId on writes you might retry. Document links are " +
             "[title](doc:ID). Do not put secrets in documents or comments."
 }

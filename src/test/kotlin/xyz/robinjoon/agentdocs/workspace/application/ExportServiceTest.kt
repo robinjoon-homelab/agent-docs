@@ -49,7 +49,7 @@ class ExportServiceTest {
 
     @Test
     fun `a human without owner permission cannot export`() {
-        assertThatThrownBy { service.export(Access(Actor.human(user, "member"), SpaceScope.AllSpaces, Permission.READ), null) }
+        assertThatThrownBy { service.export(Access(Actor.human(user, "member"), SpaceScope.Listed(emptyMap()), Permission.READ), null) }
             .isInstanceOf(PermissionDeniedException::class.java)
     }
 
@@ -77,9 +77,9 @@ class ExportServiceTest {
     }
 
     @Test
-    fun `agents cannot export even with an owner permission value`() {
+    fun `agents cannot export with their connection permission`() {
         val actor = Actor.agent(user, "owner", AgentIdentity(UUID.randomUUID(), "tool"))
-        assertThatThrownBy { service.export(Access(actor, SpaceScope.AllSpaces, Permission.OWNER), null) }
+        assertThatThrownBy { service.export(Access(actor, SpaceScope.Listed(emptyMap()), Permission.EDIT), null) }
             .isInstanceOf(PermissionDeniedException::class.java)
     }
 }

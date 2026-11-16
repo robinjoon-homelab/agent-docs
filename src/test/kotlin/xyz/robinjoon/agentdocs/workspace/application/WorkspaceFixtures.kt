@@ -46,10 +46,17 @@ object WorkspaceFixtures {
     val documentId = DocumentId(UUID.fromString("55555555-5555-4555-8555-555555555555"))
     val header = DocumentHeader(spaceId, DocumentPath("payments/retry"), "Retry design", DocumentProperties.initial)
 
+    val memberId: UUID = UUID.fromString("77777777-7777-4777-8777-777777777777")
+    val member = Actor.human(memberId, "bob")
+
+    // An invited person: each space with its role, and the highest role as the ceiling, as access hands it over.
+    fun memberAccess(grants: Map<SpaceId, Permission>): Access =
+        Access(member, SpaceScope.Listed(grants), grants.values.maxOrNull() ?: Permission.READ)
+
     fun agentAccess(
         permission: Permission,
         spaces: Set<SpaceId>,
-    ): Access = Access(agent, SpaceScope.Listed(spaces), permission)
+    ): Access = Access(agent, SpaceScope.Listed(spaces.associateWith { permission }), permission)
 
     fun context(
         access: Access,

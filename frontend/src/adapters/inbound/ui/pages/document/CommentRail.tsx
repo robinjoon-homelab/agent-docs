@@ -1,3 +1,5 @@
+import { useDocumentPermission } from './DocumentPermissionContext';
+import { canComment } from '../../../../../domain/space/permission';
 import { useLayoutEffect, useRef } from 'react';
 import type { Anchor, Thread, ThreadFilter } from '../../../../../domain/thread/thread';
 import { THREAD_FILTER_LABEL, anchorQuote, filterThreads } from '../../../../../domain/thread/thread';
@@ -61,6 +63,7 @@ export function CommentRail({
   /** Folds the docked rail away; given only where the rail sits next to the document. */
   onCollapse?: () => void;
 }) {
+  const commentable = canComment(useDocumentPermission());
   const visible = filterThreads(threads, filter);
   const listRef = useRef<HTMLDivElement>(null);
   const latestMeasure = useRef(measure);
@@ -141,6 +144,7 @@ export function CommentRail({
             type="button"
             className="icon-btn"
             onClick={onDocumentComment}
+            disabled={!commentable}
             title="문서에 댓글"
             aria-label="문서에 댓글"
           >
@@ -186,15 +190,17 @@ export function CommentRail({
                       : (anchorQuote(pending) ?? '')}
                 </span>
               </header>
-              <CommentEditor
-                mentionLogins={mentionLogins}
-                initial=""
-                placeholder="댓글을 남기세요. @로 멘션 (⌘Enter)"
-                submitLabel="댓글"
-                autoFocus
-                onSubmit={onStart}
-                onCancel={onCancelPending}
-              />
+              <fieldset disabled={!commentable} style={{ border: 0, padding: 0, margin: 0 }}>
+                <CommentEditor
+                  mentionLogins={mentionLogins}
+                  initial=""
+                  placeholder="댓글을 남기세요. @로 멘션 (⌘Enter)"
+                  submitLabel="댓글"
+                  autoFocus
+                  onSubmit={onStart}
+                  onCancel={onCancelPending}
+                />
+              </fieldset>
             </article>
           </div>
         )}

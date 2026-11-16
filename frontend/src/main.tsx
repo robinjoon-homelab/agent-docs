@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './adapters/inbound/ui/app/App';
 import './adapters/inbound/ui/styles/global.css';
+import { configureExcalidrawRuntime } from './config/excalidrawRuntime';
 import { createHttpServices } from './config/httpServices';
 import type { Services } from './config/services';
 import { ServicesProvider } from './config/ServicesContext';
@@ -17,6 +18,7 @@ async function servicesForEnvironment(): Promise<Services> {
 async function boot(): Promise<void> {
   const root = document.getElementById('root');
   if (root === null) throw new Error('#root element is missing');
+  configureExcalidrawRuntime(window, import.meta.env.DEV);
   const services = await servicesForEnvironment();
   createRoot(root).render(
     <StrictMode>

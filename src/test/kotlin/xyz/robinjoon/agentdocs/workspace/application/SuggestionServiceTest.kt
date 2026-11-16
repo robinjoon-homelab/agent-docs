@@ -112,7 +112,7 @@ class SuggestionServiceTest {
                 ),
             )
         val comment = requireNotNull(proposed.written)
-        val agent = WorkspaceFixtures.context(WorkspaceFixtures.agentAccess(Permission.OWNER, setOf(document.spaceId)))
+        val agent = WorkspaceFixtures.context(WorkspaceFixtures.agentAccess(Permission.EDIT, setOf(document.spaceId)))
         assertThatThrownBy { service.decide(agent, comment, true) }.isInstanceOf(PermissionDeniedException::class.java)
         val rejected = service.decide(context, comment, false)
         assertThat(document.blocks).containsExactly(block)
@@ -123,5 +123,31 @@ class SuggestionServiceTest {
                 .decision
                 ?.accepted,
         ).isFalse()
+    }
+
+    @Test
+    fun `an invited editor decides a suggestion while a commenter of the space is refused`() {
+        val proposed =
+            service.suggest(
+                WorkspaceFixtures.context(WorkspaceFixtures.memberAccess(mapOf(document.spaceId to Permission.COMMENT))),
+                thread.id,
+                SuggestionRequest(AnchorRequest.Text(block.id, "world", 6), BlockMarkdown.hash(block), "world", "friend"),
+            )
+        val comment = requireNotNull(proposed.written)
+        val commenter = WorkspaceFixtures.context(WorkspaceFixtures.memberAccess(mapOf(document.spaceId to Permission.COMMENT)))
+        val editor = WorkspaceFixtures.context(WorkspaceFixtures.memberAccess(mapOf(document.spaceId to Permission.EDIT)))
+
+        assertThatThrownBy { service.decide(commenter, comment, true) }
+            .isInstanceOf(PermissionDeniedException::class.java)
+            .hasMessage("deciding suggestions needs edit permission")
+        assertThat(document.blocks).containsExactly(block)
+        val accepted = service.decide(editor, comment, true)
+        assertThat(document.blocks.single().plainText()).isEqualTo("hello friend")
+        assertThat(
+            accepted.thread.collaboration.suggestions
+                .single()
+                .decision
+                ?.actor,
+        ).isEqualTo(WorkspaceFixtures.member)
     }
 }

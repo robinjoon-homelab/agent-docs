@@ -185,3 +185,11 @@
   border: none;
   background: var(--border-strong);
 }
+
+/* Saved drawings keep their own light colors in dark mode, as exported. */
+.bv-drawing .drawing-picture {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: #ffffff;
+}

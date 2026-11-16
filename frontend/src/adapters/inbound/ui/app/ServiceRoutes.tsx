@@ -1,3 +1,7 @@
+import { canEdit, effectivePermission } from '../../../../domain/space/permission';
+import type { ReactNode } from 'react';
+import { Outlet } from 'react-router';
+import { NotFound } from '../common/States';
 import { useServices } from '../../../../config/ServicesContext';
 import { ErrorBox, Loading } from '../common/States';
 import { useLoad } from '../hooks/useLoad';
@@ -31,7 +35,13 @@ export function MobileMemoRoute() {
         <ErrorBox error={spaces.error} onRetry={spaces.reload} />
       </div>
     );
-  return <MobileMemoPage navigation={services.navigation} userId={me.userId} spaces={spaces.data} />;
+  return (
+    <MobileMemoPage
+      navigation={services.navigation}
+      userId={me.userId}
+      spaces={spaces.data.filter((space) => canEdit(effectivePermission(space.permission, me.owner)))}
+    />
+  );
 }
 
 /** S11 data at /settings/data: folder import, and ZIP export for the owner. */
@@ -54,4 +64,9 @@ export function DataRoute() {
       owner={me.owner}
     />
   );
+}
+
+export function RequireOwner({ children }: { children?: ReactNode }) {
+  const { me } = useSession();
+  return me.owner ? (children ?? <Outlet />) : <NotFound />;
 }

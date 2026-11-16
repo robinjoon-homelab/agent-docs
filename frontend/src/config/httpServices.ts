@@ -1,3 +1,4 @@
+import { HttpMembershipGateway } from '../adapters/outbound/http/membership/HttpMembershipGateway';
 import { HttpActivityGateway } from '../adapters/outbound/http/activity/HttpActivityGateway';
 import { HttpAssetGateway } from '../adapters/outbound/http/asset/HttpAssetGateway';
 import {
@@ -46,6 +47,7 @@ export function createHttpServices(): Services {
   const http = new HttpClient({ fetch, cookies: () => document.cookie });
   return assembleServices(
     {
+      memberships: new HttpMembershipGateway(http),
       session: new HttpSessionGateway(http),
       spaces: new HttpSpaceGateway(http),
       documents: new HttpDocumentGateway(http),

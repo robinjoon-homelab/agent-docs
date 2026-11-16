@@ -6,6 +6,10 @@ export function assetReferences(blocks: readonly Block[]): string[] {
   const ids = new Set<string>();
   for (const block of blocks) {
     if (block.type === 'image') ids.add(block.assetId);
+    if (block.type === 'drawing') {
+      ids.add(block.svgAssetId);
+      ids.add(block.sceneAssetId);
+    }
     const texts =
       'text' in block ? [block.text] : block.type === 'table' ? block.rows.flatMap((row) => row.cells) : [];
     for (const text of texts) {

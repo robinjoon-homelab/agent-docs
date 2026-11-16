@@ -18,6 +18,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.documen
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.owner
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.ownerAccess
 import xyz.robinjoon.agentdocs.workspace.application.model.AssetFile
+import xyz.robinjoon.agentdocs.workspace.application.model.AssetSource
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentAssetUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.asset.Asset
@@ -50,7 +51,12 @@ class DocumentAssetApiDocumentationTest : RestDocsWebTest() {
             .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(header().string("Content-Disposition", "attachment"))
             .andExpect(header().string("X-Content-Type-Options", "nosniff"))
-            .andDo(
+            .andExpect(
+                header().string(
+                    "Content-Security-Policy",
+                    "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:",
+                ),
+            ).andDo(
                 documented(
                     "document-assets-content",
                     pathParameters(
@@ -63,7 +69,7 @@ class DocumentAssetApiDocumentationTest : RestDocsWebTest() {
 
     @Test
     fun `html source retains the logical reference id rather than exposing the copy identity`() {
-        every { assets.content(ownerAccess, documentId, reference) } returns AssetFile(copy, bytes)
+        every { assets.source(ownerAccess, documentId, reference) } returns AssetSource(copy, bytes.toString(Charsets.UTF_8), null)
         mvc
             .perform(get("/api/documents/{id}/assets/{assetId}/source", documentId, reference.value).principal(owner))
             .andExpect(status().isOk)

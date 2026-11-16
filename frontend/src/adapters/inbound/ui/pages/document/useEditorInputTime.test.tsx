@@ -5,8 +5,9 @@ import { DocumentEditorSession } from '../../../../../application/document/edito
 import type { DocumentGateway } from '../../../../../application/document/ports/DocumentGateway';
 import type { InputInterval, InputTracePayload } from '../../../../../domain/statistics/statistics';
 import { emptyEditStatistics, mergeInputIntervals } from '../../../../../domain/statistics/statistics';
+import type { Block } from '../../../../../domain/document/block';
 import { withoutHash } from '../../../../../domain/document/block';
-import { document as fixture, paragraph, stored } from '../../../../../test-support/fixtures';
+import { document as fixture, drawing, paragraph, stored } from '../../../../../test-support/fixtures';
 import { useEditorInputTime } from './useEditorInputTime';
 
 afterEach(() => {
@@ -16,6 +17,9 @@ afterEach(() => {
 
 function setup() {
   let doc = fixture();
+  const agentWrites = (blocks: readonly Block[]) => {
+    doc = { ...doc, version: doc.version + 1, blocks: blocks.map((block) => stored(block)) };
+  };
   const intervals = new Map<string, { inputs: readonly InputInterval[]; closed: boolean }>();
   const accept = (trace?: InputTracePayload) => {
     if (trace === undefined) return;
@@ -38,7 +42,10 @@ function setup() {
       }
       return Promise.resolve(doc);
     },
-    saveContent: (_id, _version, blocks, trace) => {
+    get: () => Promise.resolve(doc),
+    saveContent: (_id, version, blocks, trace) => {
+      if (version !== doc.version)
+        return Promise.resolve({ kind: 'conflict', currentVersion: doc.version, currentDocument: doc });
       const changed = JSON.stringify(doc.blocks.map(withoutHash)) !== JSON.stringify(blocks);
       if (changed) {
         doc = { ...doc, version: doc.version + 1, blocks: blocks.map((block) => stored(block)) };
@@ -76,7 +83,7 @@ function setup() {
     },
   };
   const session = new DocumentEditorSession(gateway as DocumentGateway, { now: () => new Date() }, doc);
-  return { session, statistics, gateway };
+  return { session, statistics, gateway, agentWrites };
 }
 
 it('separates foreground segments and closes only successfully saved input, ignoring no-op input', async () => {
@@ -341,4 +348,197 @@ it('keeps an in-flight request on its old foreground scope after new foreground 
   await act(() => session.saveContent(session.currentBlocks()));
   unmount();
   expect(await statistics.get()).toMatchObject({ human: { count: 2, milliseconds: 60000 }, openCount: 0 });
+});
+
+function drawingSetup() {
+  vi.useFakeTimers();
+  const context = setup();
+  const hook = renderHook(() => useEditorInputTime(context.session, 'doc-1', context.statistics));
+  const draw = (seconds: number) => {
+    inputAt(seconds);
+    act(() => {
+      hook.result.current.drawing.mark('dialog-1', new Date());
+    });
+  };
+  const typeBody = (seconds: number, text: string) => {
+    inputAt(seconds);
+    act(() => {
+      hook.result.current.mark('body');
+      context.session.markEdited([paragraph('aaaaaaaaaa', text)]);
+    });
+  };
+  const withDrawing = () => [paragraph('aaaaaaaaaa', 'body'), drawing('drawing001')];
+  const reserve = () => {
+    const reservation = hook.result.current.drawing.reserve('dialog-1');
+    if (reservation === null) throw new Error('drawing input was not recorded');
+    const placed = drawing('drawing001');
+    return {
+      reservation,
+      placement: { blockId: placed.id, svgAssetId: placed.svgAssetId, sceneAssetId: placed.sceneAssetId },
+    };
+  };
+  return { ...context, hook, draw, typeBody, withDrawing, reserve };
+}
+
+it('adopts the real drawing time only with the save that holds the drawing, frozen when save was pressed', async () => {
+  const { session, statistics, hook, draw, typeBody, withDrawing, reserve } = drawingSetup();
+  draw(0);
+  draw(60);
+  draw(110);
+  typeBody(115, 'body');
+  await act(() => session.saveContent(session.currentBlocks()));
+  expect((await statistics.get()).openCount).toBe(1);
+  inputAt(120);
+  const drawingInput = reserve();
+  draw(125);
+  await act(() => session.saveContent(withDrawing(), { drawingInput }));
+  hook.unmount();
+  expect((await statistics.get()).human).toEqual({ count: 1, milliseconds: 115000 });
+});
+
+it('a cancelled drawing adopts nothing even while the body around it saves', async () => {
+  const { session, statistics, hook, draw, typeBody } = drawingSetup();
+  draw(0);
+  draw(60);
+  typeBody(100, 'first');
+  await act(() => session.saveContent(session.currentBlocks()));
+  act(() => {
+    hook.result.current.drawing.reserve('dialog-1');
+    hook.result.current.drawing.discard('dialog-1');
+  });
+  typeBody(110, 'second');
+  await act(() => session.saveContent(session.currentBlocks()));
+  hook.unmount();
+  expect((await statistics.get()).human).toEqual({ count: 1, milliseconds: 10000 });
+});
+
+it('an applied drawing whose save failed is adopted by the later save that carries it', async () => {
+  const { session, statistics, gateway, hook, draw, withDrawing, reserve } = drawingSetup();
+  const save = gateway.saveContent;
+  if (save === undefined) throw new Error('missing save');
+  let offline = true;
+  gateway.saveContent = (...args) => (offline ? Promise.reject(new Error('offline')) : save(...args));
+  draw(0);
+  draw(30);
+  const drawingInput = reserve();
+  expect(await act(() => session.saveContent(withDrawing(), { drawingInput }))).toBe('error');
+  offline = false;
+  inputAt(40);
+  await act(() => session.saveContent(withDrawing()));
+  hook.unmount();
+  expect((await statistics.get()).human).toEqual({ count: 1, milliseconds: 30000 });
+});
+
+it('nothing is adopted while writes are closed, and the drawing input waits instead of being lost', async () => {
+  const { session, statistics, hook, draw, withDrawing, reserve } = drawingSetup();
+  draw(0);
+  draw(20);
+  const drawingInput = reserve();
+  session.setWritable(false);
+  expect(await act(() => session.saveContent(withDrawing(), { drawingInput }))).toBe('error');
+  expect((await statistics.get()).openCount).toBe(0);
+  session.setWritable(true);
+  await act(() => session.saveContent(withDrawing()));
+  hook.unmount();
+  expect((await statistics.get()).human).toEqual({ count: 1, milliseconds: 20000 });
+});
+
+function offline(gateway: Partial<DocumentGateway>) {
+  const save = gateway.saveContent;
+  if (save === undefined) throw new Error('missing save');
+  const state = { offline: true };
+  gateway.saveContent = (...args) => (state.offline ? Promise.reject(new Error('offline')) : save(...args));
+  return state;
+}
+
+it('a drawing removed after its save failed lends no time to the body save that follows', async () => {
+  const { session, statistics, gateway, hook, draw, typeBody, withDrawing, reserve } = drawingSetup();
+  const network = offline(gateway);
+  draw(0);
+  draw(30);
+  expect(await act(() => session.saveContent(withDrawing(), { drawingInput: reserve() }))).toBe('error');
+  network.offline = false;
+  typeBody(40, 'the drawing is deleted');
+  expect(await act(() => session.saveContent(session.currentBlocks()))).toBe('saved');
+  hook.unmount();
+  expect((await statistics.get()).human).toEqual({ count: 1, milliseconds: 0 });
+});
+
+it('a drawing dropped for the other side of a conflict lends no time to the merged save', async () => {
+  const { session, statistics, hook, draw, withDrawing, reserve, agentWrites } = drawingSetup();
+  await act(() =>
+    session.saveContent([paragraph('aaaaaaaaaa', 'body'), drawing('drawing001', 'svg-old', 'scene-old')]),
+  );
+  draw(0);
+  draw(30);
+  agentWrites([paragraph('aaaaaaaaaa', 'body'), drawing('drawing001', 'svg-agent', 'scene-agent')]);
+  expect(await act(() => session.saveContent(withDrawing(), { drawingInput: reserve() }))).toBe('conflict');
+  inputAt(40);
+  act(() => {
+    hook.result.current.mark('body');
+    session.markEdited([paragraph('aaaaaaaaaa', 'my other change'), drawing('drawing001')]);
+  });
+  const resolved = await act(() => session.resolveConflicts(new Map([['drawing001', 'theirs' as const]])));
+  expect(resolved).toEqual({
+    blocks: [paragraph('aaaaaaaaaa', 'my other change'), drawing('drawing001', 'svg-agent', 'scene-agent')],
+    outcome: 'saved',
+  });
+  hook.unmount();
+  expect((await statistics.get()).human).toEqual({ count: 1, milliseconds: 0 });
+});
+
+it('a drawing that survives a stale save is adopted by the retry that still holds it', async () => {
+  const { session, statistics, hook, draw, reserve, agentWrites } = drawingSetup();
+  await act(() => session.saveContent([paragraph('aaaaaaaaaa', 'body'), paragraph('bbbbbbbbbb', 'b')]));
+  draw(0);
+  draw(30);
+  agentWrites([paragraph('aaaaaaaaaa', 'body'), paragraph('bbbbbbbbbb', 'agent')]);
+  const blocks = [paragraph('aaaaaaaaaa', 'body'), paragraph('bbbbbbbbbb', 'b'), drawing('drawing001')];
+  expect(await act(() => session.saveContent(blocks, { drawingInput: reserve() }))).toBe('saved');
+  hook.unmount();
+  expect((await statistics.get()).human).toEqual({ count: 1, milliseconds: 30000 });
+});
+
+it('a failed drawing that is gone when nothing changed is dropped, so a later edit cannot adopt it', async () => {
+  const { session, statistics, gateway, hook, draw, typeBody, withDrawing, reserve } = drawingSetup();
+  await act(() => session.saveContent([paragraph('aaaaaaaaaa', 'body')]));
+  const network = offline(gateway);
+  draw(0);
+  draw(30);
+  expect(await act(() => session.saveContent(withDrawing(), { drawingInput: reserve() }))).toBe('error');
+  network.offline = false;
+  expect(await act(() => session.saveContent([paragraph('aaaaaaaaaa', 'body')]))).toBe('saved');
+  typeBody(60, 'changed');
+  await act(() => session.saveContent(session.currentBlocks()));
+  hook.unmount();
+  expect((await statistics.get()).human).toEqual({ count: 1, milliseconds: 0 });
+});
+
+it('a sent drawing save that succeeds late keeps its time and foreground even after the drawing was deleted', async () => {
+  const { session, statistics, gateway, hook, draw, withDrawing, reserve } = drawingSetup();
+  const save = gateway.saveContent;
+  if (save === undefined) throw new Error('missing save');
+  let release: () => void = () => undefined;
+  const delay = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  gateway.saveContent = async (...args) => {
+    await delay;
+    return save(...args);
+  };
+  draw(0);
+  draw(30);
+  const saving = session.saveContent(withDrawing(), { drawingInput: reserve() });
+  await act(() => Promise.resolve());
+  act(() => {
+    session.markEdited([paragraph('aaaaaaaaaa', 'body')]);
+    window.dispatchEvent(new Event('pagehide'));
+  });
+  expect(await statistics.get()).toMatchObject({ human: { count: 0 }, openCount: 0 });
+  await act(async () => {
+    release();
+    await saving;
+  });
+  expect(await statistics.get()).toMatchObject({ human: { count: 1, milliseconds: 30000 }, openCount: 0 });
+  hook.unmount();
 });

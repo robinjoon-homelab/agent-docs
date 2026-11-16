@@ -121,12 +121,14 @@ export class MemoryDocumentGateway implements DocumentGateway {
   create(spaceSlug: string, input: NewDocument): Promise<AgentDocument> {
     return respond(() => {
       const space = this.store.space(spaceSlug);
+      this.store.requireEdit(space.id);
       if (this.documentsOf(space.id).some((doc) => doc.path === input.path && doc.trashedAt === null)) {
         throw new ApiError('conflict', 409, '같은 경로의 문서가 이미 있습니다.');
       }
       const now = this.store.now();
       const document: AgentDocument = {
         id: this.store.nextId('doc'),
+        permission: this.store.permissionIn(space.id) ?? 'read',
         space: { id: space.id, slug: space.slug, name: space.name },
         path: input.path,
         title: input.title,
@@ -164,6 +166,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
   saveContent(documentId: string, baseVersion: number, blocks: readonly Block[]): Promise<SaveContentResult> {
     return respond((): SaveContentResult => {
       const document = this.store.document(documentId);
+      this.store.requireEdit(document.space.id);
       if (baseVersion !== document.version) {
         return { kind: 'conflict', currentVersion: document.version, currentDocument: document };
       }
@@ -201,6 +204,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
   patch(documentId: string, baseVersion: number, patch: MetaPatch): Promise<AgentDocument> {
     return respond(() => {
       const document = this.store.document(documentId);
+      this.store.requireEdit(document.space.id);
       if (baseVersion !== document.version) throw new StaleDocumentError(document.version, document);
       if (
         Object.entries(patch).every(
@@ -218,8 +222,10 @@ export class MemoryDocumentGateway implements DocumentGateway {
   transfer(documentId: string, baseVersion: number, spaceSlug: string, path: string) {
     return respond(() => {
       const document = this.store.document(documentId);
+      this.store.requireEdit(document.space.id);
       if (document.version !== baseVersion) throw new StaleDocumentError(document.version, document);
       const space = this.store.space(spaceSlug);
+      this.store.requireEdit(space.id);
       if (!isValidPath(path) || (space.id === document.space.id && path.startsWith(`${document.path}/`)))
         throw new ApiError('invalid', 400, '이사 경로를 확인하세요.');
       const moving = this.documentsOf(document.space.id).filter(
@@ -263,6 +269,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
   finalize(documentId: string, baseVersion: number): Promise<SavedContent> {
     return respond(() => {
       const current = this.store.document(documentId);
+      this.store.requireEdit(current.space.id);
       const document = current.version === baseVersion ? this.confirm(documentId) : current;
       return {
         kind: 'saved',
@@ -291,6 +298,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
   }
 
   private setTrashed(documentId: string, trashedAt: string | null): void {
+    this.store.requireEdit(this.store.document(documentId).space.id);
     const document = this.confirm(documentId);
     if ((document.trashedAt === null) === (trashedAt === null)) return;
     const updated = {
@@ -306,6 +314,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
 
   destroy(documentId: string): Promise<void> {
     return respond(() => {
+      this.store.requireOwner();
       if (this.store.document(documentId).trashedAt === null) {
         throw new ApiError('invalid', 400, '휴지통에 있는 문서만 영구 삭제할 수 있습니다.');
       }
@@ -342,6 +351,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
   restore(documentId: string, revision: number, baseVersion: number): Promise<number> {
     return respond(() => {
       const document = this.store.document(documentId);
+      this.store.requireEdit(document.space.id);
       if (baseVersion !== document.version) {
         throw new StaleDocumentError(document.version, document);
       }
@@ -367,7 +377,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
 
   nameRevision(documentId: string, revision: number, name: string): Promise<string | null> {
     return respond(() => {
-      this.store.document(documentId);
+      this.store.requireEdit(this.store.document(documentId).space.id);
       const normalized = name.trim();
       if (normalized.length > 100 || /[\r\n]/u.test(normalized))
         throw new ApiError('invalid', 400, '리비전 이름은 한 줄로 100자까지입니다.');
@@ -392,6 +402,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
   restoreBlock(documentId: string, revision: number, blockId: string, baseVersion: number): Promise<number> {
     return respond(() => {
       const current = this.store.document(documentId);
+      this.store.requireEdit(current.space.id);
       if (current.version !== baseVersion) throw new StaleDocumentError(current.version, current);
       const earlier = this.snapshot(documentId, revision).blocks;
       const original = earlier.find((block) => block.id === blockId);
@@ -449,6 +460,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
   }
 
   private history(documentId: string): StoredRevision[] {
+    this.store.document(documentId);
     return this.store.revisions.get(documentId) ?? [];
   }
 

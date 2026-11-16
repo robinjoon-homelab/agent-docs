@@ -5,6 +5,7 @@ import xyz.robinjoon.agentdocs.access.application.model.Caller
 import xyz.robinjoon.agentdocs.access.application.model.SessionCaller
 import xyz.robinjoon.agentdocs.access.application.port.input.WebSessionUseCase
 import xyz.robinjoon.agentdocs.access.application.port.output.SecretSource
+import xyz.robinjoon.agentdocs.access.application.port.output.SpaceMembershipRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.UserRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.WebSessionRepository
 import xyz.robinjoon.agentdocs.access.domain.TokenHash
@@ -12,16 +13,20 @@ import xyz.robinjoon.agentdocs.access.domain.session.WebSession
 import xyz.robinjoon.agentdocs.access.domain.session.WebSessionId
 import xyz.robinjoon.agentdocs.access.domain.user.Allowlist
 import xyz.robinjoon.agentdocs.access.domain.user.UserId
+import xyz.robinjoon.agentdocs.access.domain.user.UserRole
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
 
-// Runs on every browser request. The person and the allowlist are read each time rather than kept with the sign-in,
-// so taking someone off the allowlist or changing the owner applies from their next request.
+// Runs on every browser request. The person, the allowlist, and the person's joined memberships are read each time
+// rather than kept with the sign-in, so taking someone off the allowlist, changing the owner, or changing or revoking a
+// membership applies from their next request. A member whose last membership was revoked and who is not on the
+// allowlist is no longer let in. Nothing here fixes an invitation; only a GitHub sign-in does.
 @Transactional(readOnly = true)
 class WebSessionService(
     private val sessions: WebSessionRepository,
     private val users: UserRepository,
+    private val memberships: SpaceMembershipRepository,
     private val allowlist: Allowlist,
     private val secrets: SecretSource,
     private val clock: Clock,
@@ -56,8 +61,11 @@ class WebSessionService(
 
     private fun callerOf(session: WebSession): Caller? {
         val user = users.findById(session.userId) ?: return null
-        val role = allowlist.roleOf(user.account.login) ?: return null
-        return Callers.person(user, role)
+        val role = allowlist.roleOf(user.account.login)
+        if (role == UserRole.OWNER) return Callers.person(user, role)
+        val joined = memberships.findActiveByMember(user.id)
+        if (role == null && joined.isEmpty()) return null
+        return Callers.person(user, UserRole.MEMBER, joined)
     }
 
     @Transactional

@@ -34,6 +34,20 @@ class ExposedDocumentAssetStoreTest {
     }
 
     @Test
+    fun `a drawing's SVG and scene both count as references, in the current body and in history`() {
+        val svg = fixture.asset(fixture.source)
+        val scene = fixture.asset(fixture.source)
+        val oldSvg = fixture.asset(fixture.source)
+        val oldScene = fixture.asset(fixture.source)
+        val current = fixture.document(fixture.source, "current", "![흐름](asset:${svg.id} \"excalidraw asset:${scene.id}\")")
+        val past = fixture.document(fixture.source, "past", "![흐름](asset:${oldSvg.id} \"excalidraw asset:${oldScene.id}\")")
+        database.inTransaction { DocumentsTable.update({ DocumentsTable.id eq past.id.value }) { it[body] = "No current attachment" } }
+
+        assertThat(database.inTransaction { store.references(current.id) }).containsExactlyInAnyOrder(svg.id, scene.id)
+        assertThat(database.inTransaction { store.references(past.id) }).containsExactlyInAnyOrder(oldSvg.id, oldScene.id)
+    }
+
+    @Test
     fun `sharing resolves actual bindings and keeps even retained bindings conservative`() {
         val original = fixture.asset(fixture.source)
         val copy = fixture.asset(fixture.target)

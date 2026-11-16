@@ -21,6 +21,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.DocumentEventCaller
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.EditStatisticsRecorder
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.archive.ZipExportArchive
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.crypto.SecureRandomUploadSecretSource
+import xyz.robinjoon.agentdocs.workspace.adapter.outbound.drawing.JsonSceneVerifier
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.http.HttpRemoteImageSource
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.image.SniffingImageVerifier
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.image.SvgSanitizer
@@ -46,6 +47,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCa
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
 import xyz.robinjoon.agentdocs.workspace.application.service.ActivityService
 import xyz.robinjoon.agentdocs.workspace.application.service.AssetService
+import xyz.robinjoon.agentdocs.workspace.application.service.AttachmentVerifier
 import xyz.robinjoon.agentdocs.workspace.application.service.DocumentAssetService
 import xyz.robinjoon.agentdocs.workspace.application.service.DocumentEventsService
 import xyz.robinjoon.agentdocs.workspace.application.service.DocumentQueryService
@@ -76,8 +78,11 @@ class WorkspaceConfig {
 
     // Files go to the homelab object storage with agent-docs.assets.store=s3, and to a local directory otherwise.
     @Bean
-    fun assetPorts(properties: AgentDocsProperties): AssetPorts =
-        AssetPorts(assetStoreOf(properties.assets), SniffingImageVerifier(SvgSanitizer()), HttpRemoteImageSource())
+    fun assetPorts(
+        properties: AgentDocsProperties,
+        json: JsonMapper,
+    ): AssetPorts =
+        AssetPorts(assetStoreOf(properties.assets), SniffingImageVerifier(SvgSanitizer()), HttpRemoteImageSource(), JsonSceneVerifier(json))
 
     @Bean
     fun writeJournal(
@@ -129,7 +134,15 @@ class WorkspaceConfig {
         persistence: WorkspacePersistence,
         ports: AssetPorts,
         journal: WriteJournal,
-    ): AssetUseCase = AssetService(persistence.spaces, persistence.assets, ports.store, ports.verifier, ports.remote, journal)
+    ): AssetUseCase =
+        AssetService(
+            persistence.spaces,
+            persistence.assets,
+            ports.store,
+            AttachmentVerifier(ports.verifier, ports.scenes),
+            ports.remote,
+            journal,
+        )
 
     @Bean
     fun uploadGrantUseCase(
@@ -223,7 +236,8 @@ class WorkspaceConfig {
     fun documentAssetUseCase(
         persistence: WorkspacePersistence,
         ports: AssetPorts,
-    ): DocumentAssetUseCase = DocumentAssetService(persistence.documents, persistence.documentAssets, persistence.assets, ports.store)
+    ): DocumentAssetUseCase =
+        DocumentAssetService(persistence.documents, persistence.documentAssets, persistence.assets, ports.store, ports.scenes)
 
     private fun assetStoreOf(assets: AssetProperties): AssetStore {
         if (assets.store != "s3") return FileSystemAssetStore(Path.of(assets.directory))

@@ -26,3 +26,14 @@ describe('asset uploads', () => {
     expect(result.ok && result.value.id).toBe('as-1');
   });
 });
+
+describe('drawing scenes', () => {
+  it('are read only through their document, never through a global asset address', async () => {
+    const useCases = createAssetUseCases({
+      ...gateway,
+      sceneSource: (assetId, documentId) => Promise.resolve(`${documentId}:${assetId}`),
+    });
+    expect(await useCases.sceneSource('scene-1', 'doc-1')).toBe('doc-1:scene-1');
+    await expect(useCases.sceneSource('scene-1')).rejects.toThrow('문서 안에서만');
+  });
+});

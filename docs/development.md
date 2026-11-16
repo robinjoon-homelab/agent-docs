@@ -7,7 +7,7 @@
 - 로컬 API는 `http://localhost:8080`으로 호출한다. H2 개발 DB를 초기화할 때는 앱을 종료하고 필요한 데이터를 백업한 뒤 `data/`를 삭제한다.
 - 기본 프로필의 DB 연결은 `DB_URL`·`DB_USERNAME`·`DB_PASSWORD` 또는 표준 `SPRING_DATASOURCE_URL`·`SPRING_DATASOURCE_USERNAME`·`SPRING_DATASOURCE_PASSWORD`로 지정한다. H2 외의 DB에는 `DB_DRIVER`도 설정한다.
 - 운영 PostgreSQL에는 [배포 계약](deployment.md#컨테이너와-db-계약)의 `prod` 프로필을 사용한다. DB 파일·자격 증명을 커밋하지 않는다.
-- `AGENT_DOCS_OWNER`에 소유자 GitHub 로그인을 지정한다. 비어 있으면 앱이 시작하지 않는다. 함께 들어올 로그인은 `AGENT_DOCS_MEMBERS`에 쉼표로 적는다.
+- `AGENT_DOCS_OWNER`에 소유자 GitHub 로그인을 지정한다. 비어 있으면 앱이 시작하지 않는다. 초대 없이 로그인만 허용할 로그인은 `AGENT_DOCS_MEMBERS`에 쉼표로 적는다. 이 목록은 스페이스 권한을 주지 않고, 소유자가 스페이스에 초대한 로그인은 이 목록에 없어도 로그인한다.
 - GitHub 로그인에는 GitHub OAuth App의 `GITHUB_CLIENT_ID`·`GITHUB_CLIENT_SECRET`이 필요하다. 콜백 주소는 `<공개 주소>/login/oauth2/code/github`다.
 - `AGENT_DOCS_PUBLIC_URL`에 브라우저와 MCP 클라이언트가 쓰는 주소를 지정한다. 기본값은 `http://localhost:8080`이며 OAuth 메타데이터·토큰 대상이 이 주소를 따른다.
 - 첨부 파일은 기본으로 `AGENT_DOCS_ASSET_DIR`(기본 `./data/assets`)에 저장한다. S3 호환 저장소는 `AGENT_DOCS_ASSET_STORE=s3`와 `AGENT_DOCS_S3_BUCKET`·`AGENT_DOCS_S3_ENDPOINT`·`AGENT_DOCS_S3_REGION`·`AGENT_DOCS_S3_PREFIX`(기본 없음)로 지정하고, 접근 키는 `AGENT_DOCS_S3_ACCESS_KEY`·`AGENT_DOCS_S3_SECRET_KEY`로 넘긴다. 버킷과 접근 키가 없으면 시작하지 않는다.

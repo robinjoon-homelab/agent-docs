@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Block } from '../../domain/document/block';
 import { withoutHash } from '../../domain/document/block';
 import type { AgentDocument } from '../../domain/document/document';
+import type { InputTraceBatch } from '../../domain/statistics/statistics';
 import { document, paragraph, stored } from '../../test-support/fixtures';
 import type { Clock } from '../shared/ports/Clock';
 import { StaleDocumentError } from './ports/DocumentGateway';
@@ -15,6 +16,8 @@ const clock: Clock = { now: () => new Date('2026-10-18T10:00:00Z') };
 class FakeDocumentServer implements Partial<DocumentGateway> {
   doc: AgentDocument;
   failNext = false;
+  /** Input traces of metadata writes the server accepted, as its statistics would count them. */
+  traces: InputTraceBatch[] = [];
 
   constructor(doc: AgentDocument) {
     this.doc = doc;
@@ -55,11 +58,17 @@ class FakeDocumentServer implements Partial<DocumentGateway> {
   };
 
   /** Stale metadata changes conflict only when the same field changed since the base revision. */
-  patch = (_id: string, baseVersion: number, patch: MetaPatch): Promise<AgentDocument> => {
+  patch = (
+    _id: string,
+    baseVersion: number,
+    patch: MetaPatch,
+    trace?: InputTraceBatch,
+  ): Promise<AgentDocument> => {
     if (baseVersion !== this.doc.version) {
       return Promise.reject(new StaleDocumentError(this.doc.version, this.doc));
     }
     this.doc = { ...this.doc, ...patch, version: this.doc.version + 1 };
+    if (trace !== undefined) this.traces.push(trace);
     return Promise.resolve(this.doc);
   };
 
@@ -441,3 +450,180 @@ it.each([false, true])(
     expect(session.getState().errorMessage === null).toBe(!external);
   },
 );
+
+describe('closing writes while edit permission changes', () => {
+  const edited = () => [paragraph('aaaaaaaaaa', 'mine')];
+
+  it('keeps typed content without sending it and sends it with the next save after reopening', async () => {
+    const server = new FakeDocumentServer(document({ version: 1 }));
+    const session = open(server);
+    session.setWritable(false);
+
+    expect(await session.saveContent(edited())).toBe('error');
+    expect(server.doc.version).toBe(1);
+    expect(session.getState().status).toBe('pending');
+    expect(session.currentBlocks()).toEqual(edited());
+    expect(await session.idle()).toBe('error');
+
+    session.setWritable(true);
+    expect(await session.saveContent(session.currentBlocks())).toBe('saved');
+    expect(server.doc.blocks.map(withoutHash)).toEqual(edited());
+  });
+
+  it('keeps a title draft when its delayed request fails after writes close, then saves it once reopened', async () => {
+    const server = new FakeDocumentServer(document({ title: 'A', version: 1 }));
+    const session = open(server);
+    const patch = server.patch;
+    let refuse: () => void = () => undefined;
+    server.patch = () =>
+      new Promise<AgentDocument>((_resolve, reject) => {
+        refuse = () => reject(new ApiError('forbidden', 403, 'no edit permission'));
+      });
+    session.markMetaEdited({ title: 'Draft' });
+    const sending = session.patchMeta({ title: 'Draft' });
+    await Promise.resolve();
+    session.setWritable(false);
+    refuse();
+
+    expect(await sending).toBe(false);
+    expect(session.getState().meta.title).toBe('Draft');
+    expect(await session.flushMeta()).toBe(false);
+    expect(server.doc.title).toBe('A');
+
+    server.patch = patch;
+    session.setWritable(true);
+    expect(await session.flushMeta()).toBe(true);
+    expect(server.doc.title).toBe('Draft');
+  });
+
+  it('does not resend a stale save once writes close while it is in flight', async () => {
+    const server = new FakeDocumentServer(document({ version: 1 }));
+    const session = open(server);
+    const save = server.saveContent;
+    let release: () => void = () => undefined;
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.saveContent = async (...args) => {
+      await delayed;
+      return save(...args);
+    };
+    const saving = session.saveContent(edited());
+    await Promise.resolve();
+    server.agentWrites({ blocks: [paragraph('bbbbbbbbbb', 'agent')] });
+    session.setWritable(false);
+    release();
+
+    expect(await saving).toBe('error');
+    expect(server.doc.blocks.map(withoutHash)).toEqual([paragraph('bbbbbbbbbb', 'agent')]);
+    expect(session.currentBlocks()).toEqual(edited());
+  });
+
+  it('does not retry a safe stale title save once writes closed while its first request waited', async () => {
+    const server = new FakeDocumentServer(document({ title: 'A', version: 1 }));
+    const session = open(server);
+    const trace: InputTraceBatch = { batchId: 'title-batch', traces: [] };
+    session.setInputBatches(() => ({ trace, accepted: () => undefined, unchanged: () => undefined }));
+    const patch = server.patch;
+    let answer: () => void = () => undefined;
+    let first = true;
+    server.patch = (...args) => {
+      if (!first) return patch(...args);
+      first = false;
+      return new Promise<AgentDocument>((resolve, reject) => {
+        answer = () => {
+          patch(...args).then(resolve, reject);
+        };
+      });
+    };
+    server.agentWrites({ tags: ['agent'] });
+    session.markMetaEdited({ title: 'Draft' });
+    const sending = session.patchMeta({ title: 'Draft' });
+    await Promise.resolve();
+    session.setWritable(false);
+    answer();
+
+    expect(await sending).toBe(false);
+    expect(session.getState()).toMatchObject({ version: 1, meta: { title: 'Draft' }, status: 'error' });
+    expect(server.doc).toMatchObject({ title: 'A', tags: ['agent'], version: 2 });
+    expect(server.traces).toEqual([]);
+
+    session.setWritable(true);
+    expect(await session.flushMeta()).toBe(true);
+    expect(server.doc).toMatchObject({ title: 'Draft', tags: ['agent'] });
+    expect(server.traces).toEqual([trace]);
+  });
+
+  it('leaves a conflict untouched when writes close before its queued resolution starts', async () => {
+    const server = new FakeDocumentServer(document({ version: 1, blocks: [stored(paragraph(A, 'one'))] }));
+    const session = open(server);
+    server.agentWrites({ blocks: [paragraph(A, 'agent')] });
+    expect(await session.saveContent([paragraph(A, 'mine')])).toBe('conflict');
+    const conflict = session.getState();
+
+    const resolving = session.resolveConflicts(new Map([[A, 'theirs' as const]]));
+    session.setWritable(false);
+
+    expect(await resolving).toEqual({ blocks: [paragraph(A, 'mine')], outcome: 'error' });
+    expect(session.getState()).toBe(conflict);
+    expect(session.baseBlocks()).toEqual([paragraph(A, 'one')]);
+    session.setWritable(true);
+    expect(await session.resolveConflicts(new Map([[A, 'theirs' as const]]))).toEqual({
+      blocks: [paragraph(A, 'agent')],
+      outcome: 'saved',
+    });
+  });
+
+  it('leaves a conflict untouched when writes close while its resolution reads the stored body', async () => {
+    const server = new FakeDocumentServer(document({ version: 1, blocks: [stored(paragraph(A, 'one'))] }));
+    const session = open(server);
+    server.agentWrites({ blocks: [paragraph(A, 'agent')] });
+    expect(await session.saveContent([paragraph(A, 'mine')])).toBe('conflict');
+    const conflict = session.getState();
+    const get = server.get;
+    let reached: () => void = () => undefined;
+    const reading = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let answer: () => void = () => undefined;
+    server.get = () => {
+      reached();
+      return new Promise<AgentDocument>((resolve) => {
+        answer = () => {
+          resolve(server.doc);
+        };
+      });
+    };
+
+    const resolving = session.resolveConflicts(new Map([[A, 'theirs' as const]]));
+    await reading;
+    session.setWritable(false);
+    answer();
+
+    expect(await resolving).toEqual({ blocks: [paragraph(A, 'mine')], outcome: 'error' });
+    expect(session.getState()).toBe(conflict);
+    expect(session.currentBlocks()).toEqual([paragraph(A, 'mine')]);
+    expect(session.baseBlocks()).toEqual([paragraph(A, 'one')]);
+    server.get = get;
+    session.setWritable(true);
+    expect((await session.resolveConflicts(new Map([[A, 'mine' as const]]))).outcome).toBe('saved');
+    expect(server.doc.blocks.map(withoutHash)).toEqual([paragraph(A, 'mine')]);
+  });
+
+  it('neither finalizes nor resolves a conflict while writes are closed', async () => {
+    const server = new FakeDocumentServer(document({ version: 1, revision: 1 }));
+    const session = open(server);
+    expect(await session.saveContent(edited())).toBe('saved');
+    session.setWritable(false);
+
+    await session.finalize();
+    const resolved = await session.resolveConflicts(new Map());
+
+    expect(server.doc.revision).toBe(1);
+    expect(session.hasPendingRevision()).toBe(true);
+    expect(resolved.outcome).toBe('error');
+    session.setWritable(true);
+    await session.finalize();
+    expect(server.doc.revision).toBe(2);
+  });
+});

@@ -3,6 +3,7 @@ import type {
   CalloutKind,
   CodeBlock,
   DividerBlock,
+  DrawingBlock,
   HeadingLevel,
   ImageBlock,
   ListStyle,
@@ -34,6 +35,7 @@ export type DraftBlock =
   | { readonly id: string; readonly type: 'callout'; readonly kind: CalloutKind; readonly text: Inline }
   | CodeBlock
   | ImageBlock
+  | DrawingBlock
   | DividerBlock
   | {
       readonly id: string;
@@ -60,6 +62,7 @@ export function toDraftBlock(stored: Block): DraftBlock {
       };
     case 'code':
     case 'image':
+    case 'drawing':
     case 'divider':
       return block;
   }
@@ -112,6 +115,8 @@ function toBlock(draft: DraftBlock, base: Block | undefined): Block {
       return toTable(draft, base);
     case 'image':
       return { ...draft, alt: draft.alt.trim(), caption: draft.caption.trim() };
+    case 'drawing':
+      return { ...draft, alt: draft.alt.trim() };
     case 'code':
     case 'divider':
       return draft;

@@ -4,6 +4,7 @@ import xyz.robinjoon.agentdocs.access.application.model.AccessSettings
 import xyz.robinjoon.agentdocs.access.application.model.Caller
 import xyz.robinjoon.agentdocs.access.application.model.CallerAgent
 import xyz.robinjoon.agentdocs.access.application.model.CallerScope
+import xyz.robinjoon.agentdocs.access.domain.GitHubLogin
 import xyz.robinjoon.agentdocs.access.domain.TokenHash
 import xyz.robinjoon.agentdocs.access.domain.client.ClientKind
 import xyz.robinjoon.agentdocs.access.domain.client.ClientMetadata
@@ -18,6 +19,11 @@ import xyz.robinjoon.agentdocs.access.domain.connection.ConnectionState
 import xyz.robinjoon.agentdocs.access.domain.connection.ConnectionTerm
 import xyz.robinjoon.agentdocs.access.domain.connection.Credentials
 import xyz.robinjoon.agentdocs.access.domain.connection.Grant
+import xyz.robinjoon.agentdocs.access.domain.membership.MembershipState
+import xyz.robinjoon.agentdocs.access.domain.membership.SpaceInvitation
+import xyz.robinjoon.agentdocs.access.domain.membership.SpaceMembership
+import xyz.robinjoon.agentdocs.access.domain.membership.SpaceMembershipId
+import xyz.robinjoon.agentdocs.access.domain.membership.SpaceRole
 import xyz.robinjoon.agentdocs.access.domain.user.UserId
 import java.time.Clock
 import java.time.Duration
@@ -30,9 +36,19 @@ object AccessFixtures {
     val clock: Clock = Clock.fixed(now, ZoneOffset.UTC)
     val ownerId: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
     val space: UUID = UUID.fromString("33333333-3333-4333-8333-333333333333")
+    val otherSpace: UUID = UUID.fromString("44444444-4444-4444-8444-444444444444")
+    val memberId: UUID = UUID.fromString("77777777-7777-4777-8777-777777777777")
     val settings = AccessSettings("robinjoon", emptySet(), "https://docs.example.com")
     val owner = Caller(ownerId, "robinjoon", true, null, null, CallerScope.OWNER)
-    val agentCaller = Caller(ownerId, "robinjoon", false, CallerAgent(UUID.randomUUID(), "Claude Code"), setOf(space), CallerScope.EDIT)
+    val agentCaller =
+        Caller(
+            ownerId,
+            "robinjoon",
+            false,
+            CallerAgent(UUID.randomUUID(), "Claude Code"),
+            mapOf(space to CallerScope.EDIT),
+            CallerScope.EDIT,
+        )
     const val CLAUDE_CODE = "https://claude.ai/oauth/claude-code-client-metadata"
     val claudeCode =
         OAuthClient.register(
@@ -56,4 +72,17 @@ object AccessFixtures {
             ConnectionState(term, credentials),
         )
     }
+
+    // A membership the owner invited an hour ago; with a member it was joined a minute ago.
+    fun membership(
+        space: UUID,
+        login: String,
+        role: SpaceRole,
+        member: UUID? = null,
+    ): SpaceMembership =
+        SpaceMembership.restore(
+            SpaceMembershipId(UUID.randomUUID()),
+            SpaceInvitation(space, GitHubLogin(login), UserId(ownerId), now.minusSeconds(3_600)),
+            MembershipState(role, member?.let(::UserId), member?.let { now.minusSeconds(60) }, null),
+        )
 }
