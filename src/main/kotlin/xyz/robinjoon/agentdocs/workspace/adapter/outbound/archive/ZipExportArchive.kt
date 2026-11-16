@@ -1,6 +1,8 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.outbound.archive
 
 import tools.jackson.databind.ObjectMapper
+import xyz.robinjoon.agentdocs.workspace.application.model.AssetContentMissingException
+import xyz.robinjoon.agentdocs.workspace.application.model.ExportAssetMissingException
 import xyz.robinjoon.agentdocs.workspace.application.model.WorkspaceExport
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ExportArchive
@@ -19,7 +21,15 @@ class ZipExportArchive(
             snapshot.markdown.forEach { (id, markdown) ->
                 entry(zip, "markdown/$id.md", readable(id, markdown, snapshot).toByteArray(Charsets.UTF_8))
             }
-            snapshot.assets.forEach { asset -> entry(zip, "assets/${asset.id}.${asset.extension}", store.get(asset.sha256)) }
+            snapshot.assets.forEach { asset ->
+                val bytes =
+                    try {
+                        store.get(asset.sha256)
+                    } catch (missing: AssetContentMissingException) {
+                        throw ExportAssetMissingException(asset, missing)
+                    }
+                entry(zip, "assets/${asset.id}.${asset.extension}", bytes)
+            }
         }
         return buffer.toByteArray()
     }

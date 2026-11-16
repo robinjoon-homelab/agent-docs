@@ -6,6 +6,7 @@ export type ApiErrorCode =
   | 'forbidden'
   | 'rate_limited'
   | 'unauthenticated'
+  | 'export_incomplete'
   | 'network'
   | 'unknown';
 
@@ -22,6 +23,18 @@ export class ApiError extends Error {
     this.code = code;
     this.status = status;
     this.fix = fix;
+  }
+}
+
+/** Export stopped at this attachment; further missing originals may not have been checked. */
+export class ExportIncompleteError extends ApiError {
+  readonly failedAsset: Readonly<{ id: string; sha256: string }>;
+  readonly scanComplete = false;
+
+  constructor(message: string, fix: string | null, failedAsset: Readonly<{ id: string; sha256: string }>) {
+    super('export_incomplete', 500, message, fix);
+    this.name = 'ExportIncompleteError';
+    this.failedAsset = failedAsset;
   }
 }
 

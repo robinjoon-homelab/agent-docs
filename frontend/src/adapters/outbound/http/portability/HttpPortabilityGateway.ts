@@ -1,4 +1,5 @@
 import type { PortabilityGateway } from '../../../../application/portability/ports/PortabilityGateway';
+import { ExportIncompleteError } from '../../../../application/shared/ports/errors';
 import type { FolderEntry, FolderImportResult } from '../../../../domain/portability/portability';
 import type { HttpClient, FetchLike } from '../shared/httpClient';
 import { problemFrom, segment } from '../shared/httpClient';
@@ -44,7 +45,24 @@ export class HttpPortabilityGateway implements PortabilityGateway {
   async exportZip(space: string | null): Promise<ArrayBuffer> {
     const url = space === null ? '/api/exports/workspace.zip' : `/api/spaces/${segment(space)}/export.zip`;
     const response = await this.fetch(url, { credentials: 'same-origin', redirect: 'manual' });
-    if (!response.ok) throw await problemFrom(response);
+    if (!response.ok) {
+      const failure = await problemFrom(response);
+      const asset = failure.body.failedAsset;
+      if (
+        failure.code === 'export_incomplete' &&
+        failure.status === 500 &&
+        failure.body.scanComplete === false &&
+        typeof asset === 'object' &&
+        asset !== null &&
+        'id' in asset &&
+        typeof asset.id === 'string' &&
+        'sha256' in asset &&
+        typeof asset.sha256 === 'string'
+      ) {
+        throw new ExportIncompleteError(failure.message, failure.fix, { id: asset.id, sha256: asset.sha256 });
+      }
+      throw failure;
+    }
     return response.arrayBuffer();
   }
 }

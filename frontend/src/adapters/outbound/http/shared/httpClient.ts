@@ -33,6 +33,7 @@ const CODES: readonly ApiErrorCode[] = [
   'forbidden',
   'rate_limited',
   'unauthenticated',
+  'export_incomplete',
 ];
 
 function codeForStatus(status: number): ApiErrorCode {
@@ -52,6 +53,7 @@ const DEFAULT_MESSAGE: Record<ApiErrorCode, string> = {
   forbidden: '권한이 없습니다.',
   rate_limited: '요청이 너무 많습니다. 잠시 후 다시 시도하세요.',
   unauthenticated: '로그인이 필요합니다.',
+  export_incomplete: '첨부 원본이 없어 내보내기를 완료하지 못했습니다.',
   network: '서버에 연결할 수 없습니다.',
   unknown: '알 수 없는 오류가 발생했습니다.',
 };

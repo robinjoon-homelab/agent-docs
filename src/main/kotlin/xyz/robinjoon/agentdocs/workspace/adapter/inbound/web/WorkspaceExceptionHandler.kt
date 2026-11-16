@@ -12,6 +12,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestExcepti
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.CommentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ExportIncompleteException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.InboxItemNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.LegacyOperationException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
@@ -58,6 +59,14 @@ class WorkspaceExceptionHandler : ResponseEntityExceptionHandler() {
     )
     fun handleNotFound(exception: RuntimeException): ProblemDetail =
         problem(HttpStatus.NOT_FOUND, "not_found", exception, ProblemFixes.NOT_FOUND)
+
+    @ExceptionHandler(ExportIncompleteException::class)
+    fun handleExportIncomplete(exception: ExportIncompleteException): ProblemDetail {
+        val problem = problem(HttpStatus.INTERNAL_SERVER_ERROR, "export_incomplete", exception, exception.fix)
+        problem.setProperty("failedAsset", mapOf("id" to exception.failedAsset.id, "sha256" to exception.failedAsset.sha256))
+        problem.setProperty("scanComplete", false)
+        return problem
+    }
 
     @ExceptionHandler(UnauthenticatedException::class)
     fun handleUnauthenticated(exception: UnauthenticatedException): ProblemDetail =

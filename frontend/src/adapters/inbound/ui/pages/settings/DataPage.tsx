@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { PortabilityUseCases } from '../../../../../application/portability/portabilityUseCases';
+import { ExportIncompleteError, isApiError } from '../../../../../application/shared/ports/errors';
 import type { FolderImportResult } from '../../../../../domain/portability/portability';
 import { folderEntries } from './folderSelection';
 import './data.css';
@@ -15,14 +16,14 @@ export function DataPage({ portability, spaces, owner }: Props) {
   const [files, setFiles] = useState<readonly File[]>([]);
   const [result, setResult] = useState<FolderImportResult | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Error | null>(null);
   async function run(action: () => Promise<void>) {
     setBusy(true);
-    setError('');
+    setError(null);
     try {
       await action();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : '작업에 실패했습니다.');
+      setError(failure instanceof Error ? failure : new Error('작업에 실패했습니다.'));
     } finally {
       setBusy(false);
     }
@@ -117,7 +118,32 @@ export function DataPage({ portability, spaces, owner }: Props) {
         </section>
       )}
       {busy && <p role="status">처리 중입니다.</p>}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <div role="alert">
+          {isApiError(error, 'export_incomplete') ? (
+            <>
+              <p>저장된 첨부 원본이 없어 내보내기를 완료하지 못했습니다.</p>
+              <p>
+                검증된 원본이나 보관 사본을 확인해 누락된 첨부 원본을 복구한 뒤 다시 시도하세요. 첨부 정보와
+                문서 이력은 삭제하지 마세요.
+              </p>
+              {error instanceof ExportIncompleteError && (
+                <>
+                  <p>처음 확인된 누락 첨부입니다. 추가로 누락된 원본이 있을 수 있습니다.</p>
+                  <p>
+                    첨부 ID: <code>{error.failedAsset.id}</code>
+                  </p>
+                  <p>
+                    원본 SHA256: <code>{error.failedAsset.sha256}</code>
+                  </p>
+                </>
+              )}
+            </>
+          ) : (
+            <p>{error.message}</p>
+          )}
+        </div>
+      )}
     </main>
   );
 }
