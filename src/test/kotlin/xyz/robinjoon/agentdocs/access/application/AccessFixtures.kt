@@ -32,7 +32,15 @@ object AccessFixtures {
     val space: UUID = UUID.fromString("33333333-3333-4333-8333-333333333333")
     val settings = AccessSettings("robinjoon", emptySet(), "https://docs.example.com")
     val owner = Caller(ownerId, "robinjoon", true, null, null, CallerScope.OWNER)
-    val agentCaller = Caller(ownerId, "robinjoon", false, CallerAgent(UUID.randomUUID(), "Claude Code"), setOf(space), CallerScope.EDIT)
+    val agentCaller =
+        Caller(
+            ownerId,
+            "robinjoon",
+            false,
+            CallerAgent(UUID.randomUUID(), "Claude Code"),
+            mapOf(space to CallerScope.EDIT),
+            CallerScope.EDIT,
+        )
     const val CLAUDE_CODE = "https://claude.ai/oauth/claude-code-client-metadata"
     val claudeCode =
         OAuthClient.register(

@@ -22,7 +22,8 @@ class DocumentEventsServiceTest {
     private val service = DocumentEventsService(catalog)
     private val id = DocumentId(UUID.randomUUID())
     private val space = SpaceId(UUID.randomUUID())
-    private val access = Access(Actor.human(UUID.randomUUID(), "owner"), SpaceScope.Listed(setOf(space)), Permission.READ)
+    private val access =
+        Access(Actor.human(UUID.randomUUID(), "owner"), SpaceScope.Listed(mapOf(space to Permission.READ)), Permission.READ)
 
     @Test
     fun `a committed snapshot includes pending version and independent thread state`() {

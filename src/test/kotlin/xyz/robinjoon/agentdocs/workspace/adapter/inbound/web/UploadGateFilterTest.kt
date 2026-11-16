@@ -30,7 +30,14 @@ class UploadGateFilterTest {
     private val forged = UploadToken.of(connection, "made-up")
     private val genuine = UploadToken.of(connection, "secret")
     private val agent =
-        Caller(UUID.randomUUID(), "robinjoon", false, CallerAgent(connection, "Claude Code"), setOf(UUID.randomUUID()), CallerScope.EDIT)
+        Caller(
+            UUID.randomUUID(),
+            "robinjoon",
+            false,
+            CallerAgent(connection, "Claude Code"),
+            mapOf(UUID.randomUUID() to CallerScope.EDIT),
+            CallerScope.EDIT,
+        )
     private val uploads = mockk<UploadGrantUseCase>()
     private val callers = mockk<CallerUseCase>()
     private val limiter = RateLimitFilter(Clock.fixed(Instant.parse("2026-10-18T09:00:45Z"), ZoneOffset.UTC), limit = 1)

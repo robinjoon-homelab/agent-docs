@@ -80,7 +80,7 @@ class CallerServiceTest {
 
         assertThat(caller.agent?.connectionId).isEqualTo(active.id.value)
         assertThat(caller.agent?.clientName).isEqualTo("Claude Code (claude.ai)")
-        assertThat(caller.spaces).containsExactly(space)
+        assertThat(caller.spaces).containsExactlyEntriesOf(mapOf(space to CallerScope.EDIT))
         assertThat(caller.scope).isEqualTo(CallerScope.EDIT)
         assertThat(caller.owner).isFalse()
     }
@@ -105,7 +105,7 @@ class CallerServiceTest {
         val caller = requireNotNull(service.callerForUpload(UploadToken.of(active.id.value, "secret")))
 
         assertThat(caller.agent?.connectionId).isEqualTo(active.id.value)
-        assertThat(caller.spaces).containsExactly(space)
+        assertThat(caller.spaces).containsExactlyEntriesOf(mapOf(space to CallerScope.EDIT))
         assertThat(caller.scope).isEqualTo(CallerScope.EDIT)
     }
 

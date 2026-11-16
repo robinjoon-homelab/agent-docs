@@ -165,7 +165,9 @@ class WebhookApiDocumentationTest : RestDocsWebTest() {
     @Test
     fun `agents and members are refused, bad input is invalid, and a stopped endpoint keeps its secret`() {
         val agent =
-            CallerAuthentication(Caller(userId, "robinjoon", false, CallerAgent(UUID.randomUUID(), "Claude Code"), null, CallerScope.EDIT))
+            CallerAuthentication(
+                Caller(userId, "robinjoon", false, CallerAgent(UUID.randomUUID(), "Claude Code"), emptyMap(), CallerScope.EDIT),
+            )
         val agentOperator = WebhookOperator(userId, "robinjoon", owner = false, agent = true)
         every { webhooks.list(agentOperator) } throws WebhookOwnerOnlyException("listing webhooks")
         every { webhooks.register(operator, any()) } throws InvalidWebhookException("url must not carry a user name or password")

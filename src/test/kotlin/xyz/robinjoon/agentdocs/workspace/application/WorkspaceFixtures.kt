@@ -49,7 +49,7 @@ object WorkspaceFixtures {
     fun agentAccess(
         permission: Permission,
         spaces: Set<SpaceId>,
-    ): Access = Access(agent, SpaceScope.Listed(spaces), permission)
+    ): Access = Access(agent, SpaceScope.Listed(spaces.associateWith { permission }), permission)
 
     fun context(
         access: Access,

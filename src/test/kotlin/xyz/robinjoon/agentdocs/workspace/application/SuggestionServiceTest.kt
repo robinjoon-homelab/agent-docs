@@ -112,7 +112,7 @@ class SuggestionServiceTest {
                 ),
             )
         val comment = requireNotNull(proposed.written)
-        val agent = WorkspaceFixtures.context(WorkspaceFixtures.agentAccess(Permission.OWNER, setOf(document.spaceId)))
+        val agent = WorkspaceFixtures.context(WorkspaceFixtures.agentAccess(Permission.EDIT, setOf(document.spaceId)))
         assertThatThrownBy { service.decide(agent, comment, true) }.isInstanceOf(PermissionDeniedException::class.java)
         val rejected = service.decide(context, comment, false)
         assertThat(document.blocks).containsExactly(block)

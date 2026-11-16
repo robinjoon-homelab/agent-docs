@@ -27,7 +27,9 @@ object CallerAccess {
             } else {
                 Actor.agent(caller.userId, caller.login, AgentIdentity(agent.connectionId, agent.clientName))
             }
-        val spaces = caller.spaces?.let { ids -> SpaceScope.Listed(ids.map(::SpaceId).toSet()) } ?: SpaceScope.AllSpaces
+        val spaces =
+            caller.spaces?.let { grants -> SpaceScope.Listed(grants.mapKeys { SpaceId(it.key) }.mapValues { permissionOf(it.value) }) }
+                ?: SpaceScope.AllSpaces
         return Access(actor, spaces, permissionOf(caller.scope))
     }
 

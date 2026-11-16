@@ -7,12 +7,25 @@ data class Access(
     val spaces: SpaceScope,
     val permission: Permission,
 ) {
+    init {
+        require((spaces == SpaceScope.AllSpaces) == (permission == Permission.OWNER && !actor.isAgent)) {
+            "only a person owner sees all spaces"
+        }
+        require(permission != Permission.OWNER || !actor.isAgent) { "an agent cannot hold OWNER" }
+    }
+
     val isOwner: Boolean get() = permission == Permission.OWNER
 
     fun sees(space: SpaceId): Boolean = spaces.includes(space)
 
+    fun permissionIn(space: SpaceId): Permission? =
+        when (val scope = spaces) {
+            SpaceScope.AllSpaces -> permission
+            is SpaceScope.Listed -> scope.grants[space]?.let { minOf(it, permission) }
+        }
+
     fun allows(
         space: SpaceId,
         needed: Permission,
-    ): Boolean = sees(space) && permission.covers(needed)
+    ): Boolean = permissionIn(space)?.covers(needed) == true
 }

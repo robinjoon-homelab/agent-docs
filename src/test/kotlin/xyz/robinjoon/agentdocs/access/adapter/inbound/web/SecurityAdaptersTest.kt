@@ -36,7 +36,7 @@ class SecurityAdaptersTest {
             "robinjoon",
             false,
             CallerAgent(UUID.randomUUID(), "Claude Code"),
-            setOf(UUID.randomUUID()),
+            mapOf(UUID.randomUUID() to CallerScope.READ),
             CallerScope.READ,
         )
 
@@ -78,7 +78,7 @@ class SecurityAdaptersTest {
     @Test
     fun `only the owner holds the owner role, and an agent never does`() {
         val owner = Caller(UUID.randomUUID(), "robinjoon", true, null, null, CallerScope.OWNER)
-        val member = owner.copy(owner = false, scope = CallerScope.READ)
+        val member = Caller(owner.userId, owner.login, false, null, emptyMap(), CallerScope.READ)
 
         assertThat(CallerAuthentication(owner).authorities.map { it.authority }).containsExactly("ROLE_PERSON", "ROLE_OWNER")
         assertThat(CallerAuthentication(member).authorities.map { it.authority }).containsExactly("ROLE_PERSON")

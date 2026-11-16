@@ -26,7 +26,7 @@ class CurrentCallerService(
             caller.userId,
             caller.login,
             caller.agent?.let { CurrentCallerSnapshot.Connection(it.connectionId, it.clientName) },
-            caller.spaces?.toSet(),
+            caller.spaces?.mapValues { CurrentCallerSnapshot.Scope.valueOf(it.value.name) },
             CurrentCallerSnapshot.Scope.valueOf(caller.scope.name),
         )
 }

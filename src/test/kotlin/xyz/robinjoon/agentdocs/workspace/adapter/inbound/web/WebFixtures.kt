@@ -49,14 +49,18 @@ object WebFixtures {
             "robinjoon",
             false,
             CallerAgent(connectionId, "Claude Code"),
-            setOf(UUID.fromString("33333333-3333-4333-8333-333333333333")),
+            mapOf(UUID.fromString("33333333-3333-4333-8333-333333333333") to CallerScope.EDIT),
             CallerScope.EDIT,
         )
     val agent = CallerAuthentication(agentCaller)
     val ownerAccess = Access(Actor.human(userId, "robinjoon"), SpaceScope.AllSpaces, Permission.OWNER)
     val agentActor = Actor.agent(userId, "robinjoon", AgentIdentity(connectionId, "Claude Code"))
     val agentAccess =
-        Access(agentActor, SpaceScope.Listed(setOf(SpaceId(UUID.fromString("33333333-3333-4333-8333-333333333333")))), Permission.EDIT)
+        Access(
+            agentActor,
+            SpaceScope.Listed(mapOf(SpaceId(UUID.fromString("33333333-3333-4333-8333-333333333333")) to Permission.EDIT)),
+            Permission.EDIT,
+        )
     val webContext = WriteContext(ownerAccess, ChangeSource.WEB, null, null)
     val spaceId = SpaceId(UUID.fromString("33333333-3333-4333-8333-333333333333"))
     val space =

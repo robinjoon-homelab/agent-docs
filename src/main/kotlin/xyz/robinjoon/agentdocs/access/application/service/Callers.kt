@@ -20,7 +20,7 @@ internal object Callers {
             user.account.login,
             owner,
             null,
-            if (owner) null else emptySet(),
+            if (owner) null else emptyMap(),
             if (owner) CallerScope.OWNER else CallerScope.READ,
         )
     }
@@ -41,7 +41,7 @@ internal object Callers {
         val client = connection.owner.client
         val label = client.host?.let { "${client.name} ($it)" } ?: client.name
         val agent = CallerAgent(connection.id.value, label.take(MAX_LABEL_LENGTH), cliClientId != null && client.clientId == cliClientId)
-        return Caller(connection.owner.userId.value, login, false, agent, connection.grant.spaces, scope)
+        return Caller(connection.owner.userId.value, login, false, agent, connection.grant.spaces.associateWith { scope }, scope)
     }
 
     // The width of the actor client name columns.
