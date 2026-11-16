@@ -1,3 +1,4 @@
+import { useSession } from '../../app/SessionContext';
 import { Link, useSearchParams } from 'react-router';
 import type { Space } from '../../../../../domain/space/space';
 import { isArchived, spaceInitial } from '../../../../../domain/space/space';
@@ -37,6 +38,7 @@ function SpaceCard({ space }: { space: Space }) {
 
 /** S2: my spaces and recent documents across spaces. */
 export function HomePage({ navigation }: { navigation: NavigationUseCases }) {
+  const { me } = useSession();
   const services = useServices();
   const [params, setParams] = useSearchParams();
   const spaces = useLoad('home:spaces', () => services.spaces.list());
@@ -50,11 +52,11 @@ export function HomePage({ navigation }: { navigation: NavigationUseCases }) {
     setParams(next, { replace: true });
   };
 
-  const newSpaceButton = (
+  const newSpaceButton = me.owner ? (
     <button type="button" className="btn btn-primary" onClick={openDialog}>
       <Icon name="plus" size={14} />새 스페이스
     </button>
-  );
+  ) : null;
 
   return (
     <div className="page">
@@ -65,9 +67,14 @@ export function HomePage({ navigation }: { navigation: NavigationUseCases }) {
       {spaces.state === 'loading' ? <Loading /> : null}
       {spaces.state === 'error' ? <ErrorBox error={spaces.error} onRetry={spaces.reload} /> : null}
       {spaces.state === 'ready' && spaces.data.length === 0 ? (
-        <EmptyState title="아직 스페이스가 없습니다" actions={newSpaceButton}>
+        <EmptyState
+          title={me.owner ? '아직 스페이스가 없습니다' : '참여 중인 스페이스가 없습니다'}
+          actions={newSpaceButton}
+        >
           <p className="muted" style={{ margin: 0 }}>
-            스페이스를 만들어 문서를 모으세요. 접근 범위가 다른 문서는 다른 스페이스에 두세요.
+            {me.owner
+              ? '스페이스를 만들어 문서를 모으세요.'
+              : '소유자에게 초대를 요청한 뒤 GitHub로 다시 로그인하세요.'}
           </p>
         </EmptyState>
       ) : null}
@@ -115,7 +122,7 @@ export function HomePage({ navigation }: { navigation: NavigationUseCases }) {
           ) : null}
         </>
       ) : null}
-      {dialogOpen ? <NewSpaceDialog onClose={closeDialog} /> : null}
+      {dialogOpen && me.owner ? <NewSpaceDialog onClose={closeDialog} /> : null}
     </div>
   );
 }

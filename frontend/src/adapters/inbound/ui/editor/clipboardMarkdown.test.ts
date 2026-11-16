@@ -183,4 +183,12 @@ describe('clipboard markdown', () => {
       ]),
     ).toBe('\\# 제목 아님\n\n1\\. 목록 아님\n\n\\---\n\n \\# 제목 아님\n\n   1\\. 목록 아님');
   });
+
+  it('copies a drawing as its SVG picture, since the scene means nothing outside the app', () => {
+    expect(
+      copy([
+        { id: 'drawing001', type: 'drawing', svgAssetId: 'svg-1', sceneAssetId: 'scene-1', alt: '흐름' },
+      ]),
+    ).toBe('![흐름](<https://docs.example/api/assets/svg-1/content>)');
+  });
 });

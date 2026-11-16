@@ -623,3 +623,33 @@
   padding-inline: 0.5rem;
   user-select: none;
 }
+
+/* Saved drawings keep their own light colors in dark mode, as exported. */
+.drawing-picture {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: #ffffff;
+}
+
+.drawing-fields {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawing-narrow-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.drawing-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 40%);
+}

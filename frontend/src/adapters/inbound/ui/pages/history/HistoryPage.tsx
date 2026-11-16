@@ -1,3 +1,5 @@
+import { DocumentPermissionContext } from '../document/DocumentPermissionContext';
+import { canEdit, effectivePermission } from '../../../../../domain/space/permission';
 import { DocumentAssetScope } from '../document/DocumentAssetScope';
 import type { ComponentProps } from 'react';
 import { useMemo, useState } from 'react';
@@ -269,6 +271,7 @@ function RestoreDialog({
 
 function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: AgentDocument }) {
   const { me } = useSession();
+  const editable = canEdit(effectivePermission(document.permission, me.owner));
   const services = useServices();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -473,7 +476,7 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
                   마크다운
                 </button>
               </div>
-              {mode === 'current' && selected !== null && selected !== document.revision ? (
+              {editable && mode === 'current' && selected !== null && selected !== document.revision ? (
                 <button
                   type="button"
                   className="btn btn-small"
@@ -497,7 +500,7 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
                 comparison={comparison.data}
                 onlyChanged={onlyChanged}
                 onRestore={
-                  mode === 'current' && me.owner && !blockBusy
+                  mode === 'current' && editable && !blockBusy
                     ? (blockId) => void restoreBlock(blockId)
                     : undefined
                 }
@@ -540,7 +543,18 @@ export function HistoryPage() {
   if (space.state === 'loading' || document.state === 'loading') return <Loading />;
   return (
     <DocumentAssetScope documentId={document.data.id}>
-      <HistoryView spaceSlug={space.data.slug} document={document.data} />
+      <HistoryAccess document={document.data}>
+        <HistoryView spaceSlug={space.data.slug} document={document.data} />
+      </HistoryAccess>
     </DocumentAssetScope>
+  );
+}
+
+function HistoryAccess({ document, children }: { document: AgentDocument; children: React.ReactNode }) {
+  const { me } = useSession();
+  return (
+    <DocumentPermissionContext value={effectivePermission(document.permission, me.owner)}>
+      {children}
+    </DocumentPermissionContext>
   );
 }

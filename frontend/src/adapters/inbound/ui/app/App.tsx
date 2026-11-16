@@ -1,3 +1,4 @@
+import { SpacePermissionsProvider } from './SpacePermissionsContext';
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import { Loading, NotFound } from '../common/States';
@@ -13,7 +14,7 @@ import { SpaceHomePage } from '../pages/space/SpaceHomePage';
 import { SpaceSettingsPage } from '../pages/space/SpaceSettingsPage';
 import { AppShell } from './AppShell';
 import { RequireSession } from './RequireSession';
-import { DataRoute, HomeRoute, MobileMemoRoute } from './ServiceRoutes';
+import { DataRoute, HomeRoute, MobileMemoRoute, RequireOwner } from './ServiceRoutes';
 
 // The editor (Tiptap/ProseMirror) and the diff view are the heaviest screens; load them on demand.
 const DocumentPage = lazy(() =>
@@ -25,32 +26,69 @@ const HistoryPage = lazy(() =>
 
 export function App() {
   return (
-    <ToastProvider>
-      <BrowserRouter>
-        <Suspense fallback={<Loading />}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route element={<RequireSession />}>
-              <Route path="/oauth/authorize" element={<ConnectionApprovalPage />} />
-              <Route path="/m" element={<MobileMemoRoute />} />
-              <Route element={<AppShell />}>
-                <Route index element={<HomeRoute />} />
-                <Route path="/inbox" element={<InboxPage />} />
-                <Route path="/search" element={<SearchPage />} />
-                <Route path="/settings/agents" element={<AgentConnectionsPage />} />
-                <Route path="/settings/data" element={<DataRoute />} />
-                <Route path="/settings/webhooks" element={<WebhooksPage />} />
-                <Route path="/d/:docId" element={<DocumentRedirect />} />
-                <Route path="/s/:space" element={<SpaceHomePage />} />
-                <Route path="/s/:space/settings" element={<SpaceSettingsPage />} />
-                <Route path="/s/:space/d/:docId" element={<DocumentPage />} />
-                <Route path="/s/:space/d/:docId/history" element={<HistoryPage />} />
-                <Route path="*" element={<NotFound />} />
+    <SpacePermissionsProvider>
+      <ToastProvider>
+        <BrowserRouter>
+          <Suspense fallback={<Loading />}>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route element={<RequireSession />}>
+                <Route
+                  path="/oauth/authorize"
+                  element={
+                    <RequireOwner>
+                      <ConnectionApprovalPage />
+                    </RequireOwner>
+                  }
+                />
+                <Route path="/m" element={<MobileMemoRoute />} />
+                <Route element={<AppShell />}>
+                  <Route index element={<HomeRoute />} />
+                  <Route path="/inbox" element={<InboxPage />} />
+                  <Route path="/search" element={<SearchPage />} />
+                  <Route
+                    path="/settings/agents"
+                    element={
+                      <RequireOwner>
+                        <AgentConnectionsPage />
+                      </RequireOwner>
+                    }
+                  />
+                  <Route
+                    path="/settings/data"
+                    element={
+                      <RequireOwner>
+                        <DataRoute />
+                      </RequireOwner>
+                    }
+                  />
+                  <Route
+                    path="/settings/webhooks"
+                    element={
+                      <RequireOwner>
+                        <WebhooksPage />
+                      </RequireOwner>
+                    }
+                  />
+                  <Route path="/d/:docId" element={<DocumentRedirect />} />
+                  <Route path="/s/:space" element={<SpaceHomePage />} />
+                  <Route
+                    path="/s/:space/settings"
+                    element={
+                      <RequireOwner>
+                        <SpaceSettingsPage />
+                      </RequireOwner>
+                    }
+                  />
+                  <Route path="/s/:space/d/:docId" element={<DocumentPage />} />
+                  <Route path="/s/:space/d/:docId/history" element={<HistoryPage />} />
+                  <Route path="*" element={<NotFound />} />
+                </Route>
               </Route>
-            </Route>
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
-    </ToastProvider>
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </ToastProvider>
+    </SpacePermissionsProvider>
   );
 }

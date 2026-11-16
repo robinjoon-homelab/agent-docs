@@ -6,6 +6,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
+import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.TableBlock
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Anchor
@@ -27,7 +28,7 @@ internal object AnchorPlacement {
         request: AnchorRequest.Text,
         block: Block,
     ): Anchor.Text {
-        if (block is TableBlock || block is ImageBlock || block is Divider) {
+        if (block is TableBlock || block is ImageBlock || block is DrawingBlock || block is Divider) {
             throw InvalidRequestException("block ${block.id} has no text range", "anchor on a table cell or on the whole block")
         }
         val text = block.plainText()

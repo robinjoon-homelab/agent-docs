@@ -135,10 +135,15 @@ class DocsUploadTool(
     override val definition =
         ToolDefinition(
             name = "docs_upload",
-            title = "Upload an attachment or read HTML source",
+            title = "Upload an attachment or read HTML and drawing sources",
             description =
-                "Uploads images, PDF, UTF-8 HTML/text, or binary downloads (up to 20MB). Pass assetId to read an HTML original. " +
-                    "HTML markdown uses the mockup caption; replace that block reference to publish a new revision. Always give alt text " +
+                "Uploads images, PDF, UTF-8 HTML/text, Excalidraw scenes (.excalidraw), or binary downloads (up to 20MB). Pass " +
+                    "assetId to read an HTML original. HTML markdown uses the mockup caption; replace that block reference to publish " +
+                    "a new revision. " +
+                    "A hand-drawn diagram is ![alt](asset:SVG \"excalidraw asset:SCENE\"): pass assetId with document to read the SVG " +
+                    "source or the scene's text elements, and includeSource to get the scene JSON itself. To change a drawing, upload a " +
+                    "new .excalidraw scene and a matching .svg, then replace the block with both ids; keep fields you did not change " +
+                    "so the scene stays as it was drawn. Always give alt text " +
                     "describing what the image shows. Choose by where the image is. A local file, if you can run shell commands that " +
                     "reach this server: leave out contentBase64 and url, then run the curl command you get back with the file's path; " +
                     "any size works and nothing is copied by hand. A public image: pass url. No shell, or the command is blocked: pass " +
@@ -147,8 +152,12 @@ class DocsUploadTool(
             properties =
                 mapOf(
                     "space" to Schemas.string("Space slug"),
-                    "document" to Schemas.string("Document ID for resolving an HTML asset reference after transfer; use with assetId"),
-                    "assetId" to Schemas.string("Read the UTF-8 HTML source of this asset instead of uploading"),
+                    "document" to
+                        Schemas.string(
+                            "Document showing the asset; required for drawing SVGs and scenes, and resolves references after transfer",
+                        ),
+                    "assetId" to Schemas.string("Read this HTML, drawing SVG, or drawing scene instead of uploading"),
+                    "includeSource" to Schemas.boolean("With a drawing scene's assetId: also return the stored scene JSON"),
                     "mediaType" to Schemas.string("Declared content type, with contentBase64"),
                     "fileName" to Schemas.string("File name, with contentBase64. An upload command sends the file's own name"),
                     "contentBase64" to
@@ -166,7 +175,7 @@ class DocsUploadTool(
         arguments: Arguments,
         context: WriteContext,
     ): McpToolResult {
-        arguments.optionalUuid("assetId")?.let { return sourceOf(context, it, arguments.optionalUuid("document")) }
+        arguments.optionalUuid("assetId")?.let { return sourceOf(context, arguments, it) }
         val space = SpaceSlug(arguments.string("space"))
         val url = arguments.optionalString("url")
         val content = arguments.optionalString("contentBase64")
@@ -189,19 +198,45 @@ class DocsUploadTool(
         return McpToolResult.data(ImageUploads.resultOf(asset, alt))
     }
 
+    // Without a document only HTML is read, as before; drawings are read only through the document that shows them.
     private fun sourceOf(
         context: WriteContext,
+        arguments: Arguments,
         id: UUID,
-        document: UUID?,
     ): McpToolResult {
-        val file =
-            if (document == null) {
-                assets.content(context.access, AssetId(id))
-            } else {
-                documentAssets.content(context.access, DocumentId(document), AssetId(id))
+        val document = arguments.optionalUuid("document") ?: return globalHtmlSource(context, id)
+        val source = documentAssets.source(context.access, DocumentId(document), AssetId(id))
+        val type = source.asset.content.mediaType
+        if (type == AssetMediaType.HTML) return McpToolResult.data(mapOf("assetId" to id, "source" to source.text))
+        val described = mapOf("assetId" to id, "mediaType" to type.mime, "size" to source.asset.content.size)
+        val scene = source.scene ?: return McpToolResult.data(described + mapOf("source" to source.text))
+        val contents =
+            mapOf(
+                "elementCount" to scene.elementCount,
+                "fileCount" to scene.fileCount,
+                "texts" to scene.texts.map { mapOf("elementId" to it.elementId, "text" to it.text, "containerId" to it.containerId) },
+            )
+        val original = if (arguments.boolean("includeSource")) mapOf("source" to source.text) else emptyMap()
+        return McpToolResult.data(described + contents + original)
+    }
+
+    private fun globalHtmlSource(
+        context: WriteContext,
+        id: UUID,
+    ): McpToolResult {
+        val file = assets.content(context.access, AssetId(id))
+        when (file.asset.content.mediaType) {
+            AssetMediaType.HTML -> {
+                Unit
             }
-        if (file.asset.content.mediaType != AssetMediaType.HTML) {
-            throw InvalidRequestException("only HTML assets have preview source")
+
+            AssetMediaType.SVG, AssetMediaType.EXCALIDRAW -> {
+                throw InvalidRequestException("reading a drawing needs the document that shows it", "pass document with assetId")
+            }
+
+            else -> {
+                throw InvalidRequestException("only HTML assets have preview source")
+            }
         }
         return McpToolResult.data(mapOf("assetId" to id, "source" to file.bytes.toString(Charsets.UTF_8)))
     }

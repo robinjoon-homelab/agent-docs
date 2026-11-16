@@ -15,7 +15,9 @@ import xyz.robinjoon.agentdocs.workspace.application.model.SettingUpdate
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceChange
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceLocator
+import xyz.robinjoon.agentdocs.workspace.application.model.SpaceView
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
+import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.space.ExternalLink
 import xyz.robinjoon.agentdocs.workspace.domain.space.ExternalLinkKind
@@ -30,9 +32,12 @@ import java.util.UUID
 class SpaceController(
     private val spaces: SpaceUseCase,
 ) {
+    // Every space answer carries the caller's current permission there, so the web app knows what to offer.
     @GetMapping
-    fun list(principal: Principal?): List<Map<String, Any?>> =
-        spaces.list(CallerAccess.of(principal), includeArchived = true).map(SpaceJson::overview)
+    fun list(principal: Principal?): List<Map<String, Any?>> {
+        val access = CallerAccess.of(principal)
+        return spaces.list(access, includeArchived = true).map { SpaceJson.overview(it) + WorkspaceJson.permission(access, it.space.id) }
+    }
 
     @PostMapping
     fun create(
@@ -40,8 +45,10 @@ class SpaceController(
         principal: Principal?,
     ): ResponseEntity<Map<String, Any?>> {
         val profile = SpaceProfile.of(request.name, request.description.orEmpty(), linksOf(request.links.orEmpty()))
-        val space = spaces.create(CallerAccess.write(principal, null, null), SpaceDraft(SpaceSlug(request.slug.trim()), profile))
-        return ResponseEntity.created(URI.create("/api/spaces/${space.slug}")).body(SpaceJson.space(space, null))
+        val context = CallerAccess.write(principal, null, null)
+        val space = spaces.create(context, SpaceDraft(SpaceSlug(request.slug.trim()), profile))
+        val body = SpaceJson.space(space, null) + WorkspaceJson.permission(context.access, space.id)
+        return ResponseEntity.created(URI.create("/api/spaces/${space.slug}")).body(body)
     }
 
     // A former slug answers with the space under its current slug, so the web app can replace its address.
@@ -49,7 +56,10 @@ class SpaceController(
     fun get(
         @PathVariable slug: String,
         principal: Principal?,
-    ): Map<String, Any?> = SpaceJson.view(spaces.view(CallerAccess.of(principal), SpaceSlug(slug)))
+    ): Map<String, Any?> {
+        val access = CallerAccess.of(principal)
+        return viewOf(spaces.view(access, SpaceSlug(slug)), access)
+    }
 
     // Read field by field, because "agentGuideDocumentId": null and "defaultRepository": null clear those settings
     // while leaving them out keeps them.
@@ -73,14 +83,23 @@ class SpaceController(
                 body.get("archived")?.takeIf(JsonNode::isBoolean)?.booleanValue(),
                 guidanceOf(body),
             )
-        return SpaceJson.view(spaces.change(CallerAccess.write(principal, null, null), SpaceSlug(slug), change))
+        val context = CallerAccess.write(principal, null, null)
+        return viewOf(spaces.change(context, SpaceSlug(slug), change), context.access)
     }
 
     @PostMapping("/resolve")
     fun resolve(
         @RequestBody request: ResolveRequest,
         principal: Principal?,
-    ): Map<String, Any?> = SpaceJson.view(spaces.resolve(CallerAccess.of(principal), SpaceLocator(request.remote, request.path)))
+    ): Map<String, Any?> {
+        val access = CallerAccess.of(principal)
+        return viewOf(spaces.resolve(access, SpaceLocator(request.remote, request.path)), access)
+    }
+
+    private fun viewOf(
+        view: SpaceView,
+        access: Access,
+    ): Map<String, Any?> = SpaceJson.view(view) + WorkspaceJson.permission(access, view.space.id)
 
     private fun guidanceOf(body: JsonNode): GuidanceChange? {
         val guide = settingOf(body, GUIDE) { DocumentId(uuidOf(it)) }

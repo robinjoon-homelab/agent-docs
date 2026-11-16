@@ -119,8 +119,12 @@ class AssetApiDocumentationTest : RestDocsWebTest() {
             .perform(get("/api/assets/{id}/content", assetId.value).principal(owner))
             .andExpect(status().isOk)
             .andExpect(header().string("Content-Disposition", "attachment"))
-            .andExpect(header().string("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"))
-            .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+            .andExpect(
+                header().string(
+                    "Content-Security-Policy",
+                    "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:",
+                ),
+            ).andExpect(header().string("X-Content-Type-Options", "nosniff"))
             .andExpect(content().bytes(bytes))
     }
 
@@ -165,7 +169,9 @@ class AssetApiDocumentationTest : RestDocsWebTest() {
                     "assets-content",
                     responseHeaders(
                         headerWithName("Content-Type").description("파일 종류"),
-                        headerWithName("Content-Security-Policy").description("sandbox. SVG나 잘못 표시된 파일의 스크립트가 실행되지 않는다"),
+                        headerWithName("Content-Security-Policy").description(
+                            "sandbox. SVG나 잘못 표시된 파일의 스크립트가 실행되지 않고, 외부를 불러오지 않으며 data: 이미지·폰트만 쓴다",
+                        ),
                         headerWithName("Cache-Control").description("파일은 바뀌지 않으므로 1년 동안 캐시한다"),
                         headerWithName("X-Content-Type-Options").description("nosniff"),
                     ),

@@ -1,3 +1,10 @@
+import { DocumentAccessBanner } from './DocumentAccessBanner';
+import { commentAnchorPreparation } from '../../../../../domain/document/commentAnchor';
+import { RetainedDocumentContext } from '../../hooks/RetainedDocumentContext';
+import { useSpacePermissions } from '../../app/SpacePermissionsContext';
+import { useDocumentAccess } from './useDocumentAccess';
+import { DocumentPermissionContext } from './DocumentPermissionContext';
+import { canEdit, canComment } from '../../../../../domain/space/permission';
 import { DocumentAssetScope } from './DocumentAssetScope';
 import { useEditorInputTime } from './useEditorInputTime';
 import { TransferDialog } from './TransferDialog';
@@ -7,7 +14,15 @@ import { EditTimeDetails } from '../../statistics/EditTimeDetails';
 import { DocumentNavigation, useRecordDocumentView } from '../../navigation/DocumentNavigation';
 import { githubContextOf } from '../../../../../domain/space/space';
 import type { Space } from '../../../../../domain/space/space';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import type { MetaPatch } from '../../../../../application/document/ports/DocumentGateway';
 import { isNotVisible } from '../../../../../application/shared/ports/errors';
@@ -25,7 +40,7 @@ import { ErrorBox, Loading, NotFound, errorMessage } from '../../common/States';
 import { useToast } from '../../common/Toast';
 import type { DocumentEditorHandle } from '../../editor/DocumentEditor';
 import { DocumentEditor } from '../../editor/DocumentEditor';
-import { useLoad } from '../../hooks/useLoad';
+import { useLoad, type Load } from '../../hooks/useLoad';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { CommentRail } from './CommentRail';
@@ -132,8 +147,19 @@ function DocumentWorkspace({
   const [session] = useState(() => services.openEditor(document));
   useRecordDocumentView(services.navigation, document.id);
   const inputTime = useEditorInputTime(session, document.id, services.statistics);
-  const spaceInfo = useLoad(`document-space:${document.space.slug}`, () =>
-    services.spaces.get(document.space.slug),
+  const live = useSpacePermissions();
+  const closeEvents = useRef<() => void>(() => {});
+  const access = useDocumentAccess(document, me.owner, session, () => services.documents.get(document.id), {
+    revoked: () => closeEvents.current(),
+    onError: (failure) => toast(errorMessage(failure)),
+    spaces: { get: (slug) => services.spaces.get(slug), update: live.update },
+  });
+  const currentAccess = access.currentAccess;
+  const spaceInfo = useDocumentLookup(
+    `document-space:${document.space.slug}`,
+    () => services.spaces.get(document.space.slug),
+    access.revoked === null,
+    access.error,
   );
   const [transferSpaces, setTransferSpaces] = useState<readonly Space[] | null>(null);
   const [transferring, setTransferring] = useState(false);
@@ -146,12 +172,20 @@ function DocumentWorkspace({
     update,
     actions,
     reload: reloadThreads,
-  } = useThreadState(document.id, initialThreads, services.threads, () => session.refreshRemote());
-  useDocumentEvents(document.id, services.documentEvents, {
-    refreshDocument: () => session.refreshRemote(),
+  } = useThreadState(document.id, initialThreads, services.threads, () => access.refresh());
+  const stopEvents = useDocumentEvents(document.id, services.documentEvents, {
+    revoked: access.revoked !== null,
+    refreshDocument: access.refresh,
+    onPermission: access.receivePermission,
+    onRevoked: access.revoke,
     reloadThreads,
-    onError: (error) => toast(errorMessage(error)),
+    onError: (error) => {
+      if (!access.error(error)) toast(errorMessage(error));
+    },
   });
+  useLayoutEffect(() => {
+    closeEvents.current = stopEvents;
+  }, [stopEvents]);
   const [filter, setFilter] = useState<ThreadFilter>('open');
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [pending, setPending] = useState<Anchor | null>(null);
@@ -166,22 +200,26 @@ function DocumentWorkspace({
     setRailOpen(true);
     setRailCollapsed(false);
   }, [setRailCollapsed]);
-  const editable = me.owner && document.trashedAt === null && !transferring;
+  const editable = access.writable && !transferring;
   const frame = useRef<number | null>(null);
   const spaceSlug = document.space.slug;
-  const siblings = useLoad(`space-documents:${spaceSlug}:${shell.treeVersion}`, () =>
-    services.documents.listInSpace(spaceSlug),
+  const siblings = useDocumentLookup(
+    `space-documents:${spaceSlug}:${shell.treeVersion}`,
+    () => services.documents.listInSpace(spaceSlug),
+    access.revoked === null,
+    access.error,
   );
   const spaceDocuments = siblings.state === 'ready' ? siblings.data : [];
   // A move made in the sidebar can take this document along; its new path then shows in the space's list first.
   const listedPath = spaceDocuments.find((candidate) => candidate.id === document.id)?.path;
   useEffect(() => {
-    if (listedPath !== undefined && listedPath !== state.meta.path) void session.refreshMeta();
-  }, [listedPath, state.meta.path, session]);
+    if (currentAccess().revoked === null && listedPath !== undefined && listedPath !== state.meta.path)
+      void session.refreshMeta();
+  }, [listedPath, state.meta.path, session, currentAccess]);
 
   useEffect(() => {
-    if (state.lastSavedAt !== null) void reloadThreads();
-  }, [state.lastSavedAt, reloadThreads]);
+    if (state.lastSavedAt !== null && currentAccess().revoked === null) void reloadThreads();
+  }, [state.lastSavedAt, reloadThreads, currentAccess]);
 
   useEffect(() => {
     if (!editable || state.status !== 'saved' || !session.hasPendingRevision()) return;
@@ -190,18 +228,22 @@ function DocumentWorkspace({
   }, [editable, session, state.status, state.version, state.meta]);
 
   useEffect(() => {
-    if (!editable) return;
     const editor = editorRef.current;
+    const mayWrite = () =>
+      currentAccess().revoked === null && canEdit(currentAccess().permission) && session.isWritable();
     const leave = (): void => {
-      void session.finalize();
+      if (mayWrite()) void session.finalize();
     };
     window.addEventListener('pagehide', leave);
     return () => {
       window.removeEventListener('pagehide', leave);
+      if (!mayWrite()) return;
       const flush = editor?.flushSave();
-      void Promise.resolve(flush).then(() => session.finalize());
+      void Promise.resolve(flush).then(() => {
+        if (mayWrite()) return session.finalize();
+      });
     };
-  }, [editable, session]);
+  }, [session, currentAccess]);
 
   usePageTitle(state.meta.title);
 
@@ -219,7 +261,7 @@ function DocumentWorkspace({
     const warn = (event: BeforeUnloadEvent): void => {
       const status = session.getState().status;
       // 'error' counts too: a failed save leaves the typed text only in this tab.
-      if (status !== 'saved') event.preventDefault();
+      if (status !== 'saved' || editorRef.current?.hasDrawingDraft() === true) event.preventDefault();
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
@@ -255,6 +297,7 @@ function DocumentWorkspace({
   );
 
   const requestComment = (anchor: Anchor): void => {
+    if (!canComment(currentAccess().permission)) return;
     setPending(anchor);
     setActiveThreadId(null);
     showRail();
@@ -262,6 +305,7 @@ function DocumentWorkspace({
 
   /** Saves pending edits first; anchors and trashing assume the server has what the user sees. */
   const saveFirst = async (): Promise<boolean> => {
+    if (!canEdit(currentAccess().permission) || !session.isWritable()) return false;
     if (!(await session.flushMeta())) {
       toast('문서 정보를 저장하지 못했습니다. 입력을 확인하세요.');
       return false;
@@ -277,10 +321,27 @@ function DocumentWorkspace({
     return false;
   };
 
+  const prepareCommentAnchor = async (): Promise<boolean> => {
+    if (!canComment(currentAccess().permission)) return false;
+    const preparation = commentAnchorPreparation({
+      writable: session.isWritable() && canEdit(currentAccess().permission),
+      base: session.baseBlocks(),
+      current: session.currentBlocks(),
+      drawingDraft: editorRef.current?.hasDrawingDraft() === true,
+    });
+    if (preparation === 'ready') return true;
+    if (preparation === 'save') return saveFirst();
+    toast(
+      '저장되지 않은 본문이나 손그림 초안이 있어 댓글 위치를 정할 수 없습니다. 입력은 보존됩니다. 먼저 저장하거나 복사해 두세요.',
+    );
+    return false;
+  };
+
   const startThread = async (body: string): Promise<boolean> => {
     if (pending === null) return false;
     // Anchors are offsets into the content the server has, so pending edits go out first.
-    if (!(await saveFirst())) return false;
+    if (!canComment(currentAccess().permission)) return false;
+    if (!(await prepareCommentAnchor())) return false;
     const thread = await start(pending, body);
     if (thread === null) return false;
     setPending(null);
@@ -291,7 +352,7 @@ function DocumentWorkspace({
 
   const reanchor = async (anchor: Anchor): Promise<void> => {
     if (reanchorThread === null) return;
-    if (!(await saveFirst())) return;
+    if (!(await prepareCommentAnchor())) return;
     const done = await update(() => services.threads.reanchor(reanchorThread.id, anchor));
     if (done) {
       toast('댓글을 새 위치에 달았습니다');
@@ -302,6 +363,7 @@ function DocumentWorkspace({
   };
 
   const patch = (change: MetaPatch): void => {
+    if (!canEdit(currentAccess().permission) || !session.isWritable()) return;
     void session.patchMeta(change).then((saved) => {
       if (saved && (change.path !== undefined || change.title !== undefined)) shell.refreshTree();
     });
@@ -310,7 +372,11 @@ function DocumentWorkspace({
   const openTransfer = async () => {
     if (!(await saveFirst())) return;
     try {
-      setTransferSpaces(await services.spaces.list());
+      setTransferSpaces(
+        (await services.spaces.list()).filter((space) =>
+          canEdit(space.permission ?? (me.owner ? 'owner' : 'read')),
+        ),
+      );
     } catch (error) {
       toast(errorMessage(error));
     }
@@ -350,6 +416,7 @@ function DocumentWorkspace({
   };
 
   const restoreFromTrash = async (): Promise<void> => {
+    if (!canEdit(currentAccess().permission)) return;
     try {
       await services.documents.untrash(document.id);
       shell.refreshTree();
@@ -360,9 +427,12 @@ function DocumentWorkspace({
   };
 
   const resolveConflicts = async (choices: ReadonlyMap<string, ConflictChoice>): Promise<void> => {
+    if (!access.beginConflictResolution()) return;
     const { outcome } = await session.resolveConflicts(choices);
-    if (outcome === 'saved') toast('선택한 내용으로 저장했습니다');
-    else
+    if (outcome === 'saved') {
+      await access.refresh();
+      toast('선택한 내용으로 저장했습니다');
+    } else
       toast(
         outcome === 'conflict'
           ? '그사이 또 바뀌어 다시 골라야 합니다.'
@@ -406,132 +476,200 @@ function DocumentWorkspace({
   );
 
   return (
-    <div className={`doc-layout${docked ? '' : ' is-undocked'}`} ref={layoutRef}>
-      <div className="doc-main">
-        <div className="doc-body">
-          <DocumentHeader
-            document={document}
-            crumbs={breadcrumbOf(spaceDocuments, state.meta.path)}
-            state={state}
-            editable={editable}
-            onPatch={patch}
-            onInput={(change) => {
-              for (const field of Object.keys(change) as (keyof MetaPatch)[]) inputTime.mark(field);
-              session.markMetaEdited(change);
-            }}
-            onCancelInput={(key) => {
-              session.cancelMetaEdited(key);
-              inputTime.discard(key);
-            }}
-            onTransfer={() => void openTransfer()}
-            onTrash={() => void trash()}
-            onRetrySave={() => {
-              void saveFirst().then((saved) => {
-                if (saved) toast('저장했습니다');
-              });
-            }}
-          />
-          {document.trashedAt === null ? null : (
-            <div className="warning-box doc-banner">
-              휴지통에 있는 문서입니다. 읽기만 할 수 있습니다.{' '}
-              <button type="button" className="btn btn-small" onClick={() => void restoreFromTrash()}>
-                복원
-              </button>
+    <RetainedDocumentContext
+      value={{
+        documentId: document.id,
+        revoked: access.revoked !== null,
+        canLoad: () => currentAccess().revoked === null,
+        unauthenticated: () => access.revoke('unauthenticated'),
+      }}
+    >
+      <DocumentPermissionContext value={access.permission}>
+        <div className={`doc-layout${docked ? '' : ' is-undocked'}`} ref={layoutRef}>
+          <div className="doc-main">
+            <div className="doc-body">
+              <DocumentAccessBanner
+                access={access}
+                onCopy={() => {
+                  const text = JSON.stringify(
+                    { metadata: session.getState().meta, blocks: session.currentBlocks() },
+                    null,
+                    2,
+                  );
+                  void navigator.clipboard.writeText(text).then(
+                    () => toast('입력을 복사했습니다'),
+                    () => toast('복사하지 못했습니다. 본문을 선택해 복사하세요.'),
+                  );
+                }}
+              />
+              {access.resuming ? (
+                <p className="muted" role="status">
+                  최신 문서를 확인하고 있습니다.
+                </p>
+              ) : null}
+              <DocumentHeader
+                document={document}
+                crumbs={breadcrumbOf(spaceDocuments, state.meta.path)}
+                state={state}
+                editable={editable}
+                onPatch={patch}
+                onInput={(change) => {
+                  for (const field of Object.keys(change) as (keyof MetaPatch)[]) inputTime.mark(field);
+                  session.markMetaEdited(change);
+                }}
+                onCancelInput={(key) => {
+                  session.cancelMetaEdited(key);
+                  inputTime.discard(key);
+                }}
+                onTransfer={() => void openTransfer()}
+                onTrash={() => void trash()}
+                onRetrySave={() => {
+                  void saveFirst().then((saved) => {
+                    if (saved) toast('저장했습니다');
+                  });
+                }}
+              />
+              {document.trashedAt === null ? null : (
+                <div className="warning-box doc-banner">
+                  휴지통에 있는 문서입니다. 읽기만 할 수 있습니다.{' '}
+                  <button
+                    disabled={!canEdit(access.permission)}
+                    type="button"
+                    className="btn btn-small"
+                    onClick={() => void restoreFromTrash()}
+                  >
+                    복원
+                  </button>
+                </div>
+              )}
+              {reanchorThread === null ? null : (
+                <div className="warning-box doc-banner">
+                  “
+                  {reanchorThread.anchor.kind === 'text' || reanchorThread.anchor.kind === 'cell'
+                    ? reanchorThread.anchor.quote
+                    : '댓글'}
+                  ”을(를) 다시 달 위치의 텍스트를 선택하세요.{' '}
+                  <button type="button" className="btn btn-small" onClick={() => setReanchorThread(null)}>
+                    취소
+                  </button>
+                </div>
+              )}
+              {state.status === 'conflict' && canEdit(access.permission) && !access.resuming ? (
+                <ConflictPanel
+                  conflicts={state.conflicts}
+                  mine={session.currentBlocks()}
+                  onResolve={resolveConflicts}
+                />
+              ) : null}
+              {state.revisionNameSuggestion === null || !editable ? null : (
+                <RevisionNamePrompt
+                  key={state.revisionNameSuggestion}
+                  documentId={document.id}
+                  revision={state.revisionNameSuggestion}
+                  onClose={() => session.dismissRevisionNameSuggestion()}
+                />
+              )}
+              {transferSpaces === null || !editable ? null : (
+                <TransferDialog
+                  spaces={transferSpaces}
+                  path={state.meta.path}
+                  onTransfer={transfer}
+                  onClose={() => setTransferSpaces(null)}
+                />
+              )}
+              <DocumentEditor
+                ref={editorRef}
+                document={document}
+                session={session}
+                editable={editable}
+                github={spaceInfo.state === 'ready' ? githubContextOf(spaceInfo.data) : undefined}
+                onInput={() => inputTime.mark('body')}
+                drawingInput={inputTime.drawing}
+                threads={threads}
+                activeThreadId={highlightedThreadId}
+                reanchoring={reanchorThread !== null}
+                mentionLogins={mentionLogins}
+                onActivateThread={(threadId) => {
+                  setActiveThreadId(threadId);
+                  showRail();
+                }}
+                onRequestComment={requestComment}
+                onReanchor={(anchor) => void reanchor(anchor)}
+                onContentChange={relayout}
+                onMessage={toast}
+              />
+              <DocumentNavigation navigation={services.navigation} documentId={document.id} />
+              <EditTimeDetails statistics={services.statistics} documentId={document.id} />
+              <ChildDocuments
+                spaceSlug={spaceSlug}
+                documents={childrenOf(spaceDocuments, state.meta.path)}
+                editable={editable}
+                onAdd={() => shell.openNewDocument(spaceSlug, `${state.meta.path}/`)}
+              />
             </div>
-          )}
-          {reanchorThread === null ? null : (
-            <div className="warning-box doc-banner">
-              “
-              {reanchorThread.anchor.kind === 'text' || reanchorThread.anchor.kind === 'cell'
-                ? reanchorThread.anchor.quote
-                : '댓글'}
-              ”을(를) 다시 달 위치의 텍스트를 선택하세요.{' '}
-              <button type="button" className="btn btn-small" onClick={() => setReanchorThread(null)}>
-                취소
+          </div>
+          {docked ? (
+            rail
+          ) : wide ? (
+            <button
+              type="button"
+              className="rail-toggle"
+              onClick={() => setRailCollapsed(false)}
+              title="댓글 펼치기"
+              aria-label={`댓글 펼치기, 열린 댓글 ${openCount}개`}
+            >
+              <Icon name="comment" />
+              {openCount > 0 ? <span className="nav-count">{openCount}</span> : null}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="rail-toggle"
+                onClick={() => setRailOpen((value) => !value)}
+                aria-expanded={railOpen}
+                aria-label={`댓글 ${openCount}개`}
+              >
+                <Icon name="comment" />
+                {openCount > 0 ? <span className="nav-count">{openCount}</span> : null}
               </button>
-            </div>
+              {railOpen ? <div className="rail-drawer">{rail}</div> : null}
+            </>
           )}
-          {state.status === 'conflict' ? (
-            <ConflictPanel
-              conflicts={state.conflicts}
-              mine={session.currentBlocks()}
-              onResolve={resolveConflicts}
-            />
-          ) : null}
-          {state.revisionNameSuggestion === null ? null : (
-            <RevisionNamePrompt
-              key={state.revisionNameSuggestion}
-              documentId={document.id}
-              revision={state.revisionNameSuggestion}
-              onClose={() => session.dismissRevisionNameSuggestion()}
-            />
-          )}
-          {transferSpaces === null ? null : (
-            <TransferDialog
-              spaces={transferSpaces}
-              path={state.meta.path}
-              onTransfer={transfer}
-              onClose={() => setTransferSpaces(null)}
-            />
-          )}
-          <DocumentEditor
-            ref={editorRef}
-            document={document}
-            session={session}
-            editable={editable}
-            github={spaceInfo.state === 'ready' ? githubContextOf(spaceInfo.data) : undefined}
-            onInput={() => inputTime.mark('body')}
-            threads={threads}
-            activeThreadId={highlightedThreadId}
-            reanchoring={reanchorThread !== null}
-            mentionLogins={mentionLogins}
-            onActivateThread={(threadId) => {
-              setActiveThreadId(threadId);
-              showRail();
-            }}
-            onRequestComment={requestComment}
-            onReanchor={(anchor) => void reanchor(anchor)}
-            onContentChange={relayout}
-            onMessage={toast}
-          />
-          <DocumentNavigation navigation={services.navigation} documentId={document.id} />
-          <EditTimeDetails statistics={services.statistics} documentId={document.id} />
-          <ChildDocuments
-            spaceSlug={spaceSlug}
-            documents={childrenOf(spaceDocuments, state.meta.path)}
-            editable={editable}
-            onAdd={() => shell.openNewDocument(spaceSlug, `${state.meta.path}/`)}
-          />
         </div>
-      </div>
-      {docked ? (
-        rail
-      ) : wide ? (
-        <button
-          type="button"
-          className="rail-toggle"
-          onClick={() => setRailCollapsed(false)}
-          title="댓글 펼치기"
-          aria-label={`댓글 펼치기, 열린 댓글 ${openCount}개`}
-        >
-          <Icon name="comment" />
-          {openCount > 0 ? <span className="nav-count">{openCount}</span> : null}
-        </button>
-      ) : (
-        <>
-          <button
-            type="button"
-            className="rail-toggle"
-            onClick={() => setRailOpen((value) => !value)}
-            aria-expanded={railOpen}
-            aria-label={`댓글 ${openCount}개`}
-          >
-            <Icon name="comment" />
-            {openCount > 0 ? <span className="nav-count">{openCount}</span> : null}
-          </button>
-          {railOpen ? <div className="rail-drawer">{rail}</div> : null}
-        </>
-      )}
-    </div>
+      </DocumentPermissionContext>
+    </RetainedDocumentContext>
   );
+}
+
+/** Background lookups must never redirect an already open editor and discard its unsaved input. */
+function useDocumentLookup<T>(
+  key: string,
+  loader: () => Promise<T>,
+  enabled: boolean,
+  onError: (error: unknown) => boolean,
+): Load<T> {
+  const [state, setState] = useState<Load<T>>({ state: 'loading', data: null, error: null });
+  const latest = useRef({ loader, onError });
+  useEffect(() => {
+    latest.current = { loader, onError };
+  });
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    latest.current.loader().then(
+      (data) => {
+        if (active) setState({ state: 'ready', data, error: null });
+      },
+      (error: unknown) => {
+        if (!active) return;
+        latest.current.onError(error);
+        setState({ state: 'error', data: null, error });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [key, enabled]);
+  return state;
 }

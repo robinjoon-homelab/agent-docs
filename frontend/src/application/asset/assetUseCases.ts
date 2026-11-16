@@ -16,6 +16,8 @@ export interface AssetUseCases {
   importUrl(spaceSlug: string, url: string): Promise<Asset>;
   contentUrl(assetId: string, documentId?: string): string;
   htmlSource(assetId: string, documentId?: string): Promise<string>;
+  /** A drawing's scene; without its document there is no route, so a global asset address is never tried. */
+  sceneSource(assetId: string, documentId?: string): Promise<string>;
 }
 
 export function createAssetUseCases(gateway: AssetGateway): AssetUseCases {
@@ -29,5 +31,9 @@ export function createAssetUseCases(gateway: AssetGateway): AssetUseCases {
     htmlSource: (assetId, documentId) =>
       gateway.htmlSource?.(assetId, documentId) ?? Promise.reject(new Error('HTML 원문을 읽을 수 없습니다.')),
     contentUrl: (assetId, documentId) => gateway.contentUrl(assetId, documentId),
+    sceneSource: (assetId, documentId) =>
+      documentId === undefined || gateway.sceneSource === undefined
+        ? Promise.reject(new Error('손그림은 문서 안에서만 열 수 있습니다.'))
+        : gateway.sceneSource(assetId, documentId),
   };
 }

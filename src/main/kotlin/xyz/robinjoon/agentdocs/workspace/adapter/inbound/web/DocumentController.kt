@@ -21,6 +21,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
+import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
@@ -90,8 +91,8 @@ class DocumentController(
                 draft,
             )
         record(principal, written, body)
-        val space = queries.open(CallerAccess.of(principal), written.document.id).space
-        val created = responseView(written, space)
+        val access = CallerAccess.of(principal)
+        val created = responseView(written, queries.open(access, written.document.id).space, access)
         return ResponseEntity.created(URI.create("/api/documents/${written.document.id}")).body(created)
     }
 
@@ -99,7 +100,11 @@ class DocumentController(
     fun open(
         @PathVariable id: UUID,
         principal: Principal?,
-    ): Map<String, Any?> = WorkspaceJson.view(queries.open(CallerAccess.of(principal), DocumentId(id)))
+    ): Map<String, Any?> {
+        val access = CallerAccess.of(principal)
+        val view = queries.open(access, DocumentId(id))
+        return WorkspaceJson.view(view) + WorkspaceJson.permission(access, view.document.spaceId)
+    }
 
     // The markdown docs_read gives agents, for scripts and agents that use REST.
     @GetMapping("/api/documents/{id}/markdown")
@@ -190,8 +195,8 @@ class DocumentController(
                 Wire.headerChange(body),
             )
         record(principal, written, body)
-        val space = queries.open(CallerAccess.of(principal), DocumentId(id)).space
-        return responseView(written, space)
+        val access = CallerAccess.of(principal)
+        return responseView(written, queries.open(access, DocumentId(id)).space, access)
     }
 
     @PostMapping("/api/documents/{id}/trash")
@@ -234,11 +239,16 @@ class DocumentController(
         if (context.access.actor.isAgent) recorder.agent(context.access, written.document.id)
     }
 
+    // space is where the document is now. A retried write answers with its first result, whose document may still
+    // name the space it was in before a move, so the permission comes from the current space, never the stored write.
     private fun responseView(
         written: DocumentWrite,
         space: Space,
+        access: Access,
     ): Map<String, Any?> {
-        val view = WorkspaceJson.view(DocumentView(written.document, space, written.marks))
+        val view =
+            WorkspaceJson.view(DocumentView(written.document, space, written.marks)) +
+                WorkspaceJson.permission(access, space.id)
         val captured = written.space ?: return view
         return view + mapOf("space" to mapOf("id" to captured.id.value, "slug" to captured.slug.value, "name" to captured.name))
     }

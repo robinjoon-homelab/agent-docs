@@ -1,3 +1,4 @@
+export { permissionOf as toPermission } from '../../../../domain/space/permission';
 import type {
   Block,
   CalloutKind,
@@ -124,6 +125,14 @@ export function toBlock(value: unknown): Block {
         assetId: str(source, 'assetId'),
         alt: strOr(source, 'alt', ''),
         caption: strOr(source, 'caption', ''),
+      };
+    case 'drawing':
+      return {
+        id,
+        type,
+        svgAssetId: str(source, 'svgAssetId'),
+        sceneAssetId: str(source, 'sceneAssetId'),
+        alt: strOr(source, 'alt', ''),
       };
     case 'divider':
       return { id, type };

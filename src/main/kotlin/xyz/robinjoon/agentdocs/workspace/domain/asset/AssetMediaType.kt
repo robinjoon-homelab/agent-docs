@@ -12,6 +12,9 @@ enum class AssetMediaType(
     SVG("image/svg+xml", "svg"),
     PDF("application/pdf", "pdf"),
     HTML("text/html", "html"),
+
+    // The original of a hand-drawn diagram, stored byte for byte; its name fits the 10-character media_type column.
+    EXCALIDRAW("application/vnd.excalidraw+json", "excalidraw"),
     TEXT("text/plain", "txt"),
     BINARY("application/octet-stream", "bin"),
     ;

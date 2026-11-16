@@ -213,7 +213,7 @@ class McpConfig {
 
     private companion object {
         const val MCP_ENDPOINT = "/mcp"
-        const val SERVER_VERSION = "0.2.0"
+        const val SERVER_VERSION = "0.3.0"
         val toolTimeout: Duration = Duration.ofMinutes(1)
     }
 }

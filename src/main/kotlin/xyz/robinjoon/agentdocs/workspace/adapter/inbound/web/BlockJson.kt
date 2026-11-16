@@ -10,6 +10,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.CalloutKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.ColumnAlignment
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
+import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Heading
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
@@ -61,6 +62,9 @@ object BlockJson {
                     node.path("alt").asString(""),
                     node.path("caption").asString(""),
                 )
+            },
+            "drawing" to { id, node ->
+                DrawingBlock(id, asset(node, "svgAssetId"), asset(node, "sceneAssetId"), node.path("alt").asString(""))
             },
             "divider" to { id, _ -> Divider(id) },
         )
@@ -115,6 +119,10 @@ object BlockJson {
                 mapOf("assetId" to block.asset.value, "alt" to block.alt, "caption" to block.caption)
             }
 
+            is DrawingBlock -> {
+                mapOf("svgAssetId" to block.svg.value, "sceneAssetId" to block.scene.value, "alt" to block.alt)
+            }
+
             else -> {
                 emptyMap()
             }
@@ -150,7 +158,18 @@ object BlockJson {
             is CodeBlock -> "code"
             is TableBlock -> "table"
             is ImageBlock -> "image"
+            is DrawingBlock -> "drawing"
             is Divider -> "divider"
+        }
+
+    private fun asset(
+        node: JsonNode,
+        field: String,
+    ): AssetId =
+        try {
+            AssetId(UUID.fromString(text(node, field)))
+        } catch (exception: IllegalArgumentException) {
+            throw InvalidRequestException("block field $field must be an asset id", cause = exception)
         }
 
     private fun inline(

@@ -2,7 +2,8 @@ import './threadCollaboration.css';
 import { useEffect, useState } from 'react';
 import type { Thread } from '../../../../../domain/thread/thread';
 import { actorShortName } from '../../../../../domain/shared/actor';
-import { useSession } from '../../app/SessionContext';
+import { useDocumentPermission } from './DocumentPermissionContext';
+import { canEdit, canComment } from '../../../../../domain/space/permission';
 
 export type ThreadCollaborationActions = {
   readonly react?: (thread: Thread, emoji: string, add: boolean) => Promise<void>;
@@ -19,7 +20,7 @@ export function ThreadCollaboration({
   login: string;
   actions: ThreadCollaborationActions;
 }) {
-  const { me } = useSession();
+  const permission = useDocumentPermission();
   const [form, setForm] = useState(false);
   const [before, setBefore] = useState(thread.anchor.kind === 'document' ? '' : (thread.anchor.quote ?? ''));
   const [after, setAfter] = useState('');
@@ -51,6 +52,7 @@ export function ThreadCollaboration({
                 className="btn btn-small"
                 aria-label={`${emoji} 반응`}
                 aria-pressed={mine}
+                disabled={!canComment(permission)}
                 title={reactions.map((r) => actorShortName(r.actor)).join(', ')}
                 onClick={() => void actions.react?.(thread, emoji, !mine)}
               >
@@ -67,7 +69,7 @@ export function ThreadCollaboration({
           <br />
           <ins style={{ whiteSpace: 'pre-wrap' }}>{suggestion.after}</ins>
           {suggestion.decision == null ? (
-            me.owner ? (
+            canEdit(permission) ? (
               <div>
                 <button
                   type="button"
@@ -85,7 +87,7 @@ export function ThreadCollaboration({
                 </button>
               </div>
             ) : (
-              <p className="small muted">소유자 검토 대기</p>
+              <p className="small muted">편집자 검토 대기</p>
             )
           ) : (
             <p className="small muted">
@@ -94,7 +96,9 @@ export function ThreadCollaboration({
           )}
         </div>
       ))}
-      {thread.anchor.kind === 'document' || actions.suggest === undefined ? null : (
+      {!canComment(permission) ||
+      thread.anchor.kind === 'document' ||
+      actions.suggest === undefined ? null : (
         <button type="button" className="link-btn" onClick={() => setForm(!form)}>
           수정 제안
         </button>
@@ -125,7 +129,7 @@ export function ThreadCollaboration({
             바꿀 글
             <textarea maxLength={100000} value={after} onChange={(event) => setAfter(event.target.value)} />
           </label>
-          <button className="btn btn-small" disabled={busy} type="submit">
+          <button className="btn btn-small" disabled={busy || !canComment(permission)} type="submit">
             제안 보내기
           </button>
         </form>

@@ -13,4 +13,6 @@ export interface AssetGateway {
   /** URL usable as an <img src> for a stored asset. */
   contentUrl(assetId: string, documentId?: string): string;
   htmlSource?(assetId: string, documentId?: string): Promise<string>;
+  /** The stored Excalidraw scene JSON of a drawing, read only through the document that shows it. */
+  sceneSource?(assetId: string, documentId: string): Promise<string>;
 }

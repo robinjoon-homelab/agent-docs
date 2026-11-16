@@ -25,6 +25,7 @@ import xyz.robinjoon.agentdocs.support.web.problemFields
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.agent
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.agentAccess
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.at
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.member
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.owner
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.ownerAccess
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.space
@@ -74,6 +75,7 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
             .andExpect(jsonPath("$[0].slug").value("agent-docs"))
             .andExpect(jsonPath("$[0].agentGuide.title").value("작성 규칙"))
             .andExpect(jsonPath("$[0].defaultRepository").value("homelab/agent-docs"))
+            .andExpect(jsonPath("$[0].permission").value("owner"))
             .andDo(
                 documented(
                     "spaces-list",
@@ -85,6 +87,21 @@ class SpaceApiDocumentationTest : RestDocsWebTest() {
                     ),
                 ),
             )
+    }
+
+    @Test
+    fun `an invited member sees each space with the permission its membership gives`() {
+        every { spaces.list(any(), true) } returns listOf(SpaceOverview(guided, 12, at, offered))
+        every { spaces.view(any(), SpaceSlug("agent-docs")) } returns SpaceView(guided, offered)
+
+        mockMvc
+            .perform(get("/api/spaces").principal(member))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].permission").value("comment"))
+        mockMvc
+            .perform(get("/api/spaces/{slug}", "agent-docs").principal(member))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.permission").value("comment"))
     }
 
     @Test

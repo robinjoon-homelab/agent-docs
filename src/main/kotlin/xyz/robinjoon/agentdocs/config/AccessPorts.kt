@@ -5,6 +5,7 @@ import xyz.robinjoon.agentdocs.access.adapter.outbound.persistence.ExposedAuthor
 import xyz.robinjoon.agentdocs.access.adapter.outbound.persistence.ExposedConnectionRepository
 import xyz.robinjoon.agentdocs.access.adapter.outbound.persistence.ExposedEmergencyLoginRepository
 import xyz.robinjoon.agentdocs.access.adapter.outbound.persistence.ExposedOAuthClientRepository
+import xyz.robinjoon.agentdocs.access.adapter.outbound.persistence.ExposedSpaceMembershipRepository
 import xyz.robinjoon.agentdocs.access.adapter.outbound.persistence.ExposedUserRepository
 import xyz.robinjoon.agentdocs.access.adapter.outbound.persistence.ExposedWebSessionRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.AuthorizationRequestRepository
@@ -12,6 +13,7 @@ import xyz.robinjoon.agentdocs.access.application.port.output.ConnectionReposito
 import xyz.robinjoon.agentdocs.access.application.port.output.EmergencyLoginRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.OAuthClientRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.SecretSource
+import xyz.robinjoon.agentdocs.access.application.port.output.SpaceMembershipRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.UserRepository
 import xyz.robinjoon.agentdocs.access.application.port.output.WebSessionRepository
 
@@ -23,5 +25,6 @@ class AccessPorts {
     val clients: OAuthClientRepository = ExposedOAuthClientRepository()
     val requests: AuthorizationRequestRepository = ExposedAuthorizationRequestRepository()
     val sessions: WebSessionRepository = ExposedWebSessionRepository()
+    val memberships: SpaceMembershipRepository = ExposedSpaceMembershipRepository()
     val secrets: SecretSource = SecureRandomSecretSource()
 }

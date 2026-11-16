@@ -14,18 +14,26 @@ export class MemorySpaceGateway implements SpaceGateway {
 
   list(): Promise<Space[]> {
     return respond(() =>
-      this.store.spaces.map((space) => ({ ...space, documentCount: this.countDocuments(space) })),
+      this.store.spaces
+        .filter((space) => this.store.permissionIn(space.id) !== null)
+        .map((space) => ({
+          ...space,
+          permission: this.store.permissionIn(space.id) ?? 'read',
+          documentCount: this.countDocuments(space),
+        })),
     );
   }
 
   create(draft: SpaceDraft): Promise<Space> {
     return respond(() => {
+      this.store.requireOwner();
       if (this.store.spaces.some((space) => space.slug === draft.slug)) {
         throw new ApiError('conflict', 409, '이미 쓰는 슬러그입니다.');
       }
       const space: Space = {
         ...draft,
         id: this.store.nextId('space'),
+        permission: 'owner',
         createdAt: this.store.now(),
         archivedAt: null,
         lastActivityAt: null,
@@ -40,11 +48,15 @@ export class MemorySpaceGateway implements SpaceGateway {
   }
 
   get(slug: string): Promise<Space> {
-    return respond(() => this.store.space(slug));
+    return respond(() => {
+      const space = this.store.space(slug);
+      return { ...space, permission: this.store.permissionIn(space.id) ?? 'read' };
+    });
   }
 
   update(slug: string, patch: SpacePatch): Promise<Space> {
     return respond(() => {
+      this.store.requireOwner();
       const current = this.store.space(slug);
       const { archived, agentGuideDocumentId, defaultRepository, ...settings } = patch;
       const archivedAt =

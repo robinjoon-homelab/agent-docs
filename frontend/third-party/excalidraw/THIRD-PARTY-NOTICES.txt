@@ -1,0 +1,88 @@
+Third-party fonts in the Agent Docs drawing editor
+==================================================
+
+Package: @excalidraw/excalidraw 0.18.1 (npm, integrity
+sha512-6i5Gt7IDTOH//qa0Z315Ly5iVRhjWpu2whrlQFqkuwrkKUWgRsMk0P5qdE7bpyDpai7jeLeWYkyj1eVAfni1lw==)
+
+The files under fonts/ are copied unchanged from the package's dist/prod/fonts/. All 234 font files in that
+directory are byte-identical to packages/excalidraw/fonts/ of the excalidraw/excalidraw repository at tag v0.18.1
+(commit a2ec2889babf7d2295469c6d90ebe77fae57df84). Each font also carries its copyright notice in its name table.
+The license texts in licenses/ are copied from the sources named below.
+
+
+Excalidraw, the library that loads these fonts
+  License: MIT, licenses/Excalidraw-MIT.txt
+  Source:  excalidraw/excalidraw@a2ec2889babf7d2295469c6d90ebe77fae57df84 LICENSE
+
+fonts/Excalifont/ (7 files): Excalifont, Version 1.000
+  Copyright (c) 2024 by Excalidraw. All rights reserved.
+  Excalifont is a trademark of Excalidraw.
+  License: SIL Open Font License 1.1, licenses/Excalifont-OFL-1.1.txt
+  Source:  excalidraw/excalidraw@a2ec2889babf7d2295469c6d90ebe77fae57df84
+           packages/excalidraw/fonts/Excalifont/index.ts, which records the original font's name table: its
+           copyright field (line 14) and license field (lines 26-116), without the "copyright: " and "license: "
+           labels, separated by one empty line.
+
+fonts/Virgil/ (1 file): Virgil, Version 001.001
+  Copyright (c) 2011 by Your Own Font Foundry. All rights reserved.
+  Virgil YOFF is a trademark of Your Own Font Foundry.
+  License: SIL Open Font License 1.1. The font's license field holds the full license text.
+           licenses/Virgil-OFL-1.1.txt is the license of the font's repository.
+  Source:  excalidraw/virgil@3d4c829dc85b455d4646631ac52bc1517df04217 LICENSE.md
+
+fonts/Xiaolai/ (209 files): Xiaolai SC, Version 3.11, split into character subsets by Excalidraw
+  Copyright (c) 2020 LXGW (the font's notice uses the copyright sign)
+  Designer: Nozomi Seto
+  License: SIL Open Font License 1.1, licenses/Xiaolai-OFL-1.1.txt
+  Sources: excalidraw/excalidraw@a2ec2889babf7d2295469c6d90ebe77fae57df84
+           packages/excalidraw/fonts/Xiaolai/index.ts, license field of the original font (line 231).
+           lxgw/kose-font@172d9dbe94ade82b5316e0989e3aa286b7041baf OFL.txt (the copied license).
+           lxgw/kose-font@39ba7ab3239fe976da5d68afc67082f4e22283d8 README.md (January 2021, after version 3.11)
+           states the same license and lists the font's Reserved Font Names.
+
+fonts/Cascadia/ (1 file): Cascadia Code, Version 2005.150
+  (c) 2020 Microsoft Corporation. All Rights Reserved. (the font's notice uses the copyright sign)
+  Cascadia Code is a trademark of the Microsoft group of companies.
+  License: SIL Open Font License 1.1, licenses/CascadiaCode-OFL-1.1.txt
+  Source:  microsoft/cascadia-code@0610f2df4356200adb93cb5bca2221b92ad6ee7e (tag v2005.15) LICENSE, with its
+           CRLF line endings converted to LF. The font's own license field is the openTypeNameLicense of
+           sources/CascadiaCode-Regular.ufo/fontinfo.plist at that tag: it opens with Microsoft's wording for fonts
+           supplied with Microsoft products, then states that the OFL-based license applies and refers to this
+           repository's LICENSE.
+
+fonts/ComicShanns/ (4 files): Comic Shanns Mono 1.3.0, split into character subsets by Excalidraw
+  License: MIT, licenses/ComicShanns-MIT.txt, the same text as each file's copyright field, with its copyright
+           lines for Shannon Miwa (2018), Jesus Gonzalez (2023), Rodrigo Batista de Moraes (2023),
+           Fini Jastrow (2024) and Kyle Beechly (2024).
+  Source:  excalidraw/excalidraw@a2ec2889babf7d2295469c6d90ebe77fae57df84
+           packages/excalidraw/fonts/ComicShanns/index.ts lines 14-38, without the "copyright: " label.
+  Upstream: jesusmgg/comic-shanns-mono@9dfa787b1aa4800dbbdc1587db3b1b794b1a3b9b (tag v1.3.0) LICENSE.md, MIT.
+
+fonts/Lilita/ (2 files): Lilita One, Version 1.002, Google Fonts subsets
+  Copyright (c) 2011 Juan Montoreano, with Reserved Font Names "Lilita One" (the font's notice, which also gives
+  a contact address; the license names the Reserved Font Name "Lilita")
+  License: SIL Open Font License 1.1, licenses/LilitaOne-OFL-1.1.txt
+  Source:  google/fonts@cc39c4c2c304bc368c9b7c311ea2bcc6013299fe ofl/lilitaone/OFL.txt
+
+fonts/Nunito/ (5 files): Nunito, Version 3.602, Google Fonts subsets
+  Copyright 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito)
+  License: SIL Open Font License 1.1, licenses/Nunito-OFL-1.1.txt
+  Source:  googlefonts/nunito@8c6a9bb9732545b9ed53f29ec5e1ab0ff53c4e6f OFL.txt
+           (identical to google/fonts@cc39c4c2c304bc368c9b7c311ea2bcc6013299fe ofl/nunito/OFL.txt)
+
+Assistant (4 files): Assistant, Version 3.000, the drawing editor's interface font
+  Not in this folder: Excalidraw's stylesheet refers to these files, so the build emits them under /assets/ with
+  the app's stylesheet.
+  Copyright 2020 The Assistant Project Authors (https://github.com/hafontia/Assistant).
+  Copyright 2010 The Source Sans Pro Authors (https://github.com/adobe-fonts/source-sans-pro), with Reserved Font
+  Name 'Source'. Source is a trademark of Adobe Systems Incorporated in the United States and/or other countries.
+  License: SIL Open Font License 1.1, licenses/Assistant-OFL-1.1.txt
+  Source:  google/fonts@cc39c4c2c304bc368c9b7c311ea2bcc6013299fe ofl/assistant/OFL.txt
+
+
+Not shipped: Liberation Sans, Version 1.05 (the package's fonts/Liberation/LiberationSans-Regular.woff2)
+  Its license field says only "Use of this Liberation font software is subject to the license agreement under
+  which you accepted the Liberation font software." and refers to http://www.ascendercorp.com/liberation.html.
+  No license text for this version was found; the liberationfonts/liberation-fonts repository has tags only for
+  2.x releases, and its OFL 1.1 license is theirs. Excalidraw uses this font only for text set to
+  "Liberation Sans" (font family 9), which its font picker does not offer.

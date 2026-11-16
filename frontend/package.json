@@ -19,6 +19,7 @@
     "check": "pnpm lint && pnpm lint:arch && pnpm test && pnpm build"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
     "@floating-ui/dom": "1.8.0",
     "@tiptap/core": "3.32.0",
     "@tiptap/extension-bold": "3.32.0",

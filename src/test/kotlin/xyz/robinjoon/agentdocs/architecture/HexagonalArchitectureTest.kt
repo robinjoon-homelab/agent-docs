@@ -82,6 +82,7 @@ class HexagonalArchitectureTest {
                         "authorization.AuthorizationRequest",
                         "session.WebSession",
                         "emergency.EmergencyLoginGrant",
+                        "membership.SpaceMembership",
                     ),
             )
         private val aggregateRoots =

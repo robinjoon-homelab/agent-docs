@@ -1,3 +1,5 @@
+import { useSession } from '../../app/SessionContext';
+import { SpaceMembersSection } from './SpaceMembersSection';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import {
@@ -181,7 +183,8 @@ function SpaceForm({ space, onSaved }: { space: Space; onSaved: (space: Space) =
   );
 }
 
-function TrashSection({ spaceSlug }: { spaceSlug: string }) {
+export function TrashSection({ spaceSlug }: { spaceSlug: string }) {
+  const { me } = useSession();
   const services = useServices();
   const shell = useShell();
   const toast = useToast();
@@ -204,6 +207,7 @@ function TrashSection({ spaceSlug }: { spaceSlug: string }) {
   };
 
   const destroy = async (document: TrashedDocument): Promise<void> => {
+    if (!me.owner) return;
     setPendingDelete(null);
     try {
       await services.documents.destroy(document.id);
@@ -236,20 +240,22 @@ function TrashSection({ spaceSlug }: { spaceSlug: string }) {
                 <button type="button" className="btn btn-small" onClick={() => void restore(document)}>
                   복원
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-small btn-danger"
-                  onClick={() => setPendingDelete(document)}
-                >
-                  영구 삭제
-                </button>
+                {me.owner ? (
+                  <button
+                    type="button"
+                    className="btn btn-small btn-danger"
+                    onClick={() => setPendingDelete(document)}
+                  >
+                    영구 삭제
+                  </button>
+                ) : null}
               </div>
             </li>
           ))}
         </ul>
       ) : null}
       <Dialog
-        open={pendingDelete !== null}
+        open={me.owner && pendingDelete !== null}
         title="영구 삭제"
         onClose={() => setPendingDelete(null)}
         footer={
@@ -401,6 +407,7 @@ function SpaceSettings({ space, onSaved }: { space: Space; onSaved: (space: Spac
           onSaved={onSaved}
         />
       </section>
+      <SpaceMembersSection spaceId={space.id} />
       <section className="section" aria-labelledby="settings-connections">
         <h2 className="section-title" id="settings-connections">
           이 스페이스를 허용한 연결

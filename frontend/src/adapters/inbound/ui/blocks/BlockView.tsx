@@ -66,6 +66,16 @@ function ImageView({ assetId, alt, caption }: { assetId: string; alt: string; ca
   );
 }
 
+/** A saved drawing as its stored SVG, in its own light colors; history only shows saved revisions. */
+function DrawingImage({ svgAssetId, alt }: { svgAssetId: string; alt: string }) {
+  const { assets } = useServices();
+  return (
+    <figure className="bv-image bv-drawing">
+      <img className="drawing-picture" src={assets.contentUrl(svgAssetId)} alt={alt} loading="lazy" />
+    </figure>
+  );
+}
+
 /** Read-only rendering of one block, used by history, conflict cards and other non-editing views. */
 export function BlockView({
   block,
@@ -142,6 +152,8 @@ export function BlockView({
       return <TableView table={block} changedCells={changedCells} />;
     case 'image':
       return <ImageView assetId={block.assetId} alt={block.alt} caption={block.caption} />;
+    case 'drawing':
+      return <DrawingImage svgAssetId={block.svgAssetId} alt={block.alt} />;
     case 'divider':
       return <hr className="bv-divider" />;
   }

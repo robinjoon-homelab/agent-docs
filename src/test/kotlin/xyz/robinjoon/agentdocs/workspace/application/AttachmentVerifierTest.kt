@@ -6,14 +6,18 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
+import xyz.robinjoon.agentdocs.workspace.application.model.VerifiedScene
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ImageVerifier
+import xyz.robinjoon.agentdocs.workspace.application.port.output.SceneVerifier
 import xyz.robinjoon.agentdocs.workspace.application.service.AttachmentVerifier
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
 import xyz.robinjoon.agentdocs.workspace.domain.asset.InvalidAssetException
 
 class AttachmentVerifierTest {
     private val images = mockk<ImageVerifier>()
-    private val verifier = AttachmentVerifier(images)
+    private val scenes = mockk<SceneVerifier>()
+    private val verifier = AttachmentVerifier(images, scenes)
+    private val scene = """{"type":"excalidraw","elements":[]}""".toByteArray()
 
     init {
         every { images.verify(any()) } returns null
@@ -48,5 +52,28 @@ class AttachmentVerifierTest {
             .isInstanceOf(InvalidAssetException::class.java)
         assertThatThrownBy { verifier.verify(UploadedFile("fake.png", "image/png", "<html></html>".toByteArray())) }
             .isInstanceOf(InvalidAssetException::class.java)
+    }
+
+    @Test
+    fun `a drawing scene is recognized by its name or type and keeps its original bytes`() {
+        every { scenes.verify(scene) } returns VerifiedScene(0, 0, emptyList())
+
+        val byName = verifier.verify(UploadedFile("draw.excalidraw", "application/octet-stream", scene))
+        val byType = verifier.verify(UploadedFile("scene", "application/vnd.excalidraw+json", scene))
+
+        assertThat(byName.mediaType).isEqualTo(AssetMediaType.EXCALIDRAW)
+        assertThat(byName.bytes).isEqualTo(scene)
+        assertThat(byType.mediaType).isEqualTo(AssetMediaType.EXCALIDRAW)
+    }
+
+    @Test
+    fun `a scene that fails its check or claims another type is refused, and other JSON stays a download`() {
+        every { scenes.verify(scene) } throws InvalidAssetException("a drawing scene must be valid JSON")
+
+        assertThatThrownBy { verifier.verify(UploadedFile("draw.excalidraw", null, scene)) }
+            .isInstanceOf(InvalidAssetException::class.java)
+        assertThatThrownBy { verifier.verify(UploadedFile("draw.excalidraw", "text/html", scene)) }
+            .isInstanceOf(InvalidAssetException::class.java)
+        assertThat(verifier.verify(UploadedFile("data.json", "application/json", scene)).mediaType).isEqualTo(AssetMediaType.BINARY)
     }
 }

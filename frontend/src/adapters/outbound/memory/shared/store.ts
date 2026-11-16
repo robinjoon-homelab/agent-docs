@@ -1,3 +1,5 @@
+import { canEdit, type Permission } from '../../../../domain/space/permission';
+import type { Membership } from '../../../../domain/membership/membership';
 import type { Activity } from '../../../../domain/activity/activity';
 import type { Asset } from '../../../../domain/asset/asset';
 import type { Connection, OAuthRequest } from '../../../../domain/connection/connection';
@@ -43,6 +45,7 @@ class DocumentKeyedMap<V> extends Map<string, V> {
 export class MemoryStore {
   me: Me;
   spaces: Space[] = [];
+  memberships: { space: string; membership: Membership; revokedAt: string | null }[] = [];
   /** Former slugs keep resolving to the space, like the real server. */
   slugAliases = new Map<string, string>();
   private readonly documentListeners = new Set<(documentId: string) => void>();
@@ -78,14 +81,28 @@ export class MemoryStore {
   space(slug: string): Space {
     const current = this.slugAliases.get(slug) ?? slug;
     const space = this.spaces.find((candidate) => candidate.slug === current);
-    if (space === undefined) throw new ApiError('not_found', 404, '스페이스를 찾을 수 없습니다.');
+    if (space === undefined || this.permissionIn(space.id) === null)
+      throw new ApiError('not_found', 404, '스페이스를 찾을 수 없습니다.');
     return space;
   }
 
   document(id: string): AgentDocument {
     const document = this.documents.get(id);
-    if (document === undefined) throw new ApiError('not_found', 404, '문서를 찾을 수 없습니다.');
-    return document;
+    if (document === undefined || this.permissionIn(document.space.id) === null)
+      throw new ApiError('not_found', 404, '문서를 찾을 수 없습니다.');
+    return { ...document, permission: this.permissionIn(document.space.id) ?? 'read' };
+  }
+
+  permissionIn(spaceId: string): Permission | null {
+    return this.me.owner ? 'owner' : (this.spaces.find((space) => space.id === spaceId)?.permission ?? null);
+  }
+
+  requireEdit(spaceId: string): void {
+    if (!canEdit(this.permissionIn(spaceId))) throw new ApiError('forbidden', 403, '편집 권한이 없습니다.');
+  }
+
+  requireOwner(): void {
+    if (!this.me.owner) throw new ApiError('forbidden', 403, '소유자만 할 수 있습니다.');
   }
 
   findThread(threadId: string): Thread {

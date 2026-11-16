@@ -6,7 +6,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RestController
-import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
+import xyz.robinjoon.agentdocs.workspace.application.model.VerifiedScene
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentAssetUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
@@ -29,23 +29,30 @@ class DocumentAssetController(
             .ok()
             .contentType(MediaType.parseMediaType(file.asset.content.mediaType.mime))
             .cacheControl(CacheControl.noStore())
-            .header("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+            .header("Content-Security-Policy", ImageUploads.ATTACHMENT_POLICY)
             .header("X-Content-Type-Options", "nosniff")
             .header("Content-Disposition", if (file.asset.content.mediaType.isImage) "inline" else "attachment")
             .body(file.bytes)
     }
 
+    // HTML keeps its original two fields; an SVG or a drawing scene also says what it is, and a scene lists its texts.
     @GetMapping("/api/documents/{id}/assets/{assetId}/source")
     fun source(
         @PathVariable id: UUID,
         @PathVariable assetId: UUID,
         principal: Principal?,
     ): ResponseEntity<Map<String, Any?>> {
-        val file = assets.content(CallerAccess.of(principal), DocumentId(id), AssetId(assetId))
-        if (file.asset.content.mediaType != AssetMediaType.HTML) throw InvalidRequestException("only HTML assets have preview source")
-        return ResponseEntity
-            .ok()
-            .cacheControl(CacheControl.noStore())
-            .body(mapOf("assetId" to assetId, "source" to file.bytes.toString(Charsets.UTF_8)))
+        val source = assets.source(CallerAccess.of(principal), DocumentId(id), AssetId(assetId))
+        val type = source.asset.content.mediaType
+        val body =
+            when {
+                type == AssetMediaType.HTML -> mapOf("assetId" to assetId, "source" to source.text)
+                source.scene == null -> mapOf("assetId" to assetId, "mediaType" to type.mime, "source" to source.text)
+                else -> mapOf("assetId" to assetId, "mediaType" to type.mime, "source" to source.text, "texts" to textsOf(source.scene))
+            }
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body)
     }
+
+    private fun textsOf(scene: VerifiedScene): List<Map<String, Any?>> =
+        scene.texts.map { mapOf("elementId" to it.elementId, "text" to it.text, "containerId" to it.containerId) }
 }

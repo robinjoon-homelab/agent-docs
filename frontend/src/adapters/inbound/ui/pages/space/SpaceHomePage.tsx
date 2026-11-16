@@ -1,3 +1,6 @@
+import { TrashSection } from './SpaceSettingsPage';
+import { useSession } from '../../app/SessionContext';
+import { canEdit, effectivePermission } from '../../../../../domain/space/permission';
 import { Link, useParams } from 'react-router';
 import { activityHref } from '../../../../../domain/activity/activity';
 import type { DocumentSummary } from '../../../../../domain/document/document';
@@ -159,6 +162,8 @@ function RecentActivity({ spaceSlug }: { spaceSlug: string }) {
 }
 
 function SpaceHome({ space }: { space: Space }) {
+  const { me } = useSession();
+  const editable = canEdit(effectivePermission(space.permission, me.owner));
   const services = useServices();
   const shell = useShell();
   const documents = useLoad(`space-home:docs:${space.slug}`, () =>
@@ -166,11 +171,11 @@ function SpaceHome({ space }: { space: Space }) {
   );
   usePageTitle(space.name);
 
-  const newDocument = (
+  const newDocument = editable ? (
     <button type="button" className="btn btn-primary" onClick={() => shell.openNewDocument(space.slug)}>
       <Icon name="plus" size={14} />새 문서
     </button>
-  );
+  ) : null;
 
   return (
     <div className="page">
@@ -183,14 +188,22 @@ function SpaceHome({ space }: { space: Space }) {
           </div>
           <div className="space-actions">
             {documents.state === 'ready' && documents.data.length > 0 ? newDocument : null}
-            <Link className="btn" to={`/s/${encodeURIComponent(space.slug)}/settings`}>
-              <Icon name="settings" size={14} />
-              설정
-            </Link>
+            {me.owner ? (
+              <Link className="btn" to={`/s/${encodeURIComponent(space.slug)}/settings`}>
+                <Icon name="settings" size={14} />
+                설정
+              </Link>
+            ) : null}
           </div>
         </div>
         <SpaceLinks links={space.links} />
       </header>
+      {editable && !me.owner ? (
+        <details className="section">
+          <summary>휴지통</summary>
+          <TrashSection spaceSlug={space.slug} />
+        </details>
+      ) : null}
       {documents.state === 'loading' ? <Loading /> : null}
       {documents.state === 'error' ? <ErrorBox error={documents.error} onRetry={documents.reload} /> : null}
       {documents.state === 'ready' && documents.data.length === 0 ? (
@@ -199,15 +212,19 @@ function SpaceHome({ space }: { space: Space }) {
           actions={
             <>
               {newDocument}
-              <Link className="btn" to="/settings/agents">
-                <Icon name="agent" size={14} />
-                에이전트 연결
-              </Link>
+              {me.owner ? (
+                <Link className="btn" to="/settings/agents">
+                  <Icon name="agent" size={14} />
+                  에이전트 연결
+                </Link>
+              ) : null}
             </>
           }
         >
           <p className="muted" style={{ margin: 0 }}>
-            문서를 직접 쓰거나 에이전트를 연결해 이 스페이스에 쓰게 하세요.
+            {editable
+              ? '새 문서를 만들어 이 스페이스에 쓰세요.'
+              : '참여 중인 스페이스에 아직 문서가 없습니다.'}
           </p>
         </EmptyState>
       ) : null}

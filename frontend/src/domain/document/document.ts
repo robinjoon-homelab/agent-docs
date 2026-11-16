@@ -1,3 +1,4 @@
+import type { Permission } from '../space/permission';
 import type { Actor } from '../shared/actor';
 import type { Block, StoredBlock } from './block';
 
@@ -45,6 +46,7 @@ export type DocumentMeta = {
 };
 
 export type AgentDocument = DocumentMeta & {
+  readonly permission?: Permission;
   readonly id: string;
   readonly space: SpaceRef;
   readonly version: number;

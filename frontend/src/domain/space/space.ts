@@ -1,3 +1,4 @@
+import type { Permission } from './permission';
 import type { GitHubContext } from '../document/githubReferences';
 
 export type SpaceLinkKind = 'github_repository' | 'github_organization' | 'local_path' | 'url';
@@ -11,6 +12,7 @@ export type SpaceGuide = { readonly documentId: string; readonly title: string; 
 export type SpaceGuideIssue = 'trashed' | 'unavailable';
 
 export type Space = {
+  readonly permission?: Permission;
   readonly id: string;
   readonly slug: string;
   readonly name: string;

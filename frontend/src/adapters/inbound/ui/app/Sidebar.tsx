@@ -1,3 +1,5 @@
+import { useSpacePermissions } from './SpacePermissionsContext';
+import { canEdit, permissionInSpace } from '../../../../domain/space/permission';
 import type { DragEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useMatch, useNavigate } from 'react-router';
@@ -21,6 +23,7 @@ import { useSession } from './SessionContext';
 import { useShell } from './ShellContext';
 
 function SpaceSwitcher({ current, spaces }: { current: Space | null; spaces: readonly Space[] }) {
+  const { me } = useSession();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -62,9 +65,11 @@ function SpaceSwitcher({ current, spaces }: { current: Space | null; spaces: rea
             </Link>
           ))}
           {pickableSpaces(spaces).length > 0 ? <div className="menu-separator" /> : null}
-          <Link role="menuitem" className="menu-item" to="/?new=space" onClick={() => setOpen(false)}>
-            <Icon name="plus" size={14} />새 스페이스
-          </Link>
+          {me.owner ? (
+            <Link role="menuitem" className="menu-item" to="/?new=space" onClick={() => setOpen(false)}>
+              <Icon name="plus" size={14} />새 스페이스
+            </Link>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -131,11 +136,13 @@ function TreeNodes({
   drag,
   folding,
   onAddChild,
+  editable,
 }: {
   nodes: readonly PathNode[];
   spaceSlug: string;
   drag: TreeDrag;
   folding: TreeFolding;
+  editable: boolean;
   onAddChild: (parent: string) => void;
 }) {
   return (
@@ -146,7 +153,7 @@ function TreeNodes({
         const targetClass = drag.target === node.path ? ' drop-target' : '';
         const name = node.document === null || node.document.title === '' ? node.name : node.document.title;
         return (
-          <li key={node.path} {...dropProps(node.path, drag)}>
+          <li key={node.path} {...(editable ? dropProps(node.path, drag) : {})}>
             {node.document === null ? (
               <button
                 type="button"
@@ -176,7 +183,7 @@ function TreeNodes({
                   className={({ isActive }) => `nav-item${isActive ? ' active' : ''}${targetClass}`}
                   to={documentHref(spaceSlug, node.document.id)}
                   title={`${node.path} · 다른 문서 위로 끌어 그 아래로 옮기기`}
-                  draggable
+                  draggable={editable}
                   onDragStart={(event) => {
                     event.dataTransfer.setData(DOCUMENT_DRAG_TYPE, node.document?.id ?? '');
                     event.dataTransfer.effectAllowed = 'move';
@@ -192,19 +199,22 @@ function TreeNodes({
                     {name}
                   </span>
                 </NavLink>
-                <button
-                  type="button"
-                  className="tree-add"
-                  aria-label={`${name} 아래에 새 문서`}
-                  title="하위 문서 추가"
-                  onClick={() => onAddChild(node.path)}
-                >
-                  <Icon name="plus" size={14} />
-                </button>
+                {editable ? (
+                  <button
+                    type="button"
+                    className="tree-add"
+                    aria-label={`${name} 아래에 새 문서`}
+                    title="하위 문서 추가"
+                    onClick={() => onAddChild(node.path)}
+                  >
+                    <Icon name="plus" size={14} />
+                  </button>
+                ) : null}
               </div>
             )}
             {open ? (
               <TreeNodes
+                editable={editable}
                 nodes={node.children}
                 spaceSlug={spaceSlug}
                 drag={drag}
@@ -223,7 +233,15 @@ function TreeNodes({
  * The space's document tree. Dropping a document on another one moves it under that one, with everything under it;
  * dropping it on the empty area moves it to the top.
  */
-function DocumentTree({ spaceSlug, version }: { spaceSlug: string; version: number }) {
+function DocumentTree({
+  spaceSlug,
+  version,
+  editable,
+}: {
+  spaceSlug: string;
+  version: number;
+  editable: boolean;
+}) {
   const services = useServices();
   const shell = useShell();
   const toast = useToast();
@@ -240,6 +258,7 @@ function DocumentTree({ spaceSlug, version }: { spaceSlug: string; version: numb
       </p>
     );
   const drop = (documentId: string, under: string): void => {
+    if (!editable) return;
     const document = documents.data.find((candidate) => candidate.id === documentId);
     if (document === undefined || isWithinPath(under, document.path)) return;
     const parent = documents.data.find((candidate) => candidate.path === under);
@@ -270,12 +289,13 @@ function DocumentTree({ spaceSlug, version }: { spaceSlug: string; version: numb
   return (
     <div
       className={`tree-root${target === '' ? ' drop-target' : ''}`}
-      {...dropProps('', drag)}
+      {...(editable ? dropProps('', drag) : {})}
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTarget(null);
       }}
     >
       <TreeNodes
+        editable={editable}
         nodes={buildPathTree(documents.data)}
         spaceSlug={spaceSlug}
         drag={drag}
@@ -315,6 +335,9 @@ export function Sidebar({
   const shell = useShell();
   const spaces = shell.spaces ?? [];
   const current = spaces.find((space) => space.slug === currentSlug) ?? null;
+  const live = useSpacePermissions();
+  const currentPermission = permissionInSpace(current, me.owner, live.grants);
+  const editable = canEdit(currentPermission);
   const navClass = ({ isActive }: { isActive: boolean }): string => `nav-item${isActive ? ' active' : ''}`;
 
   return (
@@ -359,35 +382,46 @@ export function Sidebar({
               <Link to={`/s/${currentSlug}`} style={{ color: 'inherit' }}>
                 문서
               </Link>
-              <button
-                type="button"
-                className="icon-btn"
-                style={{ marginLeft: 'auto', width: 22, height: 22 }}
-                onClick={() => shell.openNewDocument(currentSlug)}
-                aria-label="새 문서"
-                title="새 문서"
-              >
-                <Icon name="plus" size={14} />
-              </button>
+              {editable ? (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  style={{ marginLeft: 'auto', width: 22, height: 22 }}
+                  onClick={() => shell.openNewDocument(currentSlug)}
+                  aria-label="새 문서"
+                  title="새 문서"
+                >
+                  <Icon name="plus" size={14} />
+                </button>
+              ) : null}
             </div>
-            <DocumentTree key={currentSlug} spaceSlug={currentSlug} version={treeVersion} />
+            <DocumentTree
+              editable={editable}
+              key={currentSlug}
+              spaceSlug={currentSlug}
+              version={treeVersion}
+            />
           </>
         )}
         <div className="nav-section">설정</div>
-        {currentSlug === null ? null : (
+        {currentSlug === null || !me.owner ? null : (
           <NavLink className={navClass} to={`/s/${currentSlug}/settings`}>
             <Icon name="settings" />
             스페이스 설정
           </NavLink>
         )}
-        <NavLink className={navClass} to="/settings/agents">
-          <Icon name="agent" />
-          에이전트 연결
-        </NavLink>
-        <NavLink className={navClass} to="/settings/data">
-          <Icon name="folder" />
-          데이터
-        </NavLink>
+        {me.owner ? (
+          <NavLink className={navClass} to="/settings/agents">
+            <Icon name="agent" />
+            에이전트 연결
+          </NavLink>
+        ) : null}
+        {me.owner ? (
+          <NavLink className={navClass} to="/settings/data">
+            <Icon name="folder" />
+            데이터
+          </NavLink>
+        ) : null}
         {me.owner ? (
           <NavLink className={navClass} to="/settings/webhooks">
             <Icon name="link" />

@@ -11,6 +11,7 @@ import xyz.robinjoon.agentdocs.access.application.port.input.ClientRegistrationU
 import xyz.robinjoon.agentdocs.access.application.port.input.ConnectionUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.EmergencyLoginUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.SignInUseCase
+import xyz.robinjoon.agentdocs.access.application.port.input.SpaceMembershipUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.TokenUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.WebSessionUseCase
 import xyz.robinjoon.agentdocs.access.application.service.AccessJournal
@@ -21,6 +22,7 @@ import xyz.robinjoon.agentdocs.access.application.service.ClientRegistrationServ
 import xyz.robinjoon.agentdocs.access.application.service.ConnectionService
 import xyz.robinjoon.agentdocs.access.application.service.EmergencyLoginService
 import xyz.robinjoon.agentdocs.access.application.service.SignInService
+import xyz.robinjoon.agentdocs.access.application.service.SpaceMembershipService
 import xyz.robinjoon.agentdocs.access.application.service.TokenPolicy
 import xyz.robinjoon.agentdocs.access.application.service.TokenService
 import xyz.robinjoon.agentdocs.access.application.service.WebSessionService
@@ -56,15 +58,23 @@ class AccessConfig {
     fun signInUseCase(
         ports: AccessPorts,
         settings: AccessSettings,
-        clock: Clock,
-    ): SignInUseCase = SignInService(ports.users, Allowlist(settings.owner, settings.members), clock)
+        journal: AccessJournal,
+    ): SignInUseCase = SignInService(ports.users, ports.memberships, Allowlist(settings.owner, settings.members), journal)
 
     @Bean
     fun webSessionUseCase(
         ports: AccessPorts,
         settings: AccessSettings,
         clock: Clock,
-    ): WebSessionUseCase = WebSessionService(ports.sessions, ports.users, Allowlist(settings.owner, settings.members), ports.secrets, clock)
+    ): WebSessionUseCase =
+        WebSessionService(ports.sessions, ports.users, ports.memberships, Allowlist(settings.owner, settings.members), ports.secrets, clock)
+
+    @Bean
+    fun spaceMembershipUseCase(
+        ports: AccessPorts,
+        settings: AccessSettings,
+        journal: AccessJournal,
+    ): SpaceMembershipUseCase = SpaceMembershipService(ports.memberships, ports.users, Allowlist(settings.owner, settings.members), journal)
 
     @Bean
     fun emergencyLoginUseCase(

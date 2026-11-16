@@ -102,6 +102,16 @@ function draftToJSON(draft: DraftBlock): JSONContent {
         type: 'image',
         attrs: { id: draft.id, assetId: draft.assetId, alt: draft.alt, caption: draft.caption },
       };
+    case 'drawing':
+      return {
+        type: 'drawing',
+        attrs: {
+          id: draft.id,
+          svgAssetId: draft.svgAssetId,
+          sceneAssetId: draft.sceneAssetId,
+          alt: draft.alt,
+        },
+      };
     case 'divider':
       return { type: 'divider', attrs: { id: draft.id } };
   }
@@ -205,6 +215,14 @@ function nodeToDraft(node: JSONContent, newId: () => string): DraftBlock | null 
         assetId: attr(node, 'assetId', ''),
         alt: attr(node, 'alt', ''),
         caption: attr(node, 'caption', ''),
+      };
+    case 'drawing':
+      return {
+        id,
+        type: 'drawing',
+        svgAssetId: attr(node, 'svgAssetId', ''),
+        sceneAssetId: attr(node, 'sceneAssetId', ''),
+        alt: attr(node, 'alt', ''),
       };
     case 'divider':
       return { id, type: 'divider' };

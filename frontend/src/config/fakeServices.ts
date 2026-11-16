@@ -1,3 +1,4 @@
+import { MemoryMembershipGateway } from '../adapters/outbound/memory/membership/MemoryMembershipGateway';
 import { MemoryActivityGateway } from '../adapters/outbound/memory/activity/MemoryActivityGateway';
 import { MemoryAssetGateway } from '../adapters/outbound/memory/asset/MemoryAssetGateway';
 import {
@@ -38,6 +39,7 @@ export function fakeServicesOf(store: MemoryStore, timeZone: string): Services {
   webhooks.seedExample();
   return assembleServices(
     {
+      memberships: new MemoryMembershipGateway(store),
       session: new MemorySessionGateway(store),
       spaces: new MemorySpaceGateway(store),
       documents,

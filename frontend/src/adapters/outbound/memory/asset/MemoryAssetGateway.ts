@@ -25,6 +25,10 @@ export class MemoryAssetGateway implements AssetGateway {
     return (await fetch(url)).text();
   }
 
+  async sceneSource(assetId: string, documentId: string): Promise<string> {
+    return (await fetch(this.contentUrl(assetId, documentId))).text();
+  }
+
   contentUrl(assetId: string, documentId?: string): string {
     if (documentId !== undefined) this.store.document(documentId);
     return this.store.assets.get(assetId)?.url ?? '';

@@ -39,6 +39,19 @@ class CommentThreadTest {
     }
 
     @Test
+    fun `someone who may only comment resolves a thread they opened but not another person's`() {
+        val commenter = Actor.human(UUID.randomUUID(), "bob")
+        val own = CommentThread.open(ThreadId(UUID.randomUUID()), location, comment(commenter, "Is this right?"), now)
+
+        assertThat(own.resolve(commenter, now, onlyOwn = true)?.status).isEqualTo(ThreadStatus.RESOLVED)
+        assertThatThrownBy { thread.resolve(commenter, now, onlyOwn = true) }
+            .isInstanceOfSatisfying(ThreadActionException::class.java) {
+                assertThat(it.fix).isEqualTo("reply instead; the person who opened the thread or an editor resolves it")
+            }
+        assertThat(thread.resolve(commenter, now)?.status).isEqualTo(ThreadStatus.RESOLVED)
+    }
+
+    @Test
     fun `a person's reply opens an answered or resolved thread again and clears the resolution`() {
         val resolved = requireNotNull(thread.resolve(person, now.plusSeconds(10)))
         val reopened = resolved.reply(comment(person, "One more thing"), now.plusSeconds(20))

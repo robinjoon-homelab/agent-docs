@@ -1,4 +1,4 @@
-import type { Block, StoredBlock } from '../domain/document/block';
+import type { Block, DrawingBlock, StoredBlock } from '../domain/document/block';
 import type { AgentDocument, DocumentSummary } from '../domain/document/document';
 import type { Actor } from '../domain/shared/actor';
 import type { Thread } from '../domain/thread/thread';
@@ -13,6 +13,15 @@ export function agent(clientName = 'Claude Code', login = 'octocat'): Actor {
 
 export function paragraph(id: string, text: string): Block {
   return { id, type: 'paragraph', text };
+}
+
+export function drawing(
+  id: string,
+  svgAssetId = '11111111-1111-4111-8111-111111111111',
+  sceneAssetId = '22222222-2222-4222-8222-222222222222',
+  alt = '',
+): DrawingBlock {
+  return { id, type: 'drawing', svgAssetId, sceneAssetId, alt };
 }
 
 export function stored(block: Block, hash = '00000000'): StoredBlock {
@@ -37,6 +46,7 @@ export function summary(overrides: Partial<DocumentSummary> = {}): DocumentSumma
 
 export function document(overrides: Partial<AgentDocument> = {}): AgentDocument {
   return {
+    permission: 'owner',
     id: 'doc-1',
     space: { id: 'sp-1', slug: 'team', name: 'Team' },
     path: 'guides/setup',

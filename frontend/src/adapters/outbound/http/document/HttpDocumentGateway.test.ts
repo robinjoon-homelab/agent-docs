@@ -301,3 +301,29 @@ it.each([false, true])(
     });
   },
 );
+
+it('reads permission from the current document and never echoes it in metadata writes', async () => {
+  const current = document({ permission: 'comment' });
+  const http = new HttpClient({
+    cookies: () => '',
+    fetch: (_url, init) => {
+      if (init?.method === 'PATCH') {
+        if (typeof init.body !== 'string') return Promise.reject(new Error('JSON body required'));
+        const body: unknown = JSON.parse(init.body);
+        expect(body).not.toHaveProperty('permission');
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify(current), { headers: { 'content-type': 'application/json' } }),
+      );
+    },
+  });
+  const gateway = new HttpDocumentGateway(http);
+  expect((await gateway.get(current.id)).permission).toBe('comment');
+  expect(
+    (
+      await gateway.patch(current.id, current.version, { title: 'Title', permission: 'owner' } as {
+        title: string;
+      })
+    ).permission,
+  ).toBe('comment');
+});

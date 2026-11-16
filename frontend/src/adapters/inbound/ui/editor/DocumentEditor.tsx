@@ -5,10 +5,14 @@ import { TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Ref } from 'react';
-import { useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { UPLOAD_ERROR_TEXT } from '../../../../application/asset/assetUseCases';
-import type { DocumentEditorSession, SaveOutcome } from '../../../../application/document/editorSession';
+import type {
+  DocumentEditorSession,
+  DrawingInputRecorder,
+  SaveOutcome,
+} from '../../../../application/document/editorSession';
 import type { Asset } from '../../../../domain/asset/asset';
 import { isExternalImageUrl, isImageMediaType } from '../../../../domain/asset/asset';
 import { recentAgentChanges, AGENT_MARKER_VISIBLE_MS } from '../../../../domain/document/agentChanges';
@@ -25,10 +29,19 @@ import { errorMessage } from '../common/States';
 import { filterMentionLogins } from '../common/mentions';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { hasMod } from '../hooks/useHotkey';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { BlockBehavior } from './behavior';
 import { clipboardMarkdown } from './clipboardMarkdown';
 import { applyBlocks, insertBlock } from './commands';
 import { blocksToDoc, docToDrafts } from './convert';
+import { DrawingWithView, NARROW_DRAWING_QUERY } from './drawing/DrawingView';
+import type {
+  DrawingPair,
+  DrawingSaveRequest,
+  DrawingSaveResult,
+  DrawingTarget,
+} from './drawing/drawingTypes';
+import { CANNOT_EDIT, saveDrawingPair } from './drawing/drawingSave';
 import { randomBlockId } from './ids';
 import { CodeBlockWithView, ImageWithView } from './nodeViews';
 import { BlockHandle, SelectionToolbar, TableToolbar } from './overlays';
@@ -67,6 +80,12 @@ import { savedAssetReferences } from './savedAssetReferences';
 import type { GitHubContext } from '../../../../domain/document/githubReferences';
 import { ContentDecorations } from './contentDecorations';
 
+// Excalidraw is large; it loads only when a drawing is opened.
+const DrawingDialog = lazy(() => import('./drawing/DrawingDialog'));
+
+/** Marks the editor transaction that puts a saved drawing pair into its block: an app action, not typing. */
+export const DRAWING_APPLY_META = 'agentDocsDrawingApply';
+
 export const AUTOSAVE_DELAY_MS = 1_000;
 
 export type DocumentEditorHandle = {
@@ -83,6 +102,8 @@ export type DocumentEditorHandle = {
   readonly scrollToThread: (threadId: string) => void;
   readonly scrollToBlock: (blockId: string) => void;
   readonly commentOnSelection: () => void;
+  /** An open drawing dialog holds something the server has not accepted (changed, saving, or kept while read-only). */
+  readonly hasDrawingDraft: () => boolean;
 };
 
 export type DocumentEditorProps = {
@@ -99,6 +120,8 @@ export type DocumentEditorProps = {
   readonly onRequestComment: (anchor: Anchor) => void;
   readonly onReanchor: (anchor: Anchor) => void;
   readonly onInput?: () => void;
+  /** Real drawing input per dialog, kept apart from body input so only the save holding the drawing adopts it. */
+  readonly drawingInput?: DrawingInputRecorder;
   readonly onContentChange: () => void;
   readonly onMessage: (message: string) => void;
 };
@@ -136,6 +159,9 @@ class EditorBridge {
   github: GitHubContext = { repositories: [] };
   replaceHtml: (blockId: string, previousAsset: string, file: File) => Promise<void> = () =>
     Promise.reject(new Error('시안 교체 준비 중'));
+  openDrawing: (request: { readonly blockId: string } | { readonly anchorBlockId: string | null }) => void =
+    () => undefined;
+  localPreview: (assetId: string) => string | null = () => null;
   private pick: () => void = () => undefined;
 
   setGithub(github?: GitHubContext): void {
@@ -144,6 +170,14 @@ class EditorBridge {
 
   setReplaceHtml(replace: (blockId: string, previousAsset: string, file: File) => Promise<void>): void {
     this.replaceHtml = replace;
+  }
+
+  setDrawing(
+    open: (request: { readonly blockId: string } | { readonly anchorBlockId: string | null }) => void,
+    preview: (assetId: string) => string | null,
+  ): void {
+    this.openDrawing = open;
+    this.localPreview = preview;
   }
 
   readonly pickImage = (): void => {
@@ -216,6 +250,12 @@ function buildExtensions(
       replaceHtml: (blockId: string, previousAsset: string, file: File) =>
         bridge.replaceHtml(blockId, previousAsset, file),
     }),
+    DrawingWithView.configure({
+      contentUrl: (assetId: string) => services.assets.contentUrl(assetId),
+      savedReferences: savedAssetReferences(session),
+      localPreview: (assetId: string) => bridge.localPreview(assetId),
+      openDrawing: (blockId: string) => bridge.openDrawing({ blockId }),
+    }),
     DividerNode,
     HardBreak,
     Bold,
@@ -242,7 +282,9 @@ function buildExtensions(
           const $from = state.doc.resolve(range.from);
           return $from.depth === 1 && $from.parent.type.name === 'paragraph';
         },
-        items: slashItems(randomBlockId, bridge.pickImage),
+        items: slashItems(randomBlockId, bridge.pickImage, (anchorBlockId) =>
+          bridge.openDrawing({ anchorBlockId }),
+        ),
       },
       store,
     ),
@@ -268,6 +310,12 @@ export function DocumentEditor(props: DocumentEditorProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [store] = useState(() => new SuggestionStore());
   const [bridge] = useState(() => new EditorBridge());
+  const [drawing, setDrawing] = useState<DrawingTarget | null>(null);
+  const drawingDraft = useRef(false);
+  // What this tab uploaded for drawings whose save the server has not confirmed yet, so no route is asked early.
+  const previews = useRef(new Map<string, string>());
+  const scenes = useRef(new Map<string, string>());
+  const dark = useMediaQuery('(prefers-color-scheme: dark)');
 
   useEffect(() => {
     latest.current = props;
@@ -304,7 +352,125 @@ export function DocumentEditor(props: DocumentEditorProps) {
       if (session.getState().errorMessage !== null)
         throw new Error(session.getState().errorMessage ?? '시안 기록을 확정하지 못했습니다.');
     });
+    bridge.setDrawing(
+      (request) => {
+        const editor = editorRef.current;
+        if (editor === null || !editor.isEditable) return;
+        if (window.matchMedia(NARROW_DRAWING_QUERY).matches) {
+          latest.current.onMessage('손그림은 넓은 화면에서 그릴 수 있습니다.');
+          return;
+        }
+        const key = randomBlockId();
+        if ('anchorBlockId' in request) {
+          setDrawing((open) => open ?? { kind: 'new', key, anchorBlockId: request.anchorBlockId });
+          return;
+        }
+        const found = findBlock(editor.state.doc, request.blockId);
+        if (found?.node.type.name !== 'drawing') return;
+        const pair = {
+          svgAssetId: String(found.node.attrs.svgAssetId),
+          sceneAssetId: String(found.node.attrs.sceneAssetId),
+        };
+        setDrawing((open) => open ?? { kind: 'edit', key, blockId: request.blockId, pair });
+      },
+      (assetId) => previews.current.get(assetId) ?? null,
+    );
   });
+
+  useEffect(() => {
+    const urls = previews.current;
+    return () => {
+      for (const url of urls.values()) URL.revokeObjectURL(url);
+    };
+  }, []);
+
+  // Reads a saved drawing's scene through this document only; a drawing this tab put in but the server has not
+  // confirmed opens from the copy kept here, and anything else waits for the save instead of asking a route early.
+  const loadDrawingScene = (target: DrawingTarget): Promise<string | null> => {
+    if (target.kind === 'new') return Promise.resolve(null);
+    const local = scenes.current.get(target.pair.sceneAssetId);
+    if (local !== undefined) return Promise.resolve(local);
+    if (!savedAssetReferences(session).contains(target.pair.sceneAssetId))
+      return Promise.reject(new Error('문서 저장 후 이 그림을 편집할 수 있습니다.'));
+    return services.assets.sceneSource(target.pair.sceneAssetId);
+  };
+
+  const uploadDrawingFile = async (name: string, type: string, data: Blob): Promise<Asset> => {
+    const result = await services.assets.upload(document.space.slug, { name, type, size: data.size, data });
+    if (!result.ok) throw new Error(UPLOAD_ERROR_TEXT[result.error]);
+    if (result.value.mediaType !== type) throw new Error('그림 파일이 손그림 형식으로 저장되지 않았습니다.');
+    return result.value;
+  };
+
+  // Puts the pair into its block: the same block id when editing, or a new block where the slash menu was opened.
+  // Returns null when the block no longer holds the pair this dialog last saw.
+  const placeDrawing = (editor: Editor, request: DrawingSaveRequest, pair: DrawingPair): string | null => {
+    const { state } = editor;
+    const editing = request.blockId ?? (request.target.kind === 'edit' ? request.target.blockId : null);
+    if (editing !== null) {
+      const found = findBlock(state.doc, editing);
+      const attrs = found?.node.attrs;
+      if (
+        found?.node.type.name !== 'drawing' ||
+        attrs?.svgAssetId !== request.expected?.svgAssetId ||
+        attrs?.sceneAssetId !== request.expected?.sceneAssetId
+      )
+        return null;
+      editor.view.dispatch(
+        state.tr
+          .setNodeMarkup(found.pos, undefined, { ...found.node.attrs, ...pair })
+          .setMeta(DRAWING_APPLY_META, true),
+      );
+      return editing;
+    }
+    const id = randomBlockId();
+    const node = state.schema.nodes.drawing?.create({ id, ...pair, alt: '' });
+    if (node === undefined) return null;
+    const anchor =
+      request.target.kind === 'new' && request.target.anchorBlockId !== null
+        ? findBlock(state.doc, request.target.anchorBlockId)
+        : null;
+    const tr = state.tr;
+    if (anchor === null) tr.insert(state.doc.content.size, node);
+    else if (anchor.node.type.name === 'paragraph' && anchor.node.content.size === 0)
+      tr.replaceWith(anchor.pos, anchor.pos + anchor.node.nodeSize, node);
+    else tr.insert(anchor.pos + anchor.node.nodeSize, node);
+    editor.view.dispatch(tr.setMeta(DRAWING_APPLY_META, true));
+    return id;
+  };
+
+  // The flow and its permission checks live in saveDrawingPair; this part only knows the editor and the session.
+  const saveDrawing = (request: DrawingSaveRequest): Promise<DrawingSaveResult> => {
+    const editor = editorRef.current;
+    if (editor === null) return Promise.resolve({ kind: 'kept', message: CANNOT_EDIT });
+    return saveDrawingPair(request, {
+      canWrite: () => editor.isEditable && session.isWritable(),
+      saveBody: (options) => session.saveContent(savableBlocks(editor, session), options),
+      finalize: async () => {
+        await session.finalize();
+        return session.getState().errorMessage === null;
+      },
+      upload: uploadDrawingFile,
+      place: (pair, svg) => {
+        const preview = URL.createObjectURL(svg);
+        previews.current.set(pair.svgAssetId, preview);
+        scenes.current.set(pair.sceneAssetId, request.snapshot.sceneJson);
+        const blockId = placeDrawing(editor, request, pair);
+        if (blockId === null) {
+          previews.current.delete(pair.svgAssetId);
+          scenes.current.delete(pair.sceneAssetId);
+          URL.revokeObjectURL(preview);
+        }
+        return blockId;
+      },
+    });
+  };
+
+  const closeDrawing = (input: 'discard' | 'keep'): void => {
+    if (drawing !== null && input === 'discard') latest.current.drawingInput?.discard(drawing.key);
+    drawingDraft.current = false;
+    setDrawing(null);
+  };
 
   const save = (): void => {
     const editor = editorRef.current;
@@ -474,8 +640,8 @@ export function DocumentEditor(props: DocumentEditorProps) {
           return true;
         },
       },
-      onUpdate: ({ editor }) => {
-        latest.current.onInput?.();
+      onUpdate: ({ editor, transaction }) => {
+        if (transaction.getMeta(DRAWING_APPLY_META) !== true) latest.current.onInput?.();
         session.markEdited(savableBlocks(editor, session));
         autosave.call();
         latest.current.onContentChange();
@@ -561,6 +727,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
           behavior: 'smooth',
         }),
       commentOnSelection: () => requestComment(false),
+      hasDrawingDraft: () => drawingDraft.current,
     };
   }, [editor, session, autosave]);
 
@@ -606,6 +773,30 @@ export function DocumentEditor(props: DocumentEditorProps) {
           void uploadFiles(files, null);
         }}
       />
+      {drawing !== null ? (
+        <Suspense
+          fallback={
+            <div className="drawing-dialog-backdrop">
+              <p role="status">손그림 편집기를 불러오는 중…</p>
+            </div>
+          }
+        >
+          <DrawingDialog
+            key={drawing.key}
+            target={drawing}
+            editable={editable}
+            theme={dark ? 'dark' : 'light'}
+            loadScene={() => loadDrawingScene(drawing)}
+            onMeaningfulInput={(at) => latest.current.drawingInput?.mark(drawing.key, at)}
+            reserveInput={() => latest.current.drawingInput?.reserve(drawing.key) ?? null}
+            onSave={saveDrawing}
+            onClose={closeDrawing}
+            onDraftChange={(draft) => {
+              drawingDraft.current = draft;
+            }}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

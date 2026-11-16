@@ -54,6 +54,17 @@ export type ImageBlock = {
   readonly alt: string;
   readonly caption: string;
 };
+/**
+ * A hand-drawn diagram: the Excalidraw scene JSON is the original and the cleaned SVG is what readers see.
+ * Both are immutable assets, so editing a drawing points the same block id at a new pair.
+ */
+export type DrawingBlock = {
+  readonly id: string;
+  readonly type: 'drawing';
+  readonly svgAssetId: string;
+  readonly sceneAssetId: string;
+  readonly alt: string;
+};
 export type DividerBlock = { readonly id: string; readonly type: 'divider' };
 
 export type Block =
@@ -65,6 +76,7 @@ export type Block =
   | CodeBlock
   | TableBlock
   | ImageBlock
+  | DrawingBlock
   | DividerBlock;
 
 export type BlockType = Block['type'];

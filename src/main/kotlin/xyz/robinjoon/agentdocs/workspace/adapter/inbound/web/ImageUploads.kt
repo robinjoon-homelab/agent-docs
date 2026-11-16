@@ -5,6 +5,9 @@ import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
 
 // All clients use the same asset references; HTML replacement never mutates old bytes.
 internal object ImageUploads {
+    // Files never run script or load anything; data: fonts let a drawing's inlined handwriting font show when opened.
+    const val ATTACHMENT_POLICY = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"
+
     fun resultOf(
         asset: Asset,
         alt: String,

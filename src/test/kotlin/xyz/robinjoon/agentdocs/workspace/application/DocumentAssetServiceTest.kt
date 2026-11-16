@@ -6,12 +6,16 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentAssetBinding
+import xyz.robinjoon.agentdocs.workspace.application.model.DrawingText
+import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
+import xyz.robinjoon.agentdocs.workspace.application.model.VerifiedScene
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentAssetStore
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
+import xyz.robinjoon.agentdocs.workspace.application.port.output.SceneVerifier
 import xyz.robinjoon.agentdocs.workspace.application.service.DocumentAssetService
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.asset.Asset
@@ -26,7 +30,8 @@ class DocumentAssetServiceTest {
     private val references = mockk<DocumentAssetStore>()
     private val assets = mockk<AssetRepository>()
     private val bytes = mockk<AssetStore>()
-    private val service = DocumentAssetService(documents, references, assets, bytes)
+    private val scenes = mockk<SceneVerifier>()
+    private val service = DocumentAssetService(documents, references, assets, bytes, scenes)
     private val current = WorkspaceFixtures.document(emptyList(), 2)
     private val original = AssetId(UUID.randomUUID())
     private val copy =
@@ -78,5 +83,49 @@ class DocumentAssetServiceTest {
                 original,
             )
         }.isInstanceOf(DocumentNotFoundException::class.java)
+    }
+
+    private fun stored(
+        type: AssetMediaType,
+        text: String,
+    ): Asset {
+        val asset =
+            Asset.upload(
+                AssetId(UUID.randomUUID()),
+                current.spaceId,
+                AssetContent.of(type, text.toByteArray()),
+                AssetOrigin("draw", null, WorkspaceFixtures.owner, WorkspaceFixtures.now),
+            )
+        every { documents.findById(current.id) } returns current
+        every { references.references(current.id) } returns setOf(asset.id)
+        every { references.bindings(setOf(current.id)) } returns emptyList()
+        every { assets.findById(asset.id) } returns asset
+        every { bytes.get(asset.content.sha256) } returns text.toByteArray()
+        return asset
+    }
+
+    @Test
+    fun `a drawing scene's source is its stored text with what it contains, and an SVG is its text alone`() {
+        val sceneText = """{"type":"excalidraw","elements":[{"id":"t","type":"text","text":"흐름"}]}"""
+        val verified = VerifiedScene(1, 0, listOf(DrawingText("t", "흐름", null)))
+        val scene = stored(AssetMediaType.EXCALIDRAW, sceneText)
+        every { scenes.verify(any()) } returns verified
+
+        val sceneSource = service.source(WorkspaceFixtures.ownerAccess, current.id, scene.id)
+        val svg = stored(AssetMediaType.SVG, "<svg xmlns=\"http://www.w3.org/2000/svg\"/>")
+        val svgSource = service.source(WorkspaceFixtures.ownerAccess, current.id, svg.id)
+
+        assertThat(sceneSource.text).isEqualTo(sceneText)
+        assertThat(sceneSource.scene).isEqualTo(verified)
+        assertThat(svgSource.text).isEqualTo("<svg xmlns=\"http://www.w3.org/2000/svg\"/>")
+        assertThat(svgSource.scene).isNull()
+    }
+
+    @Test
+    fun `an image or a download has no source to read`() {
+        val png = stored(AssetMediaType.PNG, "png")
+
+        assertThatThrownBy { service.source(WorkspaceFixtures.ownerAccess, current.id, png.id) }
+            .isInstanceOf(InvalidRequestException::class.java)
     }
 }

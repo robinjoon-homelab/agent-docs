@@ -1,3 +1,5 @@
+import { useDocumentPermission } from './DocumentPermissionContext';
+import { canComment, canResolveThread } from '../../../../../domain/space/permission';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { historyHref } from '../../../../../domain/document/document';
@@ -5,7 +7,6 @@ import type { Comment, Thread } from '../../../../../domain/thread/thread';
 import {
   THREAD_STATUS_LABEL,
   anchorQuote,
-  canResolve,
   isDetached,
   isOwnComment,
 } from '../../../../../domain/thread/thread';
@@ -117,6 +118,8 @@ export function ThreadCard({
   actions: ThreadActions;
   onActivate: () => void;
 }) {
+  const permission = useDocumentPermission();
+  const commentable = canComment(permission);
   const detached = isDetached(thread);
   const quote = anchorLabel(thread);
   return (
@@ -126,80 +129,82 @@ export function ThreadCard({
       onClick={onActivate}
       aria-label={`댓글 스레드: ${quote}`}
     >
-      <header className="thread-head">
-        <span
-          className={`thread-quote${thread.anchor.kind === 'text' || thread.anchor.kind === 'cell' ? '' : ' faint'}`}
-          title={quote}
-        >
-          {quote}
-        </span>
-        <span className={`badge thread-status thread-status-${thread.status}`}>
-          {THREAD_STATUS_LABEL[thread.status]}
-        </span>
-      </header>
-      {detached ? (
-        <div className="thread-detached">
-          <span className="badge badge-warning">분리됨</span>
-          <span className="small muted">원래 위치의 글이 바뀌어 연결이 끊겼습니다.</span>
-          <button
-            type="button"
-            className="btn btn-small"
-            onClick={(event) => {
-              event.stopPropagation();
-              actions.startReanchor(thread);
-            }}
+      <fieldset disabled={!commentable} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <header className="thread-head">
+          <span
+            className={`thread-quote${thread.anchor.kind === 'text' || thread.anchor.kind === 'cell' ? '' : ' faint'}`}
+            title={quote}
           >
-            다른 위치에 다시 달기
-          </button>
-        </div>
-      ) : null}
-      <ThreadCollaboration thread={thread} login={login} actions={actions} />
-      <ul className="comments">
-        {thread.comments.map((comment) => (
-          <CommentItem
-            key={comment.id}
-            thread={thread}
-            comment={comment}
-            login={login}
-            mentionLogins={mentionLogins}
-            actions={actions}
-          />
-        ))}
-      </ul>
-      {thread.linkedRevisions.length === 0 ? null : (
-        <div className="comment-revisions">
-          {thread.linkedRevisions.map((revision) => (
-            <Link key={revision} className="chip" to={historyHref(spaceSlug, thread.documentId, revision)}>
-              rev {revision} 변경 보기
-            </Link>
-          ))}
-        </div>
-      )}
-      {active ? (
-        <CommentEditor
-          mentionLogins={mentionLogins}
-          placeholder="답글 (⌘Enter)"
-          submitLabel="답글"
-          initial=""
-          onSubmit={(body) => actions.reply(thread, body)}
-        />
-      ) : null}
-      <footer className="thread-actions">
-        {canResolve(thread) ? (
-          <button type="button" className="btn btn-small" onClick={() => void actions.resolve(thread)}>
-            해결
-          </button>
-        ) : (
-          <button type="button" className="btn btn-small" onClick={() => void actions.reopen(thread)}>
-            다시 열기
-          </button>
-        )}
-        {active ? null : (
-          <span className="faint small">
-            {thread.comments.length > 1 ? `댓글 ${thread.comments.length}개` : ''}
+            {quote}
           </span>
+          <span className={`badge thread-status thread-status-${thread.status}`}>
+            {THREAD_STATUS_LABEL[thread.status]}
+          </span>
+        </header>
+        {detached ? (
+          <div className="thread-detached">
+            <span className="badge badge-warning">분리됨</span>
+            <span className="small muted">원래 위치의 글이 바뀌어 연결이 끊겼습니다.</span>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={(event) => {
+                event.stopPropagation();
+                actions.startReanchor(thread);
+              }}
+            >
+              다른 위치에 다시 달기
+            </button>
+          </div>
+        ) : null}
+        <ThreadCollaboration thread={thread} login={login} actions={actions} />
+        <ul className="comments">
+          {thread.comments.map((comment) => (
+            <CommentItem
+              key={comment.id}
+              thread={thread}
+              comment={comment}
+              login={login}
+              mentionLogins={mentionLogins}
+              actions={actions}
+            />
+          ))}
+        </ul>
+        {thread.linkedRevisions.length === 0 ? null : (
+          <div className="comment-revisions">
+            {thread.linkedRevisions.map((revision) => (
+              <Link key={revision} className="chip" to={historyHref(spaceSlug, thread.documentId, revision)}>
+                rev {revision} 변경 보기
+              </Link>
+            ))}
+          </div>
         )}
-      </footer>
+        {active ? (
+          <CommentEditor
+            mentionLogins={mentionLogins}
+            placeholder="답글 (⌘Enter)"
+            submitLabel="답글"
+            initial=""
+            onSubmit={(body) => actions.reply(thread, body)}
+          />
+        ) : null}
+        <footer className="thread-actions">
+          {canResolveThread(permission, thread, login) ? (
+            <button type="button" className="btn btn-small" onClick={() => void actions.resolve(thread)}>
+              해결
+            </button>
+          ) : thread.status === 'resolved' ? (
+            <button type="button" className="btn btn-small" onClick={() => void actions.reopen(thread)}>
+              다시 열기
+            </button>
+          ) : null}
+          {active ? null : (
+            <span className="faint small">
+              {thread.comments.length > 1 ? `댓글 ${thread.comments.length}개` : ''}
+            </span>
+          )}
+        </footer>
+      </fieldset>
     </article>
   );
 }

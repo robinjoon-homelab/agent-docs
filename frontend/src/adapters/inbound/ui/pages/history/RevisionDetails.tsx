@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { Revision } from '../../../../../domain/document/document';
 import { codeLinks } from '../../../../../domain/document/historyMetadata';
 import { useServices } from '../../../../../config/ServicesContext';
-import { useSession } from '../../app/SessionContext';
+import { useDocumentPermission } from '../document/DocumentPermissionContext';
+import { canEdit } from '../../../../../domain/space/permission';
 import { errorMessage } from '../../common/States';
 
 export function RevisionLinks({ revision }: { revision: Revision }) {
@@ -27,7 +28,7 @@ export function RevisionDetails({
   onChanged: () => void;
 }) {
   const services = useServices();
-  const { me } = useSession();
+  const editable = canEdit(useDocumentPermission());
   const [name, setName] = useState(revision.name ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -45,7 +46,7 @@ export function RevisionDetails({
   };
   return (
     <div className="history-metadata">
-      {me.owner ? (
+      {editable ? (
         <form
           onSubmit={(event) => {
             event.preventDefault();

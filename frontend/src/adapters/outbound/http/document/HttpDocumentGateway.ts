@@ -29,6 +29,7 @@ import type { HttpClient } from '../shared/httpClient';
 import { ProblemError, query, segment } from '../shared/httpClient';
 import { list, num, obj, oneOf, optNum, optStr, str, strOr, strings } from '../shared/json';
 import {
+  toPermission,
   toActor,
   toDocumentSummary,
   toOptionalBlock,
@@ -69,6 +70,7 @@ export function toDocument(value: unknown): AgentDocument {
   const source = obj(value, 'document');
   return {
     ...toCurrentDocument(value),
+    permission: toPermission(source.permission),
     space: toSpaceRef(source.space),
     blockChanges: source.blockChanges === undefined ? [] : list(source.blockChanges, toBlockChange),
   };
@@ -195,8 +197,18 @@ export class HttpDocumentGateway implements DocumentGateway {
   }
 
   async create(spaceSlug: string, document: NewDocument): Promise<AgentDocument> {
+    const { path, title, status, tags, assignee, blocks } = document;
     return toDocument(
-      await namingTakenPath(this.http.post(`/api/spaces/${segment(spaceSlug)}/documents`, document)),
+      await namingTakenPath(
+        this.http.post(`/api/spaces/${segment(spaceSlug)}/documents`, {
+          path,
+          title,
+          status,
+          tags,
+          assignee,
+          blocks,
+        }),
+      ),
     );
   }
 
@@ -240,12 +252,17 @@ export class HttpDocumentGateway implements DocumentGateway {
     patch: MetaPatch,
     inputTrace?: InputTracePayload,
   ): Promise<AgentDocument> {
+    const { path, title, status, tags, assignee } = patch;
     try {
       return toDocument(
         await namingTakenPath(
           this.http.patch(`/api/documents/${segment(documentId)}`, {
             baseVersion,
-            ...patch,
+            path,
+            title,
+            status,
+            tags,
+            assignee,
             ...(inputTrace === undefined ? {} : { inputTrace }),
           }),
         ),

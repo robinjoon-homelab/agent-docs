@@ -35,4 +35,46 @@ describe('toStoredBlock', () => {
     expect('displayMath' in fenced).toBe(false);
     expect('displayMath' in legacy).toBe(false);
   });
+
+  it('reads a drawing with both of its assets and the alt text', () => {
+    const block = toStoredBlock({
+      id: 'draw000001',
+      type: 'drawing',
+      svgAssetId: '11111111-1111-4111-8111-111111111111',
+      sceneAssetId: '22222222-2222-4222-8222-222222222222',
+      alt: '배포 흐름',
+      hash: 'h1',
+    });
+
+    expect(block).toEqual({
+      id: 'draw000001',
+      type: 'drawing',
+      svgAssetId: '11111111-1111-4111-8111-111111111111',
+      sceneAssetId: '22222222-2222-4222-8222-222222222222',
+      alt: '배포 흐름',
+      hash: 'h1',
+    });
+  });
+
+  it('rejects a drawing without its scene instead of keeping only the picture', () => {
+    expect(() =>
+      toStoredBlock({
+        id: 'draw000002',
+        type: 'drawing',
+        svgAssetId: '11111111-1111-4111-8111-111111111111',
+      }),
+    ).toThrow();
+  });
+});
+
+it('reads only known space permissions and never upgrades an unknown grant', async () => {
+  const { toPermission } = await import('./mappers');
+  expect(['read', 'comment', 'edit', 'owner', 'future'].map(toPermission)).toEqual([
+    'read',
+    'comment',
+    'edit',
+    'owner',
+    'read',
+  ]);
+  expect(toPermission(undefined)).toBeUndefined();
 });

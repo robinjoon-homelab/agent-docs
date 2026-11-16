@@ -1,3 +1,8 @@
+import type { MembershipGateway } from '../application/membership/ports/MembershipGateway';
+import {
+  createMembershipUseCases,
+  type MembershipUseCases,
+} from '../application/membership/membershipUseCases';
 import type { ActivityUseCases } from '../application/activity/activityUseCases';
 import { createActivityUseCases } from '../application/activity/activityUseCases';
 import type { ActivityGateway } from '../application/activity/ports/ActivityGateway';
@@ -50,6 +55,7 @@ import type { AgentDocument } from '../domain/document/document';
 
 /** Everything the UI may call: input ports (use cases) only, never gateways. */
 export type Services = {
+  readonly memberships: MembershipUseCases;
   readonly session: SessionUseCases;
   readonly spaces: SpaceUseCases;
   readonly documents: DocumentUseCases;
@@ -76,6 +82,7 @@ export type Services = {
 };
 
 export type Gateways = {
+  readonly memberships: MembershipGateway;
   readonly session: SessionGateway;
   readonly spaces: SpaceGateway;
   readonly documents: DocumentGateway;
@@ -97,6 +104,7 @@ export const systemClock: Clock = { now: () => new Date() };
 
 export function assembleServices(gateways: Gateways, clock: Clock, fake: boolean): Services {
   return {
+    memberships: createMembershipUseCases(gateways.memberships),
     session: createSessionUseCases(gateways.session),
     spaces: createSpaceUseCases(gateways.spaces),
     documents: createDocumentUseCases(gateways.documents),

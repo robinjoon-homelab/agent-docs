@@ -50,14 +50,23 @@ data class CommentThread private constructor(
             null
         }
 
+    // onlyOwn is set for someone who may comment but not edit the space: such a person resolves only a thread they
+    // opened, while an editor or the owner resolves any.
     fun resolve(
         by: Actor,
         at: Instant,
+        onlyOwn: Boolean = false,
     ): CommentThread? {
         if (by.isAgent && !author.isAgent) {
             throw ThreadActionException(
                 "an agent cannot resolve a thread a person opened",
                 "mark the thread answered; the person who opened it resolves it",
+            )
+        }
+        if (onlyOwn && author.userId != by.userId) {
+            throw ThreadActionException(
+                "a commenter can resolve only a thread they opened",
+                "reply instead; the person who opened the thread or an editor resolves it",
             )
         }
         return if (status ==
