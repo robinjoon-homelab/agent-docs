@@ -128,7 +128,7 @@ class MarkdownReader private constructor(
     private fun readHeading(id: BlockId): Heading {
         val match = requireNotNull(headingPattern.matchEntire(lines[index]))
         index++
-        return Heading(id, minOf(match.groupValues[1].length, Heading.MAX_LEVEL), InlineText(match.groupValues[2].trim()))
+        return Heading(id, match.groupValues[1].length, InlineText(match.groupValues[2].trim()))
     }
 
     private fun readCallout(id: BlockId): Callout {

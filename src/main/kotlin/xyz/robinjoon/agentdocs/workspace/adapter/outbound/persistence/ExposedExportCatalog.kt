@@ -6,11 +6,11 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import xyz.robinjoon.agentdocs.workspace.application.model.ExportAsset
+import xyz.robinjoon.agentdocs.workspace.application.model.ExportDocument
 import xyz.robinjoon.agentdocs.workspace.application.model.ExportSpaceUnavailableException
 import xyz.robinjoon.agentdocs.workspace.application.model.WorkspaceExport
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ExportCatalog
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
-import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 
 class ExposedExportCatalog : ExportCatalog {
@@ -46,14 +46,14 @@ private class ExportRows(
     fun snapshot(): WorkspaceExport {
         val assets = assetRows()
         val records = primaryRecords() + metadataRecords() + mapOf("assets" to assets.map { record(AssetsTable, it) })
-        val markdown =
+        val contents =
             documents.associate { row ->
                 row[DocumentsTable.id].toString() to
-                    "# ${row[DocumentsTable.title]}\n\n${BlockMarkdown.write(DocumentRows.blocksOf(row[DocumentsTable.body]), false)}"
+                    ExportDocument(row[DocumentsTable.title], DocumentRows.blocksOf(row[DocumentsTable.body]))
             }
         return WorkspaceExport(
             records,
-            markdown,
+            contents,
             assets.map { ExportAsset(it[AssetsTable.id].toString(), it[AssetsTable.mediaType].extension, it[AssetsTable.sha256]) },
         )
     }

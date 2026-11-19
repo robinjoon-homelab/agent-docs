@@ -1,5 +1,6 @@
 package xyz.robinjoon.agentdocs.workspace.domain.document.markdown
 
+import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.Callout
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
@@ -7,6 +8,8 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Heading
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.InlineMarkdown
+import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
 import xyz.robinjoon.agentdocs.workspace.domain.document.ListItem
 import xyz.robinjoon.agentdocs.workspace.domain.document.ListStyle
 import xyz.robinjoon.agentdocs.workspace.domain.document.Paragraph
@@ -33,13 +36,19 @@ object BlockMarkdown {
         annotated: Boolean,
     ): String = parts(blocks, annotated).joinToString("")
 
+    fun forExport(
+        blocks: List<Block>,
+        pathOf: (AssetId) -> String?,
+    ): String = parts(blocks, annotated = false, pathOf).joinToString("")
+
     internal fun parts(
         blocks: List<Block>,
         annotated: Boolean,
+        pathOf: ((AssetId) -> String?)? = null,
     ): Sequence<String> =
         blocks.asSequence().mapIndexed { index, block ->
             val separator = if (index == 0) "" else separatorBefore(block, blocks[index - 1])
-            separator + (if (annotated) annotation(block) + "\n" else "") + of(block)
+            separator + (if (annotated) annotation(block) + "\n" else "") + render(block, pathOf)
         }
 
     private fun separatorBefore(
@@ -58,23 +67,39 @@ object BlockMarkdown {
         return digest.joinToString("") { (it.toInt() and BYTE_MASK).toString(HEX_RADIX).padStart(2, '0') }.take(HASH_LENGTH)
     }
 
-    fun of(block: Block): String =
+    fun of(block: Block): String = render(block, null)
+
+    private fun render(
+        block: Block,
+        pathOf: ((AssetId) -> String?)?,
+    ): String =
         when (block) {
-            is Heading -> "#".repeat(block.level) + " " + block.text.markdown
-            is Paragraph -> escapeLeading(block.text.markdown)
-            is ListItem -> listItem(block)
-            is Quote -> "> " + escapeQuote(block.text.markdown)
-            is Callout -> "> [!${block.kind}]\n> " + block.text.markdown
+            is Heading -> "#".repeat(block.level) + " " + block.text.render(pathOf)
+            is Paragraph -> escapeLeading(block.text.render(pathOf))
+            is ListItem -> listItem(block, block.text.render(pathOf))
+            is Quote -> "> " + escapeQuote(block.text.render(pathOf))
+            is Callout -> "> [!${block.kind}]\n> " + block.text.render(pathOf)
             is CodeBlock -> code(block)
-            is TableBlock -> table(block)
-            is ImageBlock -> image(block)
-            is DrawingBlock -> drawing(block)
+            is TableBlock -> table(block, pathOf)
+            is ImageBlock -> image(block.alt, destination(block.asset, pathOf), block.caption)
+            is DrawingBlock -> image(block.alt, destination(block.svg, pathOf), "excalidraw " + destination(block.scene, pathOf))
             is Divider -> "---"
         }
 
+    private fun InlineText.render(pathOf: ((AssetId) -> String?)?): String =
+        if (pathOf == null || "asset:" !in markdown) markdown else InlineMarkdown.rewriteAssetLinks(markdown, pathOf)
+
+    private fun destination(
+        asset: AssetId,
+        pathOf: ((AssetId) -> String?)?,
+    ): String = pathOf?.invoke(asset) ?: "asset:$asset"
+
     private fun columnsOf(block: Block): String = if (block is TableBlock) block.columns.joinToString(",") { it.id.value } else ""
 
-    private fun listItem(item: ListItem): String {
+    private fun listItem(
+        item: ListItem,
+        content: String,
+    ): String {
         val marker = if (item.style == ListStyle.NUMBERED) "1." else "-"
         val task =
             if (item.style != ListStyle.TASK) {
@@ -84,7 +109,7 @@ object BlockMarkdown {
             } else {
                 "[ ] "
             }
-        val text = if (item.style == ListStyle.TASK) item.text.markdown else escapeTaskLike(item.text.markdown)
+        val text = if (item.style == ListStyle.TASK) content else escapeTaskLike(content)
         return "  ".repeat(item.depth) + marker + " " + task + text
     }
 
@@ -96,27 +121,27 @@ object BlockMarkdown {
         return fence + block.language + "\n" + body + fence
     }
 
-    private fun table(block: TableBlock): String {
+    private fun table(
+        block: TableBlock,
+        pathOf: ((AssetId) -> String?)?,
+    ): String {
         val lines =
             block.rows.map { row ->
-                "| <!--r:${row.id}-->" + row.cells.joinToString(" | ") { TableSyntax.escape(it.markdown) } +
+                "| <!--r:${row.id}-->" + row.cells.joinToString(" | ") { TableSyntax.escape(it.render(pathOf)) } +
                     " |"
             }
         val delimiter = block.columns.joinToString(" | ", "| ", " |") { TableSyntax.delimiter(it.alignment) }
         return (listOf(lines.first(), delimiter) + lines.drop(1)).joinToString("\n")
     }
 
-    private fun image(block: ImageBlock): String {
-        val alt = block.alt.replace("\\", "\\\\").replace("]", "\\]")
-        val caption = if (block.caption.isEmpty()) "" else " \"" + block.caption.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-        return "![$alt](asset:${block.asset}$caption)"
-    }
-
-    // A plain GFM viewer shows the SVG. The caption keeps the scene as an asset: reference, so the export rewrite and
-    // transfer bindings resolve it the same way as any other reference.
-    private fun drawing(block: DrawingBlock): String {
-        val alt = block.alt.replace("\\", "\\\\").replace("]", "\\]")
-        return "![$alt](asset:${block.svg} \"${DrawingBlock.CAPTION_PREFIX}${block.scene}\")"
+    private fun image(
+        label: String,
+        destination: String,
+        title: String,
+    ): String {
+        val alt = label.replace("\\", "\\\\").replace("]", "\\]")
+        val caption = if (title.isEmpty()) "" else " \"" + title.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        return "![$alt]($destination$caption)"
     }
 
     // The reader undoes exactly the escape the writer added, so reading written markdown gives back the same text.

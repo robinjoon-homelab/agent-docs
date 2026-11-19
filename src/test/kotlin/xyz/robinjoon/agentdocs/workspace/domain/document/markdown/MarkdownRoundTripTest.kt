@@ -19,6 +19,15 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.TableColumn
 import xyz.robinjoon.agentdocs.workspace.domain.document.TableRow
 
 class MarkdownRoundTripTest {
+    @ParameterizedTest
+    @ValueSource(ints = [1, 2, 3, 4, 5, 6])
+    fun `GFM headings retain their level when read from markdown and written again`(level: Int) {
+        val source = "${"#".repeat(level)} 세부 항목"
+        val blocks = MarkdownReader.readBlocks(source).map { it.block }
+
+        assertThat(BlockMarkdown.write(blocks, annotated = false)).isEqualTo(source)
+    }
+
     @Test
     fun `annotated markdown reads back as the same blocks with the hashes it declared`() {
         val written = BlockMarkdown.write(SampleBlocks.all, annotated = true)

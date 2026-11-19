@@ -1,8 +1,8 @@
 package xyz.robinjoon.agentdocs.workspace.application.service
 
 import org.springframework.transaction.annotation.Transactional
-import xyz.robinjoon.agentdocs.workspace.application.model.GrantedUpload
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadPass
+import xyz.robinjoon.agentdocs.workspace.application.model.UploadedAsset
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
@@ -59,15 +59,15 @@ class UploadGrantService(
         context: WriteContext,
         secret: String,
         file: UploadedFile,
-    ): GrantedUpload {
+    ): UploadedAsset {
         val now = clock.instant()
         val grant =
             grants.findBySecretHashForUpdate(UploadSecretHash.of(secret))?.takeIf { it.acceptsFrom(context.access.actor, now) }
                 ?: throw UploadRejectedException()
         val space = spaces.findById(grant.target.spaceId) ?: throw UploadRejectedException()
-        val asset = assets.upload(context, space.slug, file)
+        val uploaded = assets.upload(context, space.slug, file, grant.target.alt)
         grants.update(grant.used(now))
-        return GrantedUpload(asset, grant.target.alt)
+        return uploaded
     }
 
     @Transactional

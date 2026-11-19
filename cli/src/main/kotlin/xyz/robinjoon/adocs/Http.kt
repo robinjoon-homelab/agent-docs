@@ -70,12 +70,7 @@ internal class Http(
                     cause = exception,
                 )
             }
-        return CliFailure(
-            error.path("code").asString(error.path("error").asString("http_${response.statusCode()}")),
-            error.path("fix").asString("Inspect the request and granted permissions"),
-            response.statusCode(),
-            response.headers().firstValue("Retry-After").orElse(null),
-        )
+        return CliFailure.fromServer(error, response.statusCode(), response.headers().firstValue("Retry-After").orElse(null))
     }
 
     private fun publisher(body: String?): HttpRequest.BodyPublisher =

@@ -45,7 +45,7 @@ class SearchServiceTest {
         every { catalog.comments(setOf(spaceId, otherSpaceId), "재시도", 50) } returns listOf(CommentMatch(documentId, thread, "재시도 간격은?"))
         every { documents.findByIds(listOf(documentId)) } returns listOf(retry)
 
-        val hits = service.search(ownerAccess, " 재시도 ", null)
+        val hits = service.search(ownerAccess, " 재시도 ", null, allSpaces = true)
 
         assertThat(hits.map { it.kind to it.snippet }).containsExactly(
             SearchHitKind.BLOCK to "결제 재시도는 지수 백오프로 한다",
@@ -63,6 +63,24 @@ class SearchServiceTest {
 
         assertThat(service.search(agentAccess(Permission.READ, setOf(otherSpaceId)), "x", null)).isEmpty()
         assertThat(service.search(agentAccess(Permission.READ, emptySet()), "x", null)).isEmpty()
+    }
+
+    @Test
+    fun `a connection with multiple visible spaces must choose its search scope`() {
+        every { spaces.findAll() } returns listOf(space, diary.archive(now))
+        val access = agentAccess(Permission.READ, setOf(spaceId, otherSpaceId))
+
+        assertThatThrownBy { service.search(access, "retry", null) }
+            .isInstanceOfSatisfying(InvalidRequestException::class.java) {
+                assertThat(it.fix).contains("space", "allSpaces=true")
+            }
+    }
+
+    @Test
+    fun `a named space and an explicit global search are mutually exclusive`() {
+        assertThatThrownBy { service.search(ownerAccess, "retry", space.slug, allSpaces = true) }
+            .isInstanceOf(InvalidRequestException::class.java)
+            .hasMessageContaining("cannot be combined")
     }
 
     @Test
@@ -89,7 +107,7 @@ class SearchServiceTest {
         every { documents.findByIds(listOf(documentId)) } returns listOf(archivedDoc)
         every { documents.findByIds(emptyList()) } returns emptyList()
 
-        val ownerHits = service.search(ownerAccess, "재시도", null)
+        val ownerHits = service.search(ownerAccess, "재시도", null, allSpaces = true)
         val ownerTitles = service.titles(ownerAccess, "재시도")
         val scopedAccess = agentAccess(Permission.READ, setOf(spaceId))
         val scopedHits = service.search(scopedAccess, "재시도", null)

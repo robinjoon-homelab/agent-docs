@@ -31,6 +31,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.ThreadCriteria
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadQuery
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadView
 import xyz.robinjoon.agentdocs.workspace.application.port.input.LegacyOperationException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
@@ -342,6 +343,44 @@ class ThreadServiceTest {
         assertThatThrownBy { service.deleteComment(context(ownerAccess, operationId = "removed"), comment) }
             .isInstanceOfSatisfying(ResultRemovedException::class.java) { assertThat(it.record).isEqualTo(record) }
         assertThat(deleted.comment(comment)?.history?.edits).isEmpty()
+    }
+
+    @Test
+    fun `a purged reply operation checks the final space and current comment permission`() {
+        val comment = CommentId(UUID.randomUUID())
+        val record = OperationRecord("thread.reply", comment.value, null, state = OperationResultState.REMOVED, purgedFrom = otherSpaceId)
+        every { operations.findForWrite(any()) } returns record
+        every { threads.findByCommentForUpdate(comment) } returns null
+        val moved = context(agentAccess(Permission.COMMENT, setOf(otherSpaceId)), operationId = "reply")
+        val hidden = context(agentAccess(Permission.COMMENT, setOf(spaceId)), operationId = "reply")
+        val readOnly = context(agentAccess(Permission.READ, setOf(otherSpaceId)), operationId = "reply")
+
+        assertThatThrownBy { service.reply(moved, threadId, "again", false) }.isInstanceOf(ResultRemovedException::class.java)
+        assertThatThrownBy { service.reply(hidden, threadId, "again", false) }.isInstanceOf(ThreadNotFoundException::class.java)
+        assertThatThrownBy { service.reply(readOnly, threadId, "again", false) }.isInstanceOf(PermissionDeniedException::class.java)
+    }
+
+    @Test
+    fun `a purged legacy reply with known scope keeps its legacy result`() {
+        val comment = CommentId(UUID.randomUUID())
+        val record = OperationRecord("thread.reply", comment.value, null, purgedFrom = spaceId)
+        every { operations.findForWrite(any()) } returns record
+        every { threads.findByCommentForUpdate(comment) } returns null
+
+        assertThatThrownBy { service.reply(context(agentAccess, operationId = "old"), threadId, "again", false) }
+            .isInstanceOf(LegacyOperationException::class.java)
+    }
+
+    @Test
+    fun `an old removed result with no recoverable space is visible only to the owner`() {
+        val record = OperationRecord("thread.open", threadId.value, null, state = OperationResultState.REMOVED)
+        every { operations.findForWrite(any()) } returns record
+        every { threads.findById(threadId) } returns null
+
+        assertThatThrownBy { service.open(context(ownerAccess, operationId = "old"), documentId, AnchorRequest.Document, "again") }
+            .isInstanceOf(ResultRemovedException::class.java)
+        assertThatThrownBy { service.open(context(agentAccess, operationId = "old"), documentId, AnchorRequest.Document, "again") }
+            .isInstanceOf(ThreadNotFoundException::class.java)
     }
 
     @Test

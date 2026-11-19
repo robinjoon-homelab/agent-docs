@@ -57,40 +57,84 @@ object AnchorResolver {
             ?: AnchorResolution.Detached
     }
 
-    // The edits between the two texts are taken as one changed region between their common start and common end. The
-    // common parts stop at the quote's edges, so the region covers the quote: "delay" deleted from "Retry delay doubles"
-    // is not mistaken for "elay d". A range end inside the region moves to its edge, so a rewritten quote covers the
-    // new words.
+    // Match the text outside each end separately. Treating all changes as one replacement would attach a deleted
+    // quote to the edits before and after it. Offsets stay in the same UTF-16 units used when the anchor was placed.
     private fun followEdit(
         anchor: Anchor.Text,
         before: String,
         after: String,
     ): AnchorResolution {
-        if (anchor.end > before.length || before.substring(anchor.start, anchor.end) != anchor.quote) return AnchorResolution.Detached
-        val prefix = minOf(before.commonPrefixWith(after).length, anchor.start)
-        val suffix = minOf(before.substring(prefix).commonSuffixWith(after.substring(prefix)).length, before.length - anchor.end)
-        val edit = Edit(prefix, before.length - suffix, after.length - suffix)
-        val start = edit.map(anchor.start, edit.prefix)
-        val end = edit.map(anchor.end, edit.insertedEnd)
-        return if (end > start) AnchorResolution.Attached(start, end) else AnchorResolution.Detached
+        if (anchor.end > before.length || !before.startsWith(anchor.quote, anchor.start)) return AnchorResolution.Detached
+        val start = boundary(before.substring(0, anchor.start), anchor.quote, after) ?: return AnchorResolution.Detached
+        val right = before.substring(anchor.end).reversed()
+        val fromEnd = boundary(right, anchor.quote.reversed(), after.reversed()) ?: return AnchorResolution.Detached
+        val end = after.length - fromEnd
+        return if (start < end) AnchorResolution.Attached(start, end) else AnchorResolution.Detached
     }
 
-    // before[prefix, removedEnd) became after[prefix, insertedEnd).
-    private class Edit(
-        val prefix: Int,
-        val removedEnd: Int,
-        val insertedEnd: Int,
-    ) {
-        fun map(
-            position: Int,
-            inside: Int,
-        ): Int =
-            when {
-                position <= prefix -> position
-                position >= removedEnd -> position + insertedEnd - removedEnd
-                else -> inside
-            }
+    // An incidental match outside the quote must not consume a better match inside it.
+    private fun boundary(
+        outside: String,
+        quote: String,
+        current: String,
+    ): Int? {
+        if (outside.isEmpty()) return 0
+        if (current.startsWith(outside) && outside.length >= minOf(quote.length, CONTEXT_LENGTH)) return outside.length
+        val adjoining = contextEnd(outside, current, outside.length)
+        // Trimming a long quote may leave only its middle. Locate the surviving characters before choosing the window.
+        val present = current.toSet()
+        val surviving = quote.filter { it in present }
+        val inside = contextEnd(surviving.reversed(), current.reversed(), current.length - outside.length) ?: return adjoining?.end
+        val start = current.length - inside.end
+        if (adjoining == null || (adjoining.end > start && inside.score > adjoining.score)) return start
+        return adjoining.end
     }
+
+    // The closest best match for the adjacent context wins. A free start allows edits farther from the quote;
+    // bounding the pattern keeps alignment linear in the block length even for unrelated 20,000-character blocks.
+    private fun contextEnd(
+        original: String,
+        current: String,
+        expectedEnd: Int,
+    ): ContextMatch? {
+        if (original.isEmpty()) return null
+        val context = original.takeLast(CONTEXT_LENGTH)
+        val distances = IntArray(context.length + 1) { it }
+        var bestCost = context.length
+        var bestEnd = expectedEnd
+        for (index in current.indices) {
+            val cost = advanceDistances(context, current[index], distances)
+            val end = index + 1
+            if (cost < bestCost || (cost == bestCost && abs(end - expectedEnd) < abs(bestEnd - expectedEnd))) {
+                bestCost = cost
+                bestEnd = end
+            }
+        }
+        return if (bestCost < context.length) ContextMatch(bestEnd, context.length - bestCost) else null
+    }
+
+    private data class ContextMatch(
+        val end: Int,
+        val score: Int,
+    )
+
+    // One column of substring edit distance. The empty pattern costs zero at every possible start.
+    private fun advanceDistances(
+        context: String,
+        next: Char,
+        distances: IntArray,
+    ): Int {
+        var diagonal = 0
+        for (index in context.indices) {
+            val above = distances[index + 1]
+            val replace = diagonal + if (context[index] == next) 0 else 1
+            distances[index + 1] = minOf(replace, above + 1, distances[index] + 1)
+            diagonal = above
+        }
+        return distances.last()
+    }
+
+    private const val CONTEXT_LENGTH = 32
 
     private fun cell(
         anchor: Anchor.Cell,

@@ -10,7 +10,7 @@ import Strike from '@tiptap/extension-strike';
 import Text from '@tiptap/extension-text';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { ViewMutationRecord } from '@tiptap/pm/view';
-import { CALLOUT_KINDS, CALLOUT_LABEL } from '../../../../domain/document/block';
+import { CALLOUT_KINDS, CALLOUT_LABEL, HEADING_LEVELS } from '../../../../domain/document/block';
 
 /*
  * ProseMirror schema for the flat block model. Every top-level node is one stored block and carries
@@ -70,9 +70,7 @@ export const HeadingNode = Node.create({
     ...idAttribute,
     level: { default: 1, rendered: false },
   }),
-  // Pasted h4-h6 become level 3: the platform has three heading levels.
-  parseHTML: () =>
-    [1, 2, 3, 4, 5, 6].map((level) => ({ tag: `h${level}`, attrs: { level: Math.min(level, 3) } })),
+  parseHTML: () => HEADING_LEVELS.map((level) => ({ tag: `h${level}`, attrs: { level } })),
   renderHTML: ({ node, HTMLAttributes }) => [`h${String(node.attrs.level)}`, HTMLAttributes, 0],
 });
 

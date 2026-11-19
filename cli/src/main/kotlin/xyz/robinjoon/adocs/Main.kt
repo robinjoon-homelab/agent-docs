@@ -48,28 +48,22 @@ private fun fail(
     failure: CliFailure,
     json: Boolean,
 ): Nothing {
-    val result = mapOf("code" to failure.code, "fix" to failure.fix, "status" to failure.status, "retryAfter" to failure.retryAfter)
-    Console.error(
-        if (json) {
-            Json.write(result)
-        } else {
-            "${failure.code}: ${failure.fix}" +
-                (failure.retryAfter?.let { " (Retry-After: $it)" } ?: "")
-        },
-    )
+    Console.error(failure.output(json))
     Console.finish(if (failure.status == 409) 3 else 1)
 }
 
 private fun help(): String =
     """
     adocs COMMAND [ID] [FILE] --host https://HOST [--json]
-    login | logout | pull DOCUMENT FILE | push FILE | upload FILE [--space SLUG]
+    login | logout | pull DOCUMENT FILE | push FILE | upload FILE [--space SLUG] [--opId KEY]
     ${CommandRegistry.routes.keys.joinToString(" | ")}
     import-folder DIRECTORY --tool TOOL [--space SLUG]
     REST actions: --body JSON_FILE, --query 'key=value&key=value', --space SLUG.
     api METHOD /api/PATH [--body JSON_FILE] exposes additional server actions.
     ADOCS_HOST supplies host; ADOCS_TOKEN supplies a script token instead of OAuth.
-    pull creates a new file. Keep all b/h/cols and row ID comments when editing.
+    pull creates a new file. After a push conflict, pull the same document and file to back up your edits
+    and load the latest revision. Merge the edits you want from the backup and push again.
+    Keep all b/h/cols and row ID comments when editing.
     push sends one atomic batch, at most 200 edits. Use header for front matter changes.
     Exit status: 0 success, 3 HTTP 409 conflict, 1 other error. No automatic write retries.
     """.trimIndent()

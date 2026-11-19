@@ -42,9 +42,10 @@ class NavigationController(
     @PostMapping("/api/navigation/documents/{id}/view")
     fun view(
         @PathVariable id: UUID,
+        @RequestParam(required = false) opId: String?,
         principal: Principal?,
     ): ResponseEntity<Unit> {
-        navigation.recordView(CallerAccess.of(principal), DocumentId(id))
+        navigation.recordView(CallerAccess.write(principal, opId, null), DocumentId(id))
         return ResponseEntity.noContent().build()
     }
 
@@ -60,7 +61,7 @@ class NavigationController(
         @RequestBody body: FavoriteRequest,
         principal: Principal?,
     ): ResponseEntity<Unit> {
-        navigation.favorite(CallerAccess.of(principal), DocumentId(id), body.enabled)
+        navigation.favorite(CallerAccess.write(principal, body.opId, null), DocumentId(id), body.enabled)
         return ResponseEntity.noContent().build()
     }
 
@@ -74,4 +75,5 @@ class NavigationController(
 
 data class FavoriteRequest(
     val enabled: Boolean,
+    val opId: String? = null,
 )

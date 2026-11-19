@@ -49,6 +49,64 @@ class AnchorResolverTest {
     }
 
     @Test
+    fun `deleting the quote detaches it even when both sides changed in the same revision`() {
+        val range = Anchor.Text(BlockId("para01"), 3, 8, "12345")
+
+        assertThat(AnchorResolver.resolve(range, listOf(paragraph("Xx  yy!")), "xx 12345 yy"))
+            .isEqualTo(AnchorResolution.Detached)
+        assertThat(AnchorResolver.resolve(range, listOf(paragraph("Xx yy!")), "xx 12345 yy"))
+            .isEqualTo(AnchorResolution.Detached)
+    }
+
+    @Test
+    fun `a partial edit or a replacement stays between its independently edited neighbors`() {
+        val range = Anchor.Text(BlockId("para01"), 3, 8, "12345")
+
+        assertThat(AnchorResolver.resolve(range, listOf(paragraph("Xx 12-45 yy!")), "xx 12345 yy"))
+            .isEqualTo(AnchorResolution.Attached(3, 8))
+        assertThat(AnchorResolver.resolve(range, listOf(paragraph("Xx ninety yy!")), "xx 12345 yy"))
+            .isEqualTo(AnchorResolution.Attached(3, 9))
+    }
+
+    @Test
+    fun `the surviving part of a quote locates its edge when the adjacent context was erased`() {
+        val middle = Anchor.Text(BlockId("para01"), 2, 7, "12345")
+        val atEnd = Anchor.Text(BlockId("para01"), 7, 12, "12345")
+
+        assertThat(AnchorResolver.resolve(middle, listOf(paragraph("XY1234CD")), "AB12345CD"))
+            .isEqualTo(AnchorResolution.Attached(2, 6))
+        assertThat(AnchorResolver.resolve(atEnd, listOf(paragraph("1234")), "prefix 12345"))
+            .isEqualTo(AnchorResolution.Attached(0, 4))
+        assertThat(AnchorResolver.resolve(middle, listOf(paragraph("XY234ZZ")), "AB12345CD"))
+            .isEqualTo(AnchorResolution.Attached(2, 5))
+    }
+
+    @Test
+    fun `a surviving quote outweighs an incidental character from the old context`() {
+        val prefix = "예상 원가: "
+        val quote = "1000원"
+        val range = Anchor.Text(BlockId("para01"), prefix.length, prefix.length + quote.length, quote)
+
+        assertThat(AnchorResolver.resolve(range, listOf(paragraph("100원")), prefix + quote))
+            .isEqualTo(AnchorResolution.Attached(0, 4))
+        val atStart = Anchor.Text(BlockId("para01"), 0, quote.length, quote)
+        assertThat(AnchorResolver.resolve(atStart, listOf(paragraph("100원")), quote + " (단위: 원)"))
+            .isEqualTo(AnchorResolution.Attached(0, 4))
+        val repeatedPrefix = Anchor.Text(BlockId("para01"), 4, 10, "원가1000")
+        assertThat(AnchorResolver.resolve(repeatedPrefix, listOf(paragraph("원가100")), "원가: 원가1000"))
+            .isEqualTo(AnchorResolution.Attached(0, 5))
+    }
+
+    @Test
+    fun `the middle of a long quote can survive even after both original ends disappeared`() {
+        val quote = "1".repeat(100) + "234" + "5".repeat(100)
+        val range = Anchor.Text(BlockId("para01"), 2, 2 + quote.length, quote)
+
+        assertThat(AnchorResolver.resolve(range, listOf(paragraph("XY234ZZ")), "AB${quote}CD"))
+            .isEqualTo(AnchorResolution.Attached(2, 5))
+    }
+
+    @Test
     fun `a cell anchor follows its row and column and detaches when either is removed`() {
         val cell = Anchor.Cell(BlockId("tabl01"), BlockId("row002"), BlockId("colm02"), "3")
         val table = table(listOf("row001", "row002"), listOf("colm01", "colm02"))

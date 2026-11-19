@@ -50,6 +50,12 @@ describe('structured text paste', () => {
     ]);
   });
 
+  it.each([4, 5, 6])('preserves H%i on Markdown paste', (level) => {
+    expect(blocks(`${'#'.repeat(level)} 깊은 제목`)).toMatchObject([
+      { type: 'heading', level, text: '깊은 제목' },
+    ]);
+  });
+
   it('recognizes valid HTML mockup markdown while leaving invalid targets or raw HTML as ordinary text', () => {
     const assetId = '11111111-1111-4111-8111-111111111111';
     const docId = '22222222-2222-4222-8222-222222222222';

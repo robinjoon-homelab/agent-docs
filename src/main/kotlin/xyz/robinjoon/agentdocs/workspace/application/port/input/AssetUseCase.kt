@@ -1,10 +1,10 @@
 package xyz.robinjoon.agentdocs.workspace.application.port.input
 
 import xyz.robinjoon.agentdocs.workspace.application.model.AssetFile
+import xyz.robinjoon.agentdocs.workspace.application.model.UploadedAsset
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.domain.Access
-import xyz.robinjoon.agentdocs.workspace.domain.asset.Asset
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 
@@ -14,14 +14,16 @@ interface AssetUseCase {
         context: WriteContext,
         space: SpaceSlug,
         file: UploadedFile,
-    ): Asset
+        alt: String = "",
+    ): UploadedAsset
 
     // Downloads a public image and keeps its address as the source.
     fun import(
         context: WriteContext,
         space: SpaceSlug,
         url: String,
-    ): Asset
+        alt: String = "",
+    ): UploadedAsset
 
     fun content(
         access: Access,

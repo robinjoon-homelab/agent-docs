@@ -1,7 +1,9 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import io.mockk.Runs
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.Test
@@ -9,6 +11,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import org.springframework.http.MediaType
 import org.springframework.restdocs.mockmvc.RestDocumentationRequestBuilders.post
+import org.springframework.restdocs.payload.JsonFieldType
 import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
 import org.springframework.restdocs.payload.PayloadDocumentation.requestFields
 import org.springframework.restdocs.payload.PayloadDocumentation.responseFields
@@ -26,14 +29,23 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.connect
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.documentId
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.ownerAccess
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.spaceId
+import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadQuery
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadView
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadPass
+import xyz.robinjoon.agentdocs.workspace.application.model.UploadedAsset
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.NavigationUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.SearchUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCase
+import xyz.robinjoon.agentdocs.workspace.domain.asset.Asset
+import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetContent
+import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
+import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
+import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetOrigin
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Anchor
@@ -51,9 +63,11 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
     private val threads = mockk<ThreadUseCase>()
     private val queries = mockk<DocumentQueryUseCase>()
     private val documents = mockk<DocumentUseCase>()
+    private val search = mockk<SearchUseCase>()
     private val documentAssets = mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentAssetUseCase>()
     private val assets = mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase>()
     private val uploads = mockk<UploadGrantUseCase>()
+    private val navigation = mockk<NavigationUseCase>()
     private val tools =
         listOf(
             CommentsQueryTool(threads, mockk()),
@@ -64,7 +78,8 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
             DocsEditTool(documents, mockk(relaxed = true)),
             DocsMoveTool(documents, mockk(relaxed = true)),
             DocsHistoryTool(queries, documents, mockk(relaxed = true)),
-            DocsSearchTool(mockk()),
+            DocsSearchTool(search),
+            NavigationTool(navigation),
             DocsUploadTool(assets, uploads, "https://docs.example.com/api/uploads", documentAssets),
             ChangesSinceTool(mockk()),
             SpacesResolveTool(mockk()),
@@ -88,6 +103,58 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
             Comment.write(CommentId(UUID.fromString("77777777-7777-4777-8777-777777777777")), ownerAccess.actor, "확인해 주세요", at),
             at,
         )
+
+    @Test
+    fun `docs_search accepts an explicit all spaces search`() {
+        every { search.search(agentAccess, "설계", null, allSpaces = true) } returns emptyList()
+
+        call("docs_search", """{"query":"설계","allSpaces":true}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(false))
+            .andExpect(jsonPath("$.result.content[0].text").value("""{"hits":[]}"""))
+            .andDo(
+                documented(
+                    "mcp-search-all-spaces",
+                    requestFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
+                        fieldWithPath("method").description("tools/call"),
+                        fieldWithPath("params.name").description("docs_search"),
+                        fieldWithPath("params.arguments.query").description("제목·본문·댓글에서 찾을 글자, 1~100자"),
+                        fieldWithPath("params.arguments.space").type(JsonFieldType.STRING).optional().description("검색할 스페이스 주소"),
+                        fieldWithPath("params.arguments.allSpaces").optional().description("true이면 보관한 공간을 포함해 접근 가능한 모든 스페이스를 검색"),
+                    ),
+                ),
+            )
+    }
+
+    @ParameterizedTest
+    @MethodSource("singleSpaceSearches")
+    fun `docs_search accepts a default or named single space search`(
+        arguments: String,
+        slug: String?,
+    ) {
+        every { search.search(agentAccess, "설계", slug?.let(::SpaceSlug), allSpaces = false) } returns emptyList()
+
+        call("docs_search", arguments)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(false))
+            .andExpect(jsonPath("$.result.content[0].text").value("""{"hits":[]}"""))
+    }
+
+    @Test
+    fun `docs_search returns the scope correction as a tool error`() {
+        val fix = "Choose a space or set allSpaces=true"
+        every { search.search(agentAccess, "설계", SpaceSlug("agent-docs"), allSpaces = true) } throws
+            InvalidRequestException("space and allSpaces=true cannot be combined", fix)
+
+        call("docs_search", """{"query":"설계","space":"agent-docs","allSpaces":true}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(true))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"code\":\"invalid\"")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString(fix)))
+            .andDo(documented("mcp-search-conflicting-scope"))
+    }
 
     @Test
     fun `a scalar comment status fails the input schema as a tool error`() {
@@ -154,6 +221,43 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
             .andExpect(jsonPath("$.result.content[0].text", containsString("no quotes or escaping")))
             .andExpect(jsonPath("$.result.content[0].text", containsString("https://docs.example.com/api/uploads")))
             .andExpect(jsonPath("$.result.content[0].text", containsString("\"expiresAt\":\"$at\"")))
+    }
+
+    @Test
+    fun `a direct upload retry displays the first Markdown label`() {
+        val context = WriteContext(agentAccess, ChangeSource.MCP, "upload", null)
+        val asset =
+            Asset.upload(
+                AssetId(UUID.randomUUID()),
+                spaceId,
+                AssetContent.of(AssetMediaType.PNG, byteArrayOf(1)),
+                AssetOrigin("photo.png", null, agentAccess.actor, at),
+            )
+        every { assets.upload(context, SpaceSlug("agent-docs"), any(), "changed") } returns UploadedAsset(asset, "first")
+
+        call("docs_upload", """{"space":"agent-docs","contentBase64":"AQ==","alt":"changed","opId":"upload"}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(false))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("![first](asset:${asset.id})")))
+    }
+
+    @Test
+    fun `requesting a fresh upload command with a retry key asks for a new command`() {
+        call("docs_upload", """{"space":"agent-docs","opId":"upload"}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(true))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("omit opId")))
+    }
+
+    @Test
+    fun `a personal navigation write accepts a retry key`() {
+        val context = WriteContext(agentAccess, ChangeSource.MCP, "visit", null)
+        every { navigation.recordView(context, documentId) } just Runs
+
+        call("docs_navigation", """{"action":"view","document":"$documentId","opId":"visit"}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(false))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"saved\":true")))
     }
 
     @Test
@@ -255,6 +359,14 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
 
     companion object {
         @JvmStatic
+        fun singleSpaceSearches(): List<TestArguments> =
+            listOf(
+                TestArguments.of("""{"query":"설계"}""", null),
+                TestArguments.of("""{"query":"설계","allSpaces":false}""", null),
+                TestArguments.of("""{"query":"설계","space":"agent-docs"}""", "agent-docs"),
+            )
+
+        @JvmStatic
         fun invalidArguments(): List<TestArguments> =
             listOf(
                 TestArguments.of("comments_query", """{"status":["resolved",1]}""", "status"),
@@ -279,6 +391,7 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
                 TestArguments.of("docs_move", """{"assignee":false}""", "assignee"),
                 TestArguments.of("docs_history", """{"document":"$documentId","action":"diff","from":1,"to":"2"}""", "to"),
                 TestArguments.of("docs_search", """{"query":"text","space":false}""", "space"),
+                TestArguments.of("docs_search", """{"query":"text","allSpaces":"true"}""", "allSpaces"),
                 TestArguments.of(
                     "docs_upload",
                     """{"space":"agent-docs","url":"https://example.com/image.png","alt":true}""",

@@ -70,7 +70,12 @@ class AuthorizationService(
                 request.approve(Approval(UserId(caller.userId), Grant.of(approval.spaces, approval.scope), lifetime, hash), journal.now()),
             )
         val client = clients.find(request.ask.clientId)
-        journal.record(caller, "connection.approved", "연결 승인: ${client?.host ?: client?.metadata?.name ?: request.ask.clientId}")
+        journal.recordConnection(
+            caller,
+            "connection.approved",
+            "연결 승인: ${client?.host ?: client?.metadata?.name ?: request.ask.clientId}",
+            id.value,
+        )
         return OAuthRedirects.build(
             approved.ask.redirectUri,
             listOf("code" to code, "state" to approved.ask.state, "iss" to settings.issuer),

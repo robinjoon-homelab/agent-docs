@@ -70,9 +70,18 @@ class ExposedOperationStore : OperationStore {
         targets: List<UUID>,
     ) {
         WriteOperationsTable.update({
-            (WriteOperationsTable.targetId inList targets) and
-                (WriteOperationsTable.resultState eq OperationResultState.REMOVED) and
-                ((WriteOperationsTable.kind like "document.%") or (WriteOperationsTable.kind eq "revision.name"))
+            val targetDocument = WriteOperationsTable.targetId inList targets
+            val documentTarget =
+                targetDocument and
+                    ((WriteOperationsTable.kind like "document.%") or (WriteOperationsTable.kind eq "revision.name"))
+            val removedDocument = (WriteOperationsTable.resultState eq OperationResultState.REMOVED) and documentTarget
+            val thread =
+                (WriteOperationsTable.threadDocumentId inList targets) and
+                    (WriteOperationsTable.resultState inList listOf(OperationResultState.REMOVED, OperationResultState.LEGACY))
+            val navigation =
+                (WriteOperationsTable.resultState eq OperationResultState.COMPLETED) and
+                    (WriteOperationsTable.kind inList navigationWrites) and targetDocument
+            removedDocument or thread or navigation
         }) { it[purgedFrom] = space.value }
     }
 
@@ -104,6 +113,12 @@ class ExposedOperationStore : OperationStore {
             it[operationId] = key.operationId
             it[kind] = record.kind
             it[targetId] = record.target
+            it[threadDocumentId] =
+                record.threadView
+                    ?.thread
+                    ?.location
+                    ?.documentId
+                    ?.value
             it[revision] = record.revision
             it[payload] = snapshot
             it[resultState] = if (snapshot != null) OperationResultState.AVAILABLE else record.state
@@ -113,5 +128,6 @@ class ExposedOperationStore : OperationStore {
 
     private companion object {
         const val LOCK_BUCKETS = 256
+        val navigationWrites = listOf("navigation.view", "navigation.favorite", "navigation.unfavorite")
     }
 }

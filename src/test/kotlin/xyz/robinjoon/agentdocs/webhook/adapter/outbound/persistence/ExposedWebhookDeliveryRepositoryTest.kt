@@ -90,7 +90,7 @@ class ExposedWebhookDeliveryRepositoryTest {
         val newer = delivery(endpoint, 2, WebhookEventType.DOCUMENT_CHANGED, null)
         database.inTransaction { repository.addAll(listOf(older, newer)) }
         val claimed = older.claim(at)
-        val failed = requireNotNull(claimed.record(1, AttemptResult.Answered(503, null), at.plusSeconds(2)))
+        val failed = requireNotNull(claimed.record(1, AttemptResult.Answered(503), at.plusSeconds(2)))
 
         database.inTransaction { repository.update(failed) }
         val recent = database.inTransaction { repository.recent(endpoint.id, 10) }

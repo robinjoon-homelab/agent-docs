@@ -20,6 +20,6 @@ data class Heading(
 
     companion object {
         const val MIN_LEVEL = 1
-        const val MAX_LEVEL = 3
+        const val MAX_LEVEL = 6
     }
 }

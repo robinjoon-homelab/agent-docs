@@ -38,7 +38,7 @@ class WebhookDeliveryTest {
         val waits = ArrayList<Duration>()
         repeat(RetrySchedule.ATTEMPTS) {
             val claimed = delivery.claim(now)
-            delivery = requireNotNull(claimed.record(claimed.progress.attempts, AttemptResult.Answered(500, null), now))
+            delivery = requireNotNull(claimed.record(claimed.progress.attempts, AttemptResult.Answered(500), now))
             delivery.progress.nextAttemptAt?.let { next ->
                 waits.add(Duration.between(now, next))
                 now = next
@@ -56,8 +56,8 @@ class WebhookDeliveryTest {
     fun `a 2xx answer delivers and a 410 answer ends the delivery without retry`() {
         val claimed = planned().claim(at)
 
-        val delivered = claimed.record(1, AttemptResult.Answered(204, null), at.plusSeconds(1))
-        val gone = claimed.record(1, AttemptResult.Answered(410, null), at.plusSeconds(1))
+        val delivered = claimed.record(1, AttemptResult.Answered(204), at.plusSeconds(1))
+        val gone = claimed.record(1, AttemptResult.Answered(410), at.plusSeconds(1))
 
         assertThat(delivered?.progress?.state).isEqualTo(DeliveryState.SUCCEEDED)
         assertThat(delivered?.progress?.nextAttemptAt).isNull()
@@ -66,18 +66,13 @@ class WebhookDeliveryTest {
     }
 
     @Test
-    fun `a redirect is a failure and a longer Retry-After pushes the retry, capped at 24 hours`() {
+    fun `redirect and throttling responses retry on the same schedule`() {
         val claimed = planned().claim(at)
 
-        val redirected = claimed.record(1, AttemptResult.Answered(302, null), at)
-        val throttled = claimed.record(1, AttemptResult.Answered(429, Duration.ofMinutes(3)), at)
-        val shorter = claimed.record(1, AttemptResult.Answered(503, Duration.ofSeconds(1)), at)
-        val tooLong = claimed.record(1, AttemptResult.Answered(503, Duration.ofDays(3)), at)
-
-        assertThat(redirected?.progress?.nextAttemptAt).isEqualTo(at.plusSeconds(5))
-        assertThat(throttled?.progress?.nextAttemptAt).isEqualTo(at.plus(Duration.ofMinutes(3)))
-        assertThat(shorter?.progress?.nextAttemptAt).isEqualTo(at.plusSeconds(5))
-        assertThat(tooLong?.progress?.nextAttemptAt).isEqualTo(at.plus(Duration.ofHours(24)))
+        for (status in listOf(302, 429, 503)) {
+            val failed = claimed.record(1, AttemptResult.Answered(status), at)
+            assertThat(failed?.progress?.nextAttemptAt).isEqualTo(at.plusSeconds(5))
+        }
     }
 
     @Test
@@ -97,7 +92,7 @@ class WebhookDeliveryTest {
         assertThat(claimed.isDue(at.plus(WebhookDelivery.lease).minusMillis(1))).isFalse()
         assertThatThrownBy { claimed.claim(at.plusSeconds(1)) }.isInstanceOf(IllegalStateException::class.java)
         assertThat(retaken.progress.attempts).isEqualTo(2)
-        assertThat(retaken.record(1, AttemptResult.Answered(200, null), at)).isNull()
+        assertThat(retaken.record(1, AttemptResult.Answered(200), at)).isNull()
     }
 
     @Test

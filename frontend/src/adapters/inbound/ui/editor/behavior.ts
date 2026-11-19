@@ -3,6 +3,7 @@ import { Extension, InputRule } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { goToNextCell, tableEditing } from '@tiptap/pm/tables';
 import { clampDepth } from '../../../../domain/document/block';
+import type { HeadingLevel } from '../../../../domain/document/block';
 import type { TextBlockType } from './commands';
 import { cellAt } from './positions';
 import { blockDecorationsPlugin } from './plugins/blockDecorations';
@@ -136,9 +137,9 @@ export const BlockBehavior = Extension.create<{ newId: () => string }>({
 
   addInputRules() {
     return [
-      blockRule(/^(#{1,3})\s$/, (match) => ({
+      blockRule(/^(#{1,6})\s$/, (match) => ({
         type: 'heading',
-        level: (match[1]?.length ?? 1) as 1 | 2 | 3,
+        level: (match[1]?.length ?? 1) as HeadingLevel,
       })),
       blockRule(/^[-*]\s$/, () => ({ type: 'listItem', style: 'bullet' })),
       blockRule(/^\d+\.\s$/, () => ({ type: 'listItem', style: 'numbered' })),

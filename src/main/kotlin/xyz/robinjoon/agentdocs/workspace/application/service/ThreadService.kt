@@ -350,7 +350,8 @@ class ThreadService(
     ): ThreadView {
         val byThread = record.kind in setOf(OPEN, CHANGE, REACT, CLAIM)
         val found = if (byThread) threads.findById(ThreadId(record.target)) else threads.findByCommentForUpdate(CommentId(record.target))
-        val thread = found?.takeIf { access.sees(it.location.spaceId) } ?: throw ThreadNotFoundException(record.target)
+        val thread = found ?: rejectMissingThreadReplay(access, record, Permission.COMMENT)
+        if (!access.sees(thread.location.spaceId)) throw ThreadNotFoundException(record.target)
         commentable(access, thread)
         if (record.kind == EDIT_COMMENT || record.kind == DELETE_COMMENT) requireAuthor(access, thread, CommentId(record.target))
         if (record.state == OperationResultState.REMOVED) throw ResultRemovedException(record)

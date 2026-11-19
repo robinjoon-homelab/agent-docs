@@ -4,11 +4,14 @@ import org.springframework.transaction.annotation.Transactional
 import xyz.robinjoon.agentdocs.application.model.ActivitySubject
 import xyz.robinjoon.agentdocs.workspace.application.model.AssetFile
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
+import xyz.robinjoon.agentdocs.workspace.application.model.UploadedAsset
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.model.VerifiedImage
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
+import xyz.robinjoon.agentdocs.workspace.application.port.input.LegacyOperationException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
@@ -42,9 +45,12 @@ class AssetService internal constructor(
         context: WriteContext,
         space: SpaceSlug,
         file: UploadedFile,
-    ): Asset {
+        alt: String,
+    ): UploadedAsset {
+        journal.replayed(context, UPLOAD)?.let { return replay(context, it) }
         val target = writable(context.access, space)
-        return keep(context, target, attachments.verify(file), Source(file.fileName, null))
+        val asset = keep(context, target, attachments.verify(file), Source(file.fileName, null))
+        return remembered(context, UPLOAD, asset, alt)
     }
 
     @Transactional
@@ -52,7 +58,9 @@ class AssetService internal constructor(
         context: WriteContext,
         space: SpaceSlug,
         url: String,
-    ): Asset {
+        alt: String,
+    ): UploadedAsset {
+        journal.replayed(context, IMPORT)?.let { return replay(context, it) }
         val target = writable(context.access, space)
         if (!url.startsWith("https://") && !url.startsWith("http://")) {
             throw InvalidRequestException("an image address must start with http:// or https://")
@@ -60,7 +68,8 @@ class AssetService internal constructor(
         val image =
             remote.fetch(url)
                 ?: throw InvalidRequestException("could not download a public image from $url", "download it and upload the file")
-        return keep(context, target, attachments.image(image.bytes), Source(url.substringBefore('?').substringAfterLast('/'), url))
+        val asset = keep(context, target, attachments.image(image.bytes), Source(url.substringBefore('?').substringAfterLast('/'), url))
+        return remembered(context, IMPORT, asset, alt)
     }
 
     override fun content(
@@ -91,6 +100,28 @@ class AssetService internal constructor(
         return kept
     }
 
+    private fun remembered(
+        context: WriteContext,
+        kind: String,
+        asset: Asset,
+        alt: String,
+    ): UploadedAsset {
+        journal.remember(context, OperationRecord(kind, asset.id.value, null, assetAlt = alt))
+        return UploadedAsset(asset, alt)
+    }
+
+    private fun replay(
+        context: WriteContext,
+        record: OperationRecord,
+    ): UploadedAsset {
+        // An asset can move. Its ID, bytes and origin stay the same, but access follows its current space.
+        val id = AssetId(record.target)
+        val asset =
+            assets.findByIdForUpdate(id)?.takeIf { context.access.sees(it.spaceId) } ?: throw AssetNotFoundException("original upload")
+        Permissions.require(context.access, asset.spaceId, Permission.EDIT, "uploading files")
+        return UploadedAsset(asset, record.assetAlt ?: throw LegacyOperationException(record))
+    }
+
     private fun writable(
         access: Access,
         slug: SpaceSlug,
@@ -98,6 +129,11 @@ class AssetService internal constructor(
         val space = spaces.findBySlug(slug)?.takeIf { access.sees(it.id) } ?: throw SpaceNotFoundException(slug)
         Permissions.require(access, space.id, Permission.EDIT, "uploading files")
         return space
+    }
+
+    private companion object {
+        const val UPLOAD = "asset.upload"
+        const val IMPORT = "asset.import"
     }
 
     private data class Source(

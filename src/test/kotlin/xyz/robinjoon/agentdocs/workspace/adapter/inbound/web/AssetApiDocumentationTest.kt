@@ -16,7 +16,9 @@ import org.springframework.restdocs.payload.JsonFieldType
 import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
 import org.springframework.restdocs.payload.PayloadDocumentation.requestFields
 import org.springframework.restdocs.payload.PayloadDocumentation.responseFields
+import org.springframework.restdocs.request.RequestDocumentation.parameterWithName
 import org.springframework.restdocs.request.RequestDocumentation.partWithName
+import org.springframework.restdocs.request.RequestDocumentation.queryParameters
 import org.springframework.restdocs.request.RequestDocumentation.requestParts
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
@@ -34,7 +36,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.ownerAc
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.spaceId
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.webContext
 import xyz.robinjoon.agentdocs.workspace.application.model.AssetFile
-import xyz.robinjoon.agentdocs.workspace.application.model.GrantedUpload
+import xyz.robinjoon.agentdocs.workspace.application.model.UploadedAsset
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.UploadGrantUseCase
@@ -67,12 +69,12 @@ class AssetApiDocumentationTest : RestDocsWebTest() {
 
     @Test
     fun `an upload returns the asset and where its bytes are served`() {
-        every { assets.upload(webContext, SpaceSlug("agent-docs"), any()) } returns asset
+        every { assets.upload(webContext.copy(operationId = "upload-1"), SpaceSlug("agent-docs"), any()) } returns UploadedAsset(asset, "")
 
         mockMvc
             .perform(
                 multipart(
-                    "/api/spaces/{slug}/assets",
+                    "/api/spaces/{slug}/assets?opId=upload-1",
                     "agent-docs",
                 ).file(MockMultipartFile("file", "flow.png", "image/png", png)).principal(owner),
             ).andExpect(status().isCreated)
@@ -80,6 +82,7 @@ class AssetApiDocumentationTest : RestDocsWebTest() {
             .andDo(
                 documented(
                     "assets-upload",
+                    queryParameters(parameterWithName("opId").optional().description("재시도 시 최초 첨부를 반환할 작업 ID")),
                     requestParts(
                         partWithName("file").description("이미지, PDF, UTF-8 HTML·텍스트, 일반 파일. 20MB 이하. SVG만 정화하며 HTML 원문은 불변으로 보존한다"),
                     ),
@@ -137,19 +140,23 @@ class AssetApiDocumentationTest : RestDocsWebTest() {
                 AssetContent.of(AssetMediaType.PNG, png),
                 AssetOrigin("flow.png", "https://example.com/flow.png", ownerAccess.actor, at),
             )
-        every { assets.import(webContext, SpaceSlug("agent-docs"), "https://example.com/flow.png") } returns imported
+        every { assets.import(webContext.copy(operationId = "import-1"), SpaceSlug("agent-docs"), "https://example.com/flow.png") } returns
+            UploadedAsset(imported, "")
 
         mockMvc
             .perform(
                 post("/api/spaces/{slug}/assets/import", "agent-docs")
                     .principal(owner)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"url":"https://example.com/flow.png"}"""),
+                    .content("""{"url":"https://example.com/flow.png","opId":"import-1"}"""),
             ).andExpect(status().isCreated)
             .andDo(
                 documented(
                     "assets-import",
-                    requestFields(fieldWithPath("url").description("공개 http(s) 이미지 주소. 홈랩 내부 주소는 받지 않는다")),
+                    requestFields(
+                        fieldWithPath("url").description("공개 http(s) 이미지 주소. 홈랩 내부 주소는 받지 않는다"),
+                        fieldWithPath("opId").optional().description("같은 URL을 다시 가져오지 않고 최초 첨부를 반환할 작업 ID"),
+                    ),
                     responseFields(*assetFields()),
                 ),
             )
@@ -196,7 +203,7 @@ class AssetApiDocumentationTest : RestDocsWebTest() {
 
     @Test
     fun `a file sent with an upload token answers with the markdown to put in a document`() {
-        every { uploads.upload(uploadContext, "secret", any()) } returns GrantedUpload(asset, "흐름 [초안]")
+        every { uploads.upload(uploadContext, "secret", any()) } returns UploadedAsset(asset, "흐름 [초안]")
 
         mockMvc
             .perform(

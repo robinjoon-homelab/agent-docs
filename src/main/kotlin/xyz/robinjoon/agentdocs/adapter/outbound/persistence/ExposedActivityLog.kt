@@ -44,6 +44,7 @@ class ExposedActivityLog :
                 it[actorClientName] = record.actor.clientName
                 it[spaceId] = record.subject.spaceId
                 it[membershipId] = record.subject.membershipId
+                it[targetConnectionId] = record.subject.connectionId
                 it[documentId] = record.subject.documentId
                 it[threadId] = record.subject.threadId
                 it[revision] = record.subject.revision
@@ -124,6 +125,7 @@ class ExposedActivityLog :
                 this[ActivitiesTable.threadId],
                 this[ActivitiesTable.revision],
                 this[ActivitiesTable.membershipId],
+                this[ActivitiesTable.targetConnectionId],
             )
         val record =
             ActivityRecord(

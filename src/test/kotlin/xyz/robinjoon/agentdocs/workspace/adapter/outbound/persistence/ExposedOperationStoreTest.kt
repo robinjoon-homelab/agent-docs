@@ -53,6 +53,18 @@ class ExposedOperationStoreTest {
     }
 
     @Test
+    fun `asset results preserve the first alt including an empty label`() {
+        val id = UUID.randomUUID()
+        listOf("", "그림 [초안]").forEachIndexed { index, alt ->
+            val key = OperationKey("writer", "upload-$index")
+            val result = OperationRecord("asset.upload", id, null, state = OperationResultState.AVAILABLE, assetAlt = alt)
+            database.inTransaction { store.save(key, result, at) }
+
+            assertThat(database.inTransaction { store.find(key) }).isEqualTo(result)
+        }
+    }
+
+    @Test
     fun `document snapshots preserve no op flags blocks lifecycle and related documents`() {
         val space = SpaceId(UUID.randomUUID())
         val document = PersistenceFixtures.document(space, "one", listOf(PersistenceFixtures.paragraph("block1", "Original")))
@@ -218,7 +230,7 @@ class ExposedOperationStoreTest {
         }
 
         affected.forEach { (key, record) ->
-            val purgedFrom = document.spaceId.takeIf { record.target == document.id.value }
+            val purgedFrom = document.spaceId.takeIf { record.target == document.id.value || record.threadView != null }
             assertThat(database.inTransaction { store.findForWrite(key) })
                 .isEqualTo(
                     record.copy(documentWrite = null, threadView = null, state = OperationResultState.REMOVED, purgedFrom = purgedFrom),
@@ -228,6 +240,44 @@ class ExposedOperationStoreTest {
         assertThat(database.inTransaction { store.find(completeKey) }).isEqualTo(completed)
         assertThat(database.inTransaction { store.find(legacyKey) }).isEqualTo(legacy)
         assertThat(database.inTransaction { store.find(unrelatedKey) }).isEqualTo(unrelated)
+    }
+
+    @Test
+    fun `a discarded comment result remembers the space at document purge even after a transfer`() {
+        val document = DocumentId(UUID.randomUUID())
+        val comment = Comment.write(CommentId(UUID.randomUUID()), PersistenceFixtures.person, "First", at)
+        val snapshot = threadRecord(thread(listOf(comment), document), "thread.reply", comment.id.value)
+        val destination = SpaceId(UUID.randomUUID())
+        val key = OperationKey("writer", "reply")
+        database.inTransaction {
+            store.save(key, snapshot, at)
+            store.removeCommentResults(comment.id)
+        }
+        assertThat(database.inTransaction { store.find(key) }?.purgedFrom).isNull()
+
+        database.inTransaction { store.removeDocumentResults(mapOf(document to destination)) }
+
+        assertThat(database.inTransaction { store.find(key) })
+            .isEqualTo(snapshot.copy(threadView = null, state = OperationResultState.REMOVED, purgedFrom = destination))
+        assertThat(payload(key)).isNull()
+    }
+
+    @Test
+    fun `completed navigation responses retain the document's final scope when purged`() {
+        val document = DocumentId(UUID.randomUUID())
+        val destination = SpaceId(UUID.randomUUID())
+        val records =
+            listOf("navigation.view", "navigation.favorite", "navigation.unfavorite").map { kind ->
+                OperationKey("writer", kind) to OperationRecord(kind, document.value, null, state = OperationResultState.COMPLETED)
+            }
+        database.inTransaction {
+            records.forEach { (key, record) -> store.save(key, record, at) }
+            store.removeDocumentResults(mapOf(document to destination))
+        }
+
+        records.forEach { (key, record) ->
+            assertThat(database.inTransaction { store.find(key) }).isEqualTo(record.copy(purgedFrom = destination))
+        }
     }
 
     @Test

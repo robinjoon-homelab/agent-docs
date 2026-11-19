@@ -62,7 +62,7 @@ class HttpWebhookGateway(
         val pending = client.sendAsync(request, HttpResponse.BodyHandlers.discarding())
         return try {
             val response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
-            AttemptResult.Answered(response.statusCode(), retryAfter(response))
+            AttemptResult.Answered(response.statusCode())
         } catch (exception: TimeoutException) {
             pending.cancel(true)
             unanswered(exception)
@@ -83,19 +83,6 @@ class HttpWebhookGateway(
                 else -> CONNECTION_FAILED
             },
         )
-
-    // Only the delta-seconds form; an HTTP date is ignored and the regular schedule applies.
-    private fun retryAfter(response: HttpResponse<*>): Duration? =
-        response
-            .headers()
-            .firstValue("retry-after")
-            .map {
-                it
-                    .trim()
-                    .toLongOrNull()
-                    ?.takeIf { seconds -> seconds >= 0 }
-                    ?.let(Duration::ofSeconds)
-            }.orElse(null)
 
     private companion object {
         val timeout: Duration = Duration.ofSeconds(15)

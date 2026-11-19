@@ -4,6 +4,7 @@ import xyz.robinjoon.agentdocs.access.application.model.AccessSettings
 import xyz.robinjoon.agentdocs.access.application.model.OAuthException
 import xyz.robinjoon.agentdocs.access.application.port.output.UserRepository
 import xyz.robinjoon.agentdocs.access.domain.user.Allowlist
+import xyz.robinjoon.agentdocs.access.domain.user.User
 import xyz.robinjoon.agentdocs.access.domain.user.UserId
 import xyz.robinjoon.agentdocs.access.domain.user.UserRole
 
@@ -14,11 +15,12 @@ class TokenPolicy(
 ) {
     private val allowlist = Allowlist(settings.owner, settings.members)
 
-    fun requireOwner(userId: UserId) {
+    fun requireOwner(userId: UserId): User {
         val user = users.findById(userId)
         if (user == null || allowlist.roleOf(user.account.login) != UserRole.OWNER) {
             throw OAuthException("invalid_grant", "the delegator no longer has space access")
         }
+        return user
     }
 
     fun requireResource(resources: List<String>) {

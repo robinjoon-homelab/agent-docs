@@ -13,6 +13,7 @@ import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.now
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.owner
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.space
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.spaceId
+import xyz.robinjoon.agentdocs.workspace.application.model.UploadedAsset
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
@@ -104,7 +105,7 @@ class UploadGrantServiceTest {
     @Test
     fun `a file sent with a good secret becomes an asset under the alt text the agent asked for`() {
         every { grants.findBySecretHashForUpdate(hash) } returns grant()
-        every { assets.upload(editor, space.slug, file) } returns asset
+        every { assets.upload(editor, space.slug, file, "흐름") } returns UploadedAsset(asset, "흐름")
         every { grants.update(match { it.term.usedAt == now }) } answers { firstArg() }
 
         val uploaded = service.upload(editor, "secret", file)
@@ -145,7 +146,7 @@ class UploadGrantServiceTest {
     @Test
     fun `a file that cannot be kept leaves the grant unused so the agent can send the right one`() {
         every { grants.findBySecretHashForUpdate(hash) } returns grant()
-        every { assets.upload(editor, space.slug, file) } throws InvalidAssetException("only images")
+        every { assets.upload(editor, space.slug, file, "흐름") } throws InvalidAssetException("only images")
 
         assertThatThrownBy { service.upload(editor, "secret", file) }.isInstanceOf(InvalidAssetException::class.java)
     }

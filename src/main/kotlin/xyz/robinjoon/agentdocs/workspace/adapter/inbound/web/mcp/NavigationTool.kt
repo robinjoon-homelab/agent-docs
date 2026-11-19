@@ -21,6 +21,7 @@ class NavigationTool(
                 mapOf(
                     "action" to Schemas.choice("Action", listOf("recent", "favorites", "backlinks", "view", "favorite", "unfavorite")),
                     "document" to Schemas.string("Document id for backlinks or mutation"),
+                    "opId" to Schemas.operationId,
                     "limit" to Schemas.integer("Maximum documents, 1..1000, default 20"),
                 ),
             required = listOf("action"),
@@ -39,9 +40,9 @@ class NavigationTool(
         val id = DocumentId(arguments.uuid("document"))
         when (action) {
             "backlinks" -> return McpToolResult.data(NavigationJson.page(navigation.backlinks(access, id, limit)))
-            "view" -> navigation.recordView(access, id)
-            "favorite" -> navigation.favorite(access, id, true)
-            "unfavorite" -> navigation.favorite(access, id, false)
+            "view" -> navigation.recordView(context, id)
+            "favorite" -> navigation.favorite(context, id, true)
+            "unfavorite" -> navigation.favorite(context, id, false)
             else -> throw InvalidRequestException("unknown navigation action")
         }
         return McpToolResult.data(mapOf("saved" to true))

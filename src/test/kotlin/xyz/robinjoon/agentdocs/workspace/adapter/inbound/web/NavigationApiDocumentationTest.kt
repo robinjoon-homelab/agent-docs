@@ -15,12 +15,14 @@ import org.springframework.restdocs.payload.PayloadDocumentation.responseFields
 import org.springframework.restdocs.payload.PayloadDocumentation.subsectionWithPath
 import org.springframework.restdocs.request.RequestDocumentation.parameterWithName
 import org.springframework.restdocs.request.RequestDocumentation.pathParameters
+import org.springframework.restdocs.request.RequestDocumentation.queryParameters
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import xyz.robinjoon.agentdocs.support.web.RestDocsWebTest
 import xyz.robinjoon.agentdocs.support.web.documented
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.owner
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.ownerAccess
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.webContext
 import xyz.robinjoon.agentdocs.workspace.application.model.NavigationPage
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.NavigationUseCase
@@ -57,24 +59,33 @@ class NavigationApiDocumentationTest : RestDocsWebTest() {
 
     @Test
     fun `explicit visit and favorite writes return no content`() {
-        every { navigation.recordView(ownerAccess, id) } just Runs
-        every { navigation.favorite(ownerAccess, id, true) } just Runs
+        every { navigation.recordView(webContext.copy(operationId = "visit-1"), id) } just Runs
+        every { navigation.favorite(webContext.copy(operationId = "favorite-1"), id, true) } just Runs
         mvc
-            .perform(post("/api/navigation/documents/{id}/view", id).principal(owner))
+            .perform(post("/api/navigation/documents/{id}/view?opId=visit-1", id).principal(owner))
             .andExpect(status().isNoContent)
-            .andDo(documented("navigation-view", pathParameters(parameterWithName("id").description("실제로 연 문서 ID"))))
+            .andDo(
+                documented(
+                    "navigation-view",
+                    pathParameters(parameterWithName("id").description("실제로 연 문서 ID")),
+                    queryParameters(parameterWithName("opId").optional().description("재시도 시 최초 열람 시각을 유지할 작업 ID")),
+                ),
+            )
         mvc
             .perform(
                 put("/api/navigation/documents/{id}/favorite", id)
                     .principal(owner)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"enabled":true}"""),
+                    .content("""{"enabled":true,"opId":"favorite-1"}"""),
             ).andExpect(status().isNoContent)
             .andDo(
                 documented(
                     "navigation-favorite",
                     pathParameters(parameterWithName("id").description("문서 ID")),
-                    requestFields(fieldWithPath("enabled").description("true 설정, false 해제")),
+                    requestFields(
+                        fieldWithPath("enabled").description("true 설정, false 해제"),
+                        fieldWithPath("opId").optional().description("재시도 시 뒤이은 즐겨찾기 변경을 보존할 작업 ID"),
+                    ),
                 ),
             )
     }

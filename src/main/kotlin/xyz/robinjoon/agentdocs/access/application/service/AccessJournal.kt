@@ -8,6 +8,7 @@ import xyz.robinjoon.agentdocs.application.model.ActivitySubject
 import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
 import java.time.Clock
 import java.time.Instant
+import java.util.UUID
 
 // The clock and shared activity log for access changes.
 class AccessJournal(
@@ -16,13 +17,22 @@ class AccessJournal(
 ) {
     fun now(): Instant = Instant.now(clock)
 
+    fun recordConnection(
+        caller: Caller,
+        kind: String,
+        summary: String,
+        connectionId: UUID,
+    ) = record(caller, kind, summary, ActivitySubject(null, null, null, null, connectionId = connectionId))
+
     fun record(
         caller: Caller,
         kind: String,
         summary: String,
         subject: ActivitySubject = ActivitySubject(null, null, null, null),
     ) {
-        val actor = ActivityActor(ActivityActorKind.HUMAN, caller.userId, caller.login, null, null)
+        val agent = caller.agent
+        val kindOfActor = if (agent == null) ActivityActorKind.HUMAN else ActivityActorKind.AGENT
+        val actor = ActivityActor(kindOfActor, caller.userId, caller.login, agent?.connectionId, agent?.clientName)
         activity.record(ActivityRecord(kind, actor, subject, summary, now()))
     }
 }

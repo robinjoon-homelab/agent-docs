@@ -145,7 +145,7 @@ class WebhookApiDocumentationTest : RestDocsWebTest() {
         val event = WebhookEvent.of(WebhookEventType.DOCUMENT_CHANGED, facts, null, "https://docs.example.com")
         val id = WebhookDeliveryId(UUID.fromString("55555555-5555-4555-8555-555555555555"))
         val planned = WebhookDelivery.plan(id, endpoint.id, event, at)
-        val failed = requireNotNull(planned.claim(at).record(1, AttemptResult.Answered(503, null), at.plusSeconds(1)))
+        val failed = requireNotNull(planned.claim(at).record(1, AttemptResult.Answered(503), at.plusSeconds(1)))
         every { webhooks.deliveries(operator, endpoint.id, 20) } returns listOf(failed)
 
         mockMvc

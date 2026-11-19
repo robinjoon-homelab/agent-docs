@@ -130,7 +130,7 @@ private class FolderImportBatch(
                     context.copy(operationId = null),
                     space,
                     UploadedFile(relative.substringAfterLast('/'), attachment.mediaType, attachment.bytes),
-                ).id.value
+                ).asset.id.value
                 .toString()
         }
     }

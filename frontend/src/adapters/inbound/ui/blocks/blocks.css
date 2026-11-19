@@ -24,6 +24,15 @@
   font-size: 17px;
 }
 
+.bv-h4 {
+  font-size: 16px;
+}
+
+.bv-h5,
+.bv-h6 {
+  font-size: 1em;
+}
+
 .bv-paragraph {
   margin: 0;
   overflow-wrap: anywhere;

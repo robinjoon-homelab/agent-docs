@@ -80,6 +80,17 @@ class SearchInboxApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
+    fun `REST search without a space still searches all accessible spaces`() {
+        every { search.search(ownerAccess, "재시도", null, allSpaces = true) } returns
+            listOf(SearchHit(SearchHitKind.TITLE, space, ref, null, null, ref.title))
+
+        searchMvc
+            .perform(get("/api/search?q=재시도").principal(owner))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].documentId").value(documentId.toString()))
+    }
+
+    @Test
     fun `title search jumps to documents across spaces`() {
         every { search.titles(ownerAccess, "재시") } returns listOf(space to ref)
 

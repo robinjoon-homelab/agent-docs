@@ -10,7 +10,6 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WorkspaceJson
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.countConflict
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionFilter
-import xyz.robinjoon.agentdocs.workspace.application.model.UploadPass
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
@@ -171,6 +170,8 @@ class DocsUploadTool(
                         ),
                     "url" to Schemas.string("Public image URL, instead of contentBase64"),
                     "alt" to Schemas.string("Alt text for the returned markdown"),
+                    "opId" to
+                        Schemas.string("Optional retry key for a direct file upload or URL import; replays the first attachment and alt"),
                 ),
             required = listOf("space"),
             readOnly = false,
@@ -185,10 +186,10 @@ class DocsUploadTool(
         val url = arguments.optionalString("url")
         val content = arguments.optionalString("contentBase64")
         val alt = arguments.optionalString("alt").orEmpty()
-        if (url == null && content == null) return commandFor(uploads.grant(context, space, alt))
-        val asset =
+        if (url == null && content == null) return commandFor(context, space, alt)
+        val uploaded =
             if (url != null) {
-                assets.import(context, space, url)
+                assets.import(context, space, url, alt)
             } else {
                 assets.upload(
                     context,
@@ -198,9 +199,10 @@ class DocsUploadTool(
                         arguments.optionalString("mediaType"),
                         decoded(content.orEmpty()),
                     ),
+                    alt,
                 )
             }
-        return McpToolResult.data(ImageUploads.resultOf(asset, alt))
+        return McpToolResult.data(ImageUploads.resultOf(uploaded.asset, uploaded.alt))
     }
 
     // Without a document only HTML is read, as before; drawings are read only through the document that shows them.
@@ -246,7 +248,15 @@ class DocsUploadTool(
         return McpToolResult.data(mapOf("assetId" to id, "source" to file.bytes.toString(Charsets.UTF_8)))
     }
 
-    private fun commandFor(pass: UploadPass): McpToolResult {
+    private fun commandFor(
+        context: WriteContext,
+        space: SpaceSlug,
+        alt: String,
+    ): McpToolResult {
+        if (context.operationId != null) {
+            throw InvalidRequestException("an upload command is one-time", "omit opId to get a fresh command")
+        }
+        val pass = uploads.grant(context, space, alt)
         val token = UploadToken.of(pass.connectionId, pass.secret)
         return McpToolResult.data(
             mapOf(

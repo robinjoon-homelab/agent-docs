@@ -180,7 +180,7 @@ class SuggestionService(
         record: OperationRecord,
         needed: Permission,
     ): ThreadView {
-        val known = threads.findById(ThreadId(record.target)) ?: throw ThreadNotFoundException(record.target)
+        val known = threads.findById(ThreadId(record.target)) ?: rejectMissingThreadReplay(context.access, record, needed)
         locked(context, known.id, needed)
         if (record.state == OperationResultState.REMOVED) throw ResultRemovedException(record)
         return record.threadView ?: throw LegacyOperationException(record)

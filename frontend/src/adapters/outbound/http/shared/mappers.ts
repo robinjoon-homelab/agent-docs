@@ -9,7 +9,7 @@ import type {
   TableColumn,
   TableRow,
 } from '../../../../domain/document/block';
-import { CALLOUT_KINDS, clampDepth } from '../../../../domain/document/block';
+import { CALLOUT_KINDS, HEADING_LEVELS, clampDepth } from '../../../../domain/document/block';
 import type { DocumentStatus, DocumentSummary, SpaceRef } from '../../../../domain/document/document';
 import { DOCUMENT_STATUSES } from '../../../../domain/document/document';
 import type { Actor } from '../../../../domain/shared/actor';
@@ -78,8 +78,9 @@ function toRow(value: unknown): TableRow {
 
 function toHeadingLevel(source: Json): HeadingLevel {
   const level = num(source, 'level');
-  if (level !== 1 && level !== 2 && level !== 3) throw contractError('level');
-  return level;
+  const supported = HEADING_LEVELS.find((candidate) => candidate === level);
+  if (supported === undefined) throw contractError('level');
+  return supported;
 }
 
 /**

@@ -25,11 +25,14 @@ class DocsSearchTool(
         ToolDefinition(
             name = "docs_search",
             title = "Search documents",
-            description = "Substring search over titles, block text, and comments. One space by slug, or every space this connection sees.",
+            description =
+                "Search titles, block text, and comments. Defaults to the only accessible space. " +
+                    "With multiple spaces, specify space or set allSpaces=true.",
             properties =
                 mapOf(
                     "query" to Schemas.string("Text to find, 1 to 100 characters"),
-                    "space" to Schemas.string("Space slug; omit for all spaces"),
+                    "space" to Schemas.string("Search this space by slug"),
+                    "allSpaces" to Schemas.boolean("Search every accessible space, including archived ones. Use without space."),
                 ),
             required = listOf("query"),
             readOnly = true,
@@ -39,7 +42,8 @@ class DocsSearchTool(
         arguments: Arguments,
         context: WriteContext,
     ): McpToolResult {
-        val hits = search.search(context.access, arguments.string("query"), arguments.optionalString("space")?.let(::SpaceSlug))
+        val space = if (arguments.node.has("space")) SpaceSlug(arguments.string("space")) else null
+        val hits = search.search(context.access, arguments.string("query"), space, allSpaces = arguments.boolean("allSpaces"))
         return McpToolResult.data(
             mapOf(
                 "hits" to

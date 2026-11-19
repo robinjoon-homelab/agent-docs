@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.FolderFile
+import xyz.robinjoon.agentdocs.workspace.application.model.UploadedAsset
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
@@ -123,7 +124,7 @@ class FolderImportServiceTest {
                 emptyList(),
                 Instant.EPOCH,
             )
-        every { assets.upload(any(), SpaceSlug("docs"), any()) } returns uploadedSvg
+        every { assets.upload(any(), SpaceSlug("docs"), any()) } returns UploadedAsset(uploadedSvg, "")
         every {
             documents.create(
                 any(),

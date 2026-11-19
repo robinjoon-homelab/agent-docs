@@ -51,6 +51,24 @@ class ActivityApiDocumentationTest : RestDocsWebTest() {
     private val view = ActivityView(ActivityEntry(41, record), space, "재시도 설계")
 
     @Test
+    fun `the owner sees the connection targeted by an instance activity`() {
+        val revoked =
+            record.copy(
+                kind = "connection.revoked",
+                actor = ActivityActor(ActivityActorKind.HUMAN, userId, "robinjoon", null, null),
+                subject = ActivitySubject(null, null, null, null, connectionId = connectionId),
+                summary = "연결 회수: 작업 에이전트",
+            )
+        every { activity.recent(ownerAccess, null, 50) } returns listOf(ActivityView(ActivityEntry(42, revoked), null, null))
+
+        mockMvc
+            .perform(get("/api/activity").principal(owner))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].connectionId").value(connectionId.toString()))
+            .andDo(documented("activity-connection-target"))
+    }
+
+    @Test
     fun `the activity of a space is listed newest first`() {
         every { activity.recent(ownerAccess, SpaceSlug("agent-docs"), 20) } returns listOf(view)
 
@@ -171,6 +189,7 @@ class ActivityApiDocumentationTest : RestDocsWebTest() {
             fieldWithPath("${prefix}threadId").type(JsonFieldType.STRING).optional().description("스레드 ID"),
             fieldWithPath("${prefix}revision").type(JsonFieldType.NUMBER).optional().description("리비전"),
             fieldWithPath("${prefix}membershipId").type(JsonFieldType.STRING).optional().description("인스턴스 멤버십 변경 대상 ID"),
+            fieldWithPath("${prefix}connectionId").type(JsonFieldType.STRING).optional().description("승인·발급·권한 변경·회수한 연결의 ID. 이전 기록은 null"),
             fieldWithPath("${prefix}summary").description("요약"),
             fieldWithPath("${prefix}at").description("시각"),
         )

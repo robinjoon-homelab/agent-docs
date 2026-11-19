@@ -10,27 +10,49 @@ import java.util.UUID
 internal object InlineMarkdown {
     fun plainText(markdown: String): String = parse(markdown, inLink = false)
 
-    fun assetIds(markdown: String): Set<AssetId> {
-        val ids = mutableSetOf<AssetId>()
+    fun assetIds(markdown: String): Set<AssetId> = buildSet { visitAssets(markdown) { id, _ -> add(id) } }
+
+    fun rewriteAssetLinks(
+        markdown: String,
+        pathOf: (AssetId) -> String?,
+    ): String =
+        buildString {
+            var copied = 0
+            visitAssets(markdown) { id, range ->
+                val path = pathOf(id)
+                if (path != null) {
+                    append(markdown, copied, range.first)
+                    append(path)
+                    copied = range.last + 1
+                }
+            }
+            append(markdown, copied, markdown.length)
+        }
+
+    private fun visitAssets(
+        markdown: String,
+        visit: (AssetId, IntRange) -> Unit,
+    ) {
         var index = 0
         while (index < markdown.length) {
-            if (markdown[index] == '[') assetAt(markdown, index)?.let(ids::add)
+            if (markdown[index] == '[') visitAssetAt(markdown, index, visit)
             index = scanAt(markdown, index, inLink = false)?.next ?: (index + 1)
         }
-        return ids
     }
 
-    private fun assetAt(
+    private fun visitAssetAt(
         markdown: String,
         index: Int,
-    ): AssetId? {
+        visit: (AssetId, IntRange) -> Unit,
+    ) {
         val labelEnd = linkTextEnd(markdown, index)
-        if (labelEnd < 0) return null
+        if (labelEnd < 0) return
         val end = destinationEnd(markdown, labelEnd + 1)
-        if (end <= labelEnd) return null
-        val target = markdown.substring(labelEnd + 2, end - 1).removeSurrounding("<", ">")
-        if (!assetDestination.matches(target)) return null
-        return AssetId(UUID.fromString(target.removePrefix("asset:")))
+        if (end <= labelEnd) return
+        val start = labelEnd + 2
+        val range = if (markdown[start] == '<') start + 1 until end - 2 else start until end - 1
+        val target = markdown.substring(range)
+        if (assetDestination.matches(target)) visit(AssetId(UUID.fromString(target.removePrefix("asset:"))), range)
     }
 
     private val assetDestination = Regex("asset:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
