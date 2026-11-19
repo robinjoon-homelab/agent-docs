@@ -350,7 +350,38 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
-    fun `the current human owner decides a suggestion`() {
+    fun `renamed caller retains own flags without exposing internal user ids`() {
+        val oldActor =
+            xyz.robinjoon.agentdocs.workspace.domain.Actor
+                .human(ownerAccess.actor.userId, "old-robin")
+        val otherActor =
+            xyz.robinjoon.agentdocs.workspace.domain.Actor.human(
+                UUID.fromString("88888888-8888-4888-8888-888888888888"),
+                "other",
+            )
+        val first = Comment.write(commentId, oldActor, "예전 로그인 댓글", at)
+        val second = Comment.write(CommentId(UUID.randomUUID()), otherActor, "다른 사람 댓글", at)
+        val renamedThread =
+            CommentThread
+                .open(threadId, ThreadLocation(spaceId, documentId, anchor, 3), first, at)
+                .reply(second, at)
+                .let { it.collaborate(it.collaboration.react(oldActor, "👍", true), at) }
+        val renamedView = ThreadView(renamedThread, AnchorResolution.Attached(5, 8), null)
+        every { threads.forDocument(ownerAccess, documentId) } returns listOf(renamedView)
+
+        mockMvc
+            .perform(get("/api/documents/{id}/threads", documentId).principal(owner))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].own").value(true))
+            .andExpect(jsonPath("$[0].author.userId").doesNotExist())
+            .andExpect(jsonPath("$[0].comments[0].own").value(true))
+            .andExpect(jsonPath("$[0].comments[1].own").value(false))
+            .andExpect(jsonPath("$[0].comments[1].author.userId").doesNotExist())
+            .andExpect(jsonPath("$[0].reactions[0].own").value(true))
+    }
+
+    @Test
+    fun `a human editor decides a suggestion`() {
         every { suggestions.decide(webContext, commentId, true) } returns view
         suggestionMvc
             .perform(
@@ -382,13 +413,14 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
             fieldWithPath("${prefix}resolution.end").type(JsonFieldType.NUMBER).optional().description("지금 문서에서의 끝 위치"),
             fieldWithPath("${prefix}status").description("open, answered, resolved"),
             *actorFields("${prefix}author"),
+            fieldWithPath("${prefix}own").type(JsonFieldType.BOOLEAN).optional().description("현재 호출자가 연 스레드인지. 웹 응답에서만 제공"),
             fieldWithPath("${prefix}comments").description("댓글. 첫 댓글이 스레드를 연 댓글"),
             *commentFields("${prefix}comments[].").map { it.optional() }.toTypedArray(),
             subsectionWithPath(
                 "${prefix}claim",
             ).type(JsonFieldType.OBJECT).optional().description("에이전트 연결 점유와 최초 획득·만료 시각. 15분, 만료해도 시각 보존"),
-            subsectionWithPath("${prefix}reactions").description("actor와 emoji 반응 집합"),
-            subsectionWithPath("${prefix}suggestions").description("제안 원문·대체문·앵커·기준 hash·사람 소유자 판정과 적용 revision"),
+            subsectionWithPath("${prefix}reactions").description("actor, emoji, 현재 호출자의 반응 여부(own) 집합"),
+            subsectionWithPath("${prefix}suggestions").description("제안 원문·대체문·앵커·기준 hash·편집 권한 이상 사람(edit·owner)의 판정과 적용 revision"),
             fieldWithPath("${prefix}linkedRevisions").description("이 스레드에 답한 리비전"),
             fieldWithPath("${prefix}createdAt").description("연 시각"),
             fieldWithPath("${prefix}updatedAt").description("마지막 변화 시각"),
@@ -399,6 +431,7 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
         arrayOf(
             fieldWithPath("${prefix}id").type(JsonFieldType.STRING).description("댓글 ID"),
             *actorFields("${prefix}author"),
+            fieldWithPath("${prefix}own").type(JsonFieldType.BOOLEAN).optional().description("현재 호출자가 작성해 수정·삭제할 수 있는 댓글인지. 웹 응답에서만 제공"),
             fieldWithPath("${prefix}body").type(JsonFieldType.STRING).description("본문 마크다운. 삭제된 댓글은 빈 문자열"),
             fieldWithPath("${prefix}createdAt").type(JsonFieldType.STRING).description("쓴 시각"),
             fieldWithPath("${prefix}editedAt").type(JsonFieldType.STRING).optional().description("마지막으로 고친 시각"),

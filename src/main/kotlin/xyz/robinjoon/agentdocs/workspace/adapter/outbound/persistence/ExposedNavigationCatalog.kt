@@ -10,14 +10,16 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.NavigationCatal
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 
-class ExposedNavigationCatalog : NavigationCatalog {
+class ExposedNavigationCatalog(
+    private val appBaseUrl: String? = null,
+) : NavigationCatalog {
     override fun documents(spaces: Set<SpaceId>): List<NavigationDocument> = entries(spaces).map { it.first }
 
     override fun linkingTo(
         target: DocumentId,
         spaces: Set<SpaceId>,
     ): List<NavigationDocument> =
-        entries(spaces).filter { target in BacklinkParser.targets(DocumentRows.blocksOf(it.second)) }.map { it.first }
+        entries(spaces).filter { target in BacklinkParser.targets(DocumentRows.blocksOf(it.second), appBaseUrl) }.map { it.first }
 
     private fun entries(spaces: Set<SpaceId>): List<Pair<NavigationDocument, String>> {
         if (spaces.isEmpty()) return emptyList()

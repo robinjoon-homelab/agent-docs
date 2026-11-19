@@ -15,11 +15,8 @@ export function canComment(permission: Permission | null | undefined): boolean {
   return canEdit(permission) || permission === 'comment';
 }
 export function canResolveThread(permission: Permission | null, thread: Thread, login: string): boolean {
-  return (
-    thread.status !== 'resolved' &&
-    (canEdit(permission) ||
-      (canComment(permission) && thread.author.kind === 'human' && thread.author.login === login))
-  );
+  const ownThread = thread.own ?? (thread.author.kind === 'human' && thread.author.login === login);
+  return thread.status !== 'resolved' && (canEdit(permission) || (canComment(permission) && ownThread));
 }
 
 export function permissionInSpace(

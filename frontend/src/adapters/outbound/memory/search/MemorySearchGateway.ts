@@ -25,10 +25,12 @@ export class MemorySearchGateway implements SearchGateway {
     return respond(() => {
       const hits: SearchHit[] = [];
       for (const document of this.store.documents.values()) {
-        if (document.trashedAt !== null || (spaceSlug !== undefined && document.space.slug !== spaceSlug))
-          continue;
+        if (this.store.permissionIn(document.space.id) === null) continue;
+        const space =
+          this.store.spaces.find((candidate) => candidate.id === document.space.id) ?? document.space;
+        if (document.trashedAt !== null || (spaceSlug !== undefined && space.slug !== spaceSlug)) continue;
         const base = {
-          space: { slug: document.space.slug, name: document.space.name },
+          space: { slug: space.slug, name: space.name },
           documentId: document.id,
           path: document.path,
           title: document.title,
@@ -69,14 +71,20 @@ export class MemorySearchGateway implements SearchGateway {
       [...this.store.documents.values()]
         .filter(
           (document) =>
-            document.trashedAt === null && (matches(document.title, query) || matches(document.path, query)),
+            this.store.permissionIn(document.space.id) !== null &&
+            document.trashedAt === null &&
+            (matches(document.title, query) || matches(document.path, query)),
         )
-        .map((document) => ({
-          space: { slug: document.space.slug, name: document.space.name },
-          documentId: document.id,
-          path: document.path,
-          title: document.title,
-        })),
+        .map((document) => {
+          const space =
+            this.store.spaces.find((candidate) => candidate.id === document.space.id) ?? document.space;
+          return {
+            space: { slug: space.slug, name: space.name },
+            documentId: document.id,
+            path: document.path,
+            title: document.title,
+          };
+        }),
     );
   }
 }

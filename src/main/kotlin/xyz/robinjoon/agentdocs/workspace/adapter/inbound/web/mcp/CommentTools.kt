@@ -84,7 +84,7 @@ class CommentsWriteTool(
                     "react_add/react_remove sets an emoji reaction. claim acquires for 15 minutes; " +
                     "renew/release needs the same connection. " +
                     "suggest stores anchor, hash, before and after without applying. " +
-                    "Only the current human owner may accept/reject a comment. " +
+                    "Only a human with edit or owner permission may accept/reject a comment. " +
                     "A live claim blocks another agent replying, answering, linking, or suggesting; open queries still include claimed threads.",
             properties =
                 mapOf(

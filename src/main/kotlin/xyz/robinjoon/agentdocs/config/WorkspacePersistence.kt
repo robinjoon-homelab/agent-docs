@@ -37,11 +37,13 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.UploadGrantRepo
 
 // The workspace's database ports, built once and shared by its use cases. The Exposed adapters keep no state; they
 // join the transaction of the use case that calls them.
-class WorkspacePersistence {
+class WorkspacePersistence(
+    publicUrl: String? = null,
+) {
     val documentAssets: DocumentAssetStore = ExposedDocumentAssetStore()
     val spaceGuides: SpaceGuideCatalog = ExposedSpaceGuideCatalog()
     val personalDocuments: PersonalDocumentStore = ExposedPersonalDocumentStore()
-    val navigation: NavigationCatalog = ExposedNavigationCatalog()
+    val navigation: NavigationCatalog = ExposedNavigationCatalog(publicUrl)
     val editSessions: EditSessionRepository = ExposedEditSessionRepository()
     val documentEvents: DocumentEventCatalog = ExposedDocumentEventCatalog()
     val exports: ExportCatalog = ExposedExportCatalog()

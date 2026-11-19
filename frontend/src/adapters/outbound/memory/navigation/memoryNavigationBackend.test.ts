@@ -119,6 +119,51 @@ describe('fake backlinks and personal lists', () => {
     expect((await navigation.recent()).total).toBe(0);
   });
 
+  it('counts canonical document paths and excludes unauthorized referring docs', async () => {
+    const { store, navigation } = preview();
+    store.me = { ...store.me, owner: false };
+    store.spaces = store.spaces.map((space) =>
+      space.id === 'space-agent' ? { ...space, permission: 'read' as const } : space,
+    );
+    const setupDoc = store.document('doc-setup');
+    store.documents.set('doc-arch', {
+      ...store.document('doc-arch'),
+      blocks: [
+        {
+          id: 'link000001',
+          type: 'paragraph',
+          text: `[설정](/s/agent-docs/d/${setupDoc.id}#block-p1)`,
+          hash: 'h1',
+        },
+      ],
+    });
+    store.spaces = [
+      ...store.spaces,
+      {
+        id: 'space-secret',
+        slug: 'secret',
+        name: '비밀',
+        description: '',
+        links: [],
+        createdAt: '2026-01-01T00:00:00Z',
+        archivedAt: null,
+        lastActivityAt: null,
+        documentCount: 1,
+      },
+    ];
+    store.documents.set('doc-secret', {
+      ...setupDoc,
+      id: 'doc-secret',
+      space: { id: 'space-secret', slug: 'secret', name: '비밀' },
+      path: 'secret',
+      title: '비밀 문서',
+      blocks: [{ id: 'sec0000001', type: 'paragraph', text: `[설정](doc:${setupDoc.id})`, hash: 'h2' }],
+    });
+
+    const backlinks = await navigation.backlinks(setupDoc.id);
+    expect(backlinks.documents.map((entry) => entry.id)).toEqual(['doc-arch']);
+  });
+
   it('shows a viewed document under its current space name', async () => {
     const { navigation, spaces } = preview();
     await navigation.recordView('doc-setup');

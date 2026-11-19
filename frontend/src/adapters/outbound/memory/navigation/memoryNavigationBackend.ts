@@ -27,10 +27,13 @@ export function memoryNavigationState(): MemoryNavigationState {
   return { visits: new Map(), favorites: new Map(), preferences: new Map() };
 }
 
-/** Live documents of spaces that still exist; archived spaces stay readable, the trash does not. */
+/** Live documents of authorized spaces that still exist; archived spaces stay readable, the trash does not. */
 function visibleDocuments(store: MemoryStore): AgentDocument[] {
   return [...store.documents.values()].filter(
-    (document) => document.trashedAt === null && store.spaces.some((space) => space.id === document.space.id),
+    (document) =>
+      document.trashedAt === null &&
+      store.permissionIn(document.space.id) !== null &&
+      store.spaces.some((space) => space.id === document.space.id),
   );
 }
 
@@ -97,10 +100,12 @@ export function memoryNavigationBackend(
     now: () => Date.now(),
     timeZone,
     visible: () => visibleDocuments(store).map((document) => entry(store, document)),
-    backlinks: (id) =>
-      visibleDocuments(store)
-        .filter((document) => backlinkTargets(document.blocks).has(id))
-        .map((document) => entry(store, document)),
+    backlinks: (id) => {
+      const origin = typeof window === 'undefined' ? null : window.location.origin;
+      return visibleDocuments(store)
+        .filter((document) => backlinkTargets(document.blocks, origin).has(id))
+        .map((document) => entry(store, document));
+    },
     writeMemo: (command) => {
       const first = operations.get(command.opId);
       if (first !== undefined) return first;

@@ -84,15 +84,20 @@ it('keeps claim timestamps, each actor reaction and the suggestion decision revi
     documentId: 'd',
     status: 'open',
     author: human,
-    comments: [],
+    own: true,
+    comments: [
+      { id: 'c1', author: human, own: true, body: 'hi', createdAt: 'x', editedAt: null, deleted: false },
+    ],
     createdAt: 'x',
     updatedAt: 'x',
     anchor,
     claim,
-    reactions: [{ actor: human, emoji: '👍' }],
+    reactions: [{ actor: human, emoji: '👍', own: true }],
     suggestions: [{ commentId: 'c', anchor, hash: 'abcd1234', before: 'old', after: 'new', decision }],
   }).react('t', '👍', true);
   expect(result.claim).toEqual(claim);
-  expect(result.reactions).toEqual([{ actor: human, emoji: '👍' }]);
+  expect(result.own).toBe(true);
+  expect(result.comments[0]?.own).toBe(true);
+  expect(result.reactions).toEqual([{ actor: human, emoji: '👍', own: true }]);
   expect(result.suggestions?.[0]?.decision).toEqual(decision);
 });

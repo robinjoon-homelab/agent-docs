@@ -44,7 +44,9 @@ export function ThreadCollaboration({
         {[...new Set(['👍', '❤️', '🎉', '👀', '✅', ...(thread.reactions ?? []).map((r) => r.emoji)])].map(
           (emoji) => {
             const reactions = (thread.reactions ?? []).filter((r) => r.emoji === emoji);
-            const mine = reactions.some((r) => r.actor.kind === 'human' && r.actor.login === login);
+            const mine = reactions.some(
+              (r) => r.own ?? (r.actor.kind === 'human' && r.actor.login === login),
+            );
             return (
               <button
                 key={emoji}

@@ -31,7 +31,10 @@ class ThreadController(
     fun forDocument(
         @PathVariable id: UUID,
         principal: Principal?,
-    ): List<Map<String, Any?>> = threads.forDocument(CallerAccess.of(principal), DocumentId(id)).map(ThreadJson::thread)
+    ): List<Map<String, Any?>> {
+        val access = CallerAccess.of(principal)
+        return threads.forDocument(access, DocumentId(id)).map { ThreadJson.thread(it, access) }
+    }
 
     @PostMapping("/api/documents/{id}/threads")
     fun open(
@@ -41,7 +44,7 @@ class ThreadController(
     ): ResponseEntity<Map<String, Any?>> {
         val context = CallerAccess.write(principal, Wire.optional(body, "opId"), null)
         val view = threads.open(context, DocumentId(id), ThreadJson.anchorRequest(body.get("anchor")), Wire.required(body, "body"))
-        return ResponseEntity.created(URI.create("/api/threads/${view.thread.id}")).body(ThreadJson.thread(view))
+        return ResponseEntity.created(URI.create("/api/threads/${view.thread.id}")).body(ThreadJson.thread(view, context.access))
     }
 
     @PostMapping("/api/threads/{id}/comments")
@@ -53,7 +56,7 @@ class ThreadController(
         val context = CallerAccess.write(principal, Wire.optional(body, "opId"), null)
         val view = threads.reply(context, ThreadId(id), Wire.required(body, "body"), body.path("markAnswered").asBoolean(false))
         val comment = checkNotNull(view.written?.let(view.thread::comment)) { "a reply returns the comment it wrote" }
-        return ResponseEntity.created(URI.create("/api/comments/${comment.id}")).body(ThreadJson.comment(comment))
+        return ResponseEntity.created(URI.create("/api/comments/${comment.id}")).body(ThreadJson.comment(comment, context.access))
     }
 
     // Moves the anchor, changes the status, links a revision, or any of these together as one change.
@@ -70,7 +73,7 @@ class ThreadController(
                 status = Wire.optional(body, "status")?.let(Wire::threadStatus),
                 linkRevision = body.get("linkRevision")?.takeIf(JsonNode::isInt)?.intValue(),
             )
-        return ThreadJson.thread(threads.change(context, ThreadId(id), change))
+        return ThreadJson.thread(threads.change(context, ThreadId(id), change), context.access)
     }
 
     @PostMapping("/api/threads/{id}/reactions")
@@ -86,13 +89,15 @@ class ThreadController(
             throw xyz.robinjoon.agentdocs.workspace.application.model
                 .InvalidRequestException("reaction action must be add or remove")
         }
+        val context = CallerAccess.write(principal, Wire.optional(body, "opId"), null)
         return ThreadJson.thread(
             threads.react(
-                CallerAccess.write(principal, Wire.optional(body, "opId"), null),
+                context,
                 ThreadId(id),
                 Wire.required(body, "emoji"),
                 action == "add",
             ),
+            context.access,
         )
     }
 
@@ -101,14 +106,17 @@ class ThreadController(
         @PathVariable id: UUID,
         @RequestBody body: JsonNode,
         principal: Principal?,
-    ): Map<String, Any?> =
-        ThreadJson.thread(
+    ): Map<String, Any?> {
+        val context = CallerAccess.write(principal, Wire.optional(body, "opId"), null)
+        return ThreadJson.thread(
             threads.claim(
-                CallerAccess.write(principal, Wire.optional(body, "opId"), null),
+                context,
                 ThreadId(id),
                 Wire.required(body, "action"),
             ),
+            context.access,
         )
+    }
 
     @PatchMapping("/api/comments/{id}")
     fun editComment(
@@ -116,8 +124,9 @@ class ThreadController(
         @RequestBody request: CommentRequest,
         principal: Principal?,
     ): Map<String, Any?> {
-        val view = threads.editComment(CallerAccess.write(principal, request.opId, null), CommentId(id), request.body)
-        return ThreadJson.comment(requireNotNull(view.thread.comment(CommentId(id))))
+        val context = CallerAccess.write(principal, request.opId, null)
+        val view = threads.editComment(context, CommentId(id), request.body)
+        return ThreadJson.comment(requireNotNull(view.thread.comment(CommentId(id))), context.access)
     }
 
     @DeleteMapping("/api/comments/{id}")
@@ -135,7 +144,10 @@ class ThreadController(
     fun query(
         filter: ThreadFilter,
         principal: Principal?,
-    ): List<Map<String, Any?>> = threads.query(CallerAccess.of(principal), filter.toQuery()).map(ThreadJson::thread)
+    ): List<Map<String, Any?>> {
+        val access = CallerAccess.of(principal)
+        return threads.query(access, filter.toQuery()).map { ThreadJson.thread(it, access) }
+    }
 }
 
 data class CommentRequest(

@@ -74,7 +74,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor
 @Configuration(proxyBeanMethods = false)
 class WorkspaceConfig {
     @Bean
-    fun workspacePersistence(): WorkspacePersistence = WorkspacePersistence()
+    fun workspacePersistence(properties: AgentDocsProperties): WorkspacePersistence = WorkspacePersistence(properties.publicUrl)
 
     // Files go to the homelab object storage with agent-docs.assets.store=s3, and to a local directory otherwise.
     @Bean

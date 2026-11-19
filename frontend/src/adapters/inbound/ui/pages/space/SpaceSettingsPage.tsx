@@ -9,7 +9,7 @@ import {
   expiryState,
 } from '../../../../../domain/connection/connection';
 import type { TrashedDocument } from '../../../../../domain/document/document';
-import { trashedTogether } from '../../../../../domain/document/pathTree';
+import { descendantCount } from '../../../../../domain/document/pathTree';
 import type { Space, SpaceDraft, SpaceLink, SpaceLinkKind } from '../../../../../domain/space/space';
 import {
   SPACE_DRAFT_ERROR_TEXT,
@@ -191,8 +191,9 @@ export function TrashSection({ spaceSlug }: { spaceSlug: string }) {
   const trash = useLoad(`space-settings:trash:${spaceSlug}`, () => services.documents.listTrash(spaceSlug));
   const [pendingDelete, setPendingDelete] = useState<TrashedDocument | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
-  const togetherCount =
-    pendingDelete !== null && trash.state === 'ready' ? trashedTogether(trash.data, pendingDelete).length : 0;
+  const canConfirmDelete = me.owner && trash.state === 'ready' && pendingDelete !== null;
+  const descendantDeleteCount =
+    pendingDelete !== null && trash.state === 'ready' ? descendantCount(trash.data, pendingDelete.path) : 0;
 
   const restore = async (document: TrashedDocument): Promise<void> => {
     try {
@@ -207,7 +208,7 @@ export function TrashSection({ spaceSlug }: { spaceSlug: string }) {
   };
 
   const destroy = async (document: TrashedDocument): Promise<void> => {
-    if (!me.owner) return;
+    if (!me.owner || trash.state !== 'ready') return;
     setPendingDelete(null);
     try {
       await services.documents.destroy(document.id);
@@ -255,7 +256,7 @@ export function TrashSection({ spaceSlug }: { spaceSlug: string }) {
         </ul>
       ) : null}
       <Dialog
-        open={me.owner && pendingDelete !== null}
+        open={canConfirmDelete}
         title="영구 삭제"
         onClose={() => setPendingDelete(null)}
         footer={
@@ -266,8 +267,9 @@ export function TrashSection({ spaceSlug }: { spaceSlug: string }) {
             <button
               type="button"
               className="btn btn-danger"
+              disabled={!canConfirmDelete}
               onClick={() => {
-                if (pendingDelete !== null) void destroy(pendingDelete);
+                if (canConfirmDelete) void destroy(pendingDelete);
               }}
             >
               영구 삭제
@@ -277,9 +279,18 @@ export function TrashSection({ spaceSlug }: { spaceSlug: string }) {
       >
         <p style={{ margin: 0 }}>
           ‘{pendingDelete?.title}’ 문서와 모든 리비전·댓글을 영구 삭제합니다.
-          {togetherCount > 0 ? ` 함께 휴지통에 들어간 하위 문서 ${togetherCount}개도 지웁니다.` : ''} 되돌릴
-          수 없습니다.
+          {descendantDeleteCount > 0
+            ? ` 휴지통에 있는 하위 문서 ${descendantDeleteCount}개도 함께 지웁니다.`
+            : ''}{' '}
+          되돌릴 수 없습니다.
         </p>
+        {me.owner ? (
+          <p className="small muted" style={{ marginTop: 8, marginBottom: 0 }}>
+            <Link to="/settings/data" target="_blank" rel="noreferrer">
+              삭제 전에 스페이스 내보내기
+            </Link>
+          </p>
+        ) : null}
       </Dialog>
     </>
   );
@@ -332,7 +343,7 @@ function ConnectionsSection({ space }: { space: Space }) {
   );
 }
 
-/** Archiving keeps every document; the space only leaves lists, search across spaces and an agent's space lookup. */
+/** Archiving keeps every document; the space leaves lists and an agent's space lookup, while authorized search includes it. */
 function ArchiveSection({ space, onSaved }: { space: Space; onSaved: (space: Space) => void }) {
   const services = useServices();
   const shell = useShell();
@@ -360,8 +371,8 @@ function ArchiveSection({ space, onSaved }: { space: Space; onSaved: (space: Spa
     <>
       <p className="small muted">
         {archived
-          ? '보관한 스페이스입니다. 목록과 검색, 에이전트의 스페이스 찾기에 다시 나오게 하려면 보관을 해제하세요.'
-          : '보관하면 스페이스 목록과 전체 검색, 에이전트의 스페이스 찾기에서 빠집니다. 문서는 그대로 남고 주소로는 계속 열립니다.'}
+          ? '보관한 스페이스입니다. 목록과 에이전트의 스페이스 찾기에 다시 나오게 하려면 보관을 해제하세요.'
+          : '보관하면 스페이스 목록과 에이전트의 스페이스 찾기에서 빠집니다. 문서는 그대로 남고 주소로 열리며, 권한이 있는 전체 검색·제목 찾기에는 계속 나옵니다.'}
       </p>
       <button type="button" className="btn" disabled={busy} onClick={() => void toggle()}>
         {archived ? '보관 해제' : '스페이스 보관'}

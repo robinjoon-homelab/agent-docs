@@ -56,6 +56,7 @@ export function toComment(value: unknown): Comment {
   return {
     id: str(source, 'id'),
     author: toActor(source.author),
+    ...(typeof source.own === 'boolean' ? { own: source.own } : {}),
     body: typeof source.body === 'string' ? source.body : '',
     createdAt: str(source, 'createdAt'),
     editedAt: optStr(source, 'editedAt'),
@@ -102,7 +103,11 @@ export function toThread(value: unknown): Thread {
         ? []
         : list(source.reactions, (value) => {
             const item = obj(value, 'reaction');
-            return { actor: toActor(item.actor), emoji: str(item, 'emoji') };
+            return {
+              actor: toActor(item.actor),
+              emoji: str(item, 'emoji'),
+              ...(typeof item.own === 'boolean' ? { own: item.own } : {}),
+            };
           }),
     suggestions: source.suggestions == null ? [] : list(source.suggestions, toSuggestion),
     id: str(source, 'id'),
@@ -111,6 +116,7 @@ export function toThread(value: unknown): Thread {
     resolution: toResolution(source.resolution),
     status: oneOf(source, 'status', STATUSES),
     author: toActor(source.author),
+    ...(typeof source.own === 'boolean' ? { own: source.own } : {}),
     comments: list(source.comments, toComment),
     linkedRevisions: numbers(source, 'linkedRevisions'),
     createdAt: str(source, 'createdAt'),
