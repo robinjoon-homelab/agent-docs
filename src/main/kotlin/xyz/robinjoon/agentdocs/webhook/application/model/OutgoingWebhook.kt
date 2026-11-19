@@ -5,11 +5,11 @@ import java.net.URI
 import java.time.Instant
 
 // One request as Standard Webhooks frames it. messageId stays the same across retries; attemptAt is this attempt's
-// time and goes into the signature, so each retry signs again. The secret's toString is masked.
+// time and goes into the signature. A sender starts signing by looking up the current key after preparing the request.
 data class OutgoingWebhook(
     val url: URI,
     val messageId: String,
     val attemptAt: Instant,
     val payload: String,
-    val secret: WebhookSecret,
+    val signingSecret: () -> WebhookSecret?,
 )

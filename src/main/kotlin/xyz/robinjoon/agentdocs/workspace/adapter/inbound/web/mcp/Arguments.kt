@@ -1,6 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp
 
 import tools.jackson.databind.JsonNode
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.Wire
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import java.time.Instant
 import java.time.format.DateTimeParseException
@@ -55,10 +56,5 @@ class Arguments(
     private fun uuidOf(
         name: String,
         value: String,
-    ): UUID =
-        try {
-            UUID.fromString(value)
-        } catch (exception: IllegalArgumentException) {
-            throw InvalidRequestException("argument $name must be a UUID", cause = exception)
-        }
+    ): UUID = Wire.identifier(value, "argument $name")
 }

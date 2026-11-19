@@ -32,8 +32,10 @@ class SuggestionController(
                         "after is required; use an empty string to remove text",
                     ),
             )
+        val context = CallerAccess.write(principal, Wire.optional(body, "opId"), null)
         return ThreadJson.thread(
-            suggestions.suggest(CallerAccess.write(principal, Wire.optional(body, "opId"), null), ThreadId(id), request),
+            suggestions.suggest(context, ThreadId(id), request),
+            context.access,
         )
     }
 
@@ -50,12 +52,14 @@ class SuggestionController(
             throw xyz.robinjoon.agentdocs.workspace.application.model
                 .InvalidRequestException("action must be accept or reject")
         }
+        val context = CallerAccess.write(principal, Wire.optional(body, "opId"), null)
         return ThreadJson.thread(
             suggestions.decide(
-                CallerAccess.write(principal, Wire.optional(body, "opId"), null),
+                context,
                 CommentId(id),
                 action == "accept",
             ),
+            context.access,
         )
     }
 }

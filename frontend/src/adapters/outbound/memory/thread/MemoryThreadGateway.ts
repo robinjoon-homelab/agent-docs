@@ -1,9 +1,11 @@
 import type { ThreadGateway, ThreadPatch } from '../../../../application/thread/ports/ThreadGateway';
 import { ApiError } from '../../../../application/shared/ports/errors';
+import { canComment, canEdit } from '../../../../domain/space/permission';
 import type {
   Anchor,
   Comment,
   Thread,
+  ThreadReaction,
   ThreadStatus,
   SuggestionInput,
 } from '../../../../domain/thread/thread';
@@ -29,13 +31,25 @@ export class MemoryThreadGateway implements ThreadGateway {
   react(threadId: string, emoji: string, add: boolean): Promise<Thread> {
     return respond(() => {
       const thread = this.store.findThread(threadId);
-      const reactions = (thread.reactions ?? []).filter(
-        (r) => !(r.emoji === emoji && r.actor.kind === 'human' && r.actor.login === this.store.me.login),
-      );
-      return this.store.replaceThread({
-        ...thread,
-        reactions: add ? [...reactions, { actor: this.store.actor, emoji }] : reactions,
+      const reactions = (thread.reactions ?? []).filter((r) => {
+        if (r.emoji === emoji && this.isOwnReaction(threadId, r)) {
+          this.store.reactionAuthors.delete(reactionKey(threadId, emoji, r.actor.login));
+          return false;
+        }
+        return true;
       });
+      if (add) {
+        this.store.reactionAuthors.set(
+          reactionKey(threadId, emoji, this.store.me.login),
+          this.store.me.userId,
+        );
+      }
+      return this.withCallerFlags(
+        this.store.replaceThread({
+          ...thread,
+          reactions: add ? [...reactions, { actor: this.store.actor, emoji }] : reactions,
+        }),
+      );
     });
   }
 
@@ -56,27 +70,31 @@ export class MemoryThreadGateway implements ThreadGateway {
       previewReplacement(target, input);
       const comment = this.comment('수정 제안');
       const next = withReply(thread, comment);
-      return this.store.replaceThread({
-        ...next,
-        suggestions: [
-          ...(thread.suggestions ?? []),
-          { ...input, hash: target.hash, commentId: comment.id, decision: null },
-        ],
-      });
+      return this.withCallerFlags(
+        this.store.replaceThread({
+          ...next,
+          suggestions: [
+            ...(thread.suggestions ?? []),
+            { ...input, hash: target.hash, commentId: comment.id, decision: null },
+          ],
+        }),
+      );
     });
   }
 
   decide(commentId: string, accept: boolean): Promise<Thread> {
     return respond(() => {
-      if (!this.store.me.owner) throw new ApiError('forbidden', 403, '소유자만 제안을 판정합니다.');
       const thread = [...this.store.threads.values()]
         .flat()
         .find((t) => t.suggestions?.some((s) => s.commentId === commentId));
       if (thread === undefined) throw new ApiError('not_found', 404, '제안을 찾을 수 없습니다.');
+      const document = this.store.document(thread.documentId);
+      if (!canEdit(this.store.permissionIn(document.space.id))) {
+        throw new ApiError('forbidden', 403, '편집 권한 이상인 사람만 제안을 판정합니다.');
+      }
       const suggestion = thread.suggestions?.find((s) => s.commentId === commentId);
       if (suggestion === undefined || suggestion.decision !== null)
         throw new ApiError('conflict', 409, '이미 판정한 제안입니다.');
-      const document = this.store.document(thread.documentId);
       const revision = accept ? document.revision + 1 : null;
       if (accept) {
         const target = document.blocks.find(
@@ -123,18 +141,20 @@ export class MemoryThreadGateway implements ThreadGateway {
           },
         ]);
       }
-      return this.store.replaceThread({
-        ...thread,
-        linkedRevisions: revision === null ? thread.linkedRevisions : [...thread.linkedRevisions, revision],
-        suggestions: thread.suggestions?.map((s) =>
-          s.commentId === commentId
-            ? {
-                ...s,
-                decision: { actor: this.store.actor, at: this.store.now(), accepted: accept, revision },
-              }
-            : s,
-        ),
-      });
+      return this.withCallerFlags(
+        this.store.replaceThread({
+          ...thread,
+          linkedRevisions: revision === null ? thread.linkedRevisions : [...thread.linkedRevisions, revision],
+          suggestions: thread.suggestions?.map((s) =>
+            s.commentId === commentId
+              ? {
+                  ...s,
+                  decision: { actor: this.store.actor, at: this.store.now(), accepted: accept, revision },
+                }
+              : s,
+          ),
+        }),
+      );
     });
   }
 
@@ -142,7 +162,8 @@ export class MemoryThreadGateway implements ThreadGateway {
     return respond(() => {
       this.store.document(documentId);
       const threads = this.store.threads.get(documentId) ?? [];
-      return status === undefined ? threads : threads.filter((thread) => thread.status === status);
+      const matching = status === undefined ? threads : threads.filter((thread) => thread.status === status);
+      return matching.map((thread) => this.withCallerFlags(thread));
     });
   }
 
@@ -150,6 +171,7 @@ export class MemoryThreadGateway implements ThreadGateway {
     return respond(() => {
       const document = this.store.document(documentId);
       const now = this.store.now();
+      const firstComment = this.comment(body);
       const thread: Thread = {
         id: this.store.nextId('th'),
         documentId,
@@ -157,11 +179,12 @@ export class MemoryThreadGateway implements ThreadGateway {
         resolution: resolutionFor(anchor),
         status: 'open',
         author: this.store.actor,
-        comments: [this.comment(body)],
+        comments: [firstComment],
         linkedRevisions: [],
         createdAt: now,
         updatedAt: now,
       };
+      this.store.threadAuthors.set(thread.id, this.store.me.userId);
       this.store.threads.set(documentId, [...(this.store.threads.get(documentId) ?? []), thread]);
       this.store.record({
         kind: 'comment',
@@ -172,7 +195,7 @@ export class MemoryThreadGateway implements ThreadGateway {
         revision: null,
         summary: `댓글: ${body.slice(0, 60)}`,
       });
-      return thread;
+      return this.withCallerFlags(thread);
     });
   }
 
@@ -181,45 +204,105 @@ export class MemoryThreadGateway implements ThreadGateway {
       const thread = this.store.findThread(threadId);
       const comment = this.comment(body);
       this.store.replaceThread(withReply(thread, comment));
-      return comment;
+      return this.withCommentFlag(comment);
     });
   }
 
   update(threadId: string, patch: ThreadPatch): Promise<Thread> {
     return respond(() => {
       const thread = this.store.findThread(threadId);
+      const document = this.store.document(thread.documentId);
+      if (patch.status === 'resolved') {
+        const permission = this.store.permissionIn(document.space.id);
+        const canResolve = canEdit(permission) || (canComment(permission) && this.isOwnThread(thread));
+        if (!canResolve) throw new ApiError('forbidden', 403, '해결할 권한이 없습니다.');
+      }
       const anchor = patch.anchor ?? thread.anchor;
-      return this.store.replaceThread({
-        ...thread,
-        status: patch.status ?? thread.status,
-        claim: patch.status === 'resolved' ? null : thread.claim,
-        anchor,
-        resolution: patch.anchor === undefined ? thread.resolution : resolutionFor(anchor),
-        updatedAt: this.store.now(),
-      });
+      return this.withCallerFlags(
+        this.store.replaceThread({
+          ...thread,
+          status: patch.status ?? thread.status,
+          claim: patch.status === 'resolved' ? null : thread.claim,
+          anchor,
+          resolution: patch.anchor === undefined ? thread.resolution : resolutionFor(anchor),
+          updatedAt: this.store.now(),
+        }),
+      );
     });
   }
 
   editComment(commentId: string, body: string): Promise<Comment> {
     return respond(() =>
-      this.changeComment(commentId, (comment) => ({ ...comment, body, editedAt: this.store.now() })),
+      this.withCommentFlag(
+        this.changeComment(commentId, (comment) => {
+          if (!this.isOwnComment(comment))
+            throw new ApiError('forbidden', 403, '작성자만 수정할 수 있습니다.');
+          return { ...comment, body, editedAt: this.store.now() };
+        }),
+      ),
     );
   }
 
   deleteComment(commentId: string): Promise<void> {
     return respond(() => {
-      this.changeComment(commentId, (comment) => ({ ...comment, body: '', deleted: true }));
+      this.changeComment(commentId, (comment) => {
+        if (!this.isOwnComment(comment)) throw new ApiError('forbidden', 403, '작성자만 삭제할 수 있습니다.');
+        return { ...comment, body: '', deleted: true };
+      });
     });
   }
 
   private comment(body: string): Comment {
+    const id = this.store.nextId('cm');
+    this.store.commentAuthors.set(id, this.store.me.userId);
     return {
-      id: this.store.nextId('cm'),
+      id,
       author: this.store.actor,
       body,
       createdAt: this.store.now(),
       editedAt: null,
       deleted: false,
+    };
+  }
+
+  private isOwnThread(thread: Thread): boolean {
+    const userId = this.store.threadAuthors.get(thread.id);
+    if (userId !== undefined) return userId === this.store.me.userId;
+    return thread.author.kind === 'human' && thread.author.login === this.store.me.login;
+  }
+
+  private isOwnComment(comment: Comment): boolean {
+    if (comment.deleted) return false;
+    const userId = this.store.commentAuthors.get(comment.id);
+    if (userId !== undefined) return userId === this.store.me.userId;
+    return comment.author.kind === 'human' && comment.author.login === this.store.me.login;
+  }
+
+  private isOwnReaction(threadId: string, reaction: ThreadReaction): boolean {
+    const userId = this.store.reactionAuthors.get(
+      reactionKey(threadId, reaction.emoji, reaction.actor.login),
+    );
+    if (userId !== undefined) return userId === this.store.me.userId;
+    return reaction.actor.kind === 'human' && reaction.actor.login === this.store.me.login;
+  }
+
+  private withCommentFlag(comment: Comment): Comment {
+    return { ...comment, own: this.isOwnComment(comment) };
+  }
+
+  private withCallerFlags(thread: Thread): Thread {
+    return {
+      ...thread,
+      own: this.isOwnThread(thread),
+      comments: thread.comments.map((comment) => this.withCommentFlag(comment)),
+      ...(thread.reactions === undefined
+        ? {}
+        : {
+            reactions: thread.reactions.map((reaction) => ({
+              ...reaction,
+              own: this.isOwnReaction(thread.id, reaction),
+            })),
+          }),
     };
   }
 
@@ -241,6 +324,10 @@ export class MemoryThreadGateway implements ThreadGateway {
     }
     throw new ApiError('not_found', 404, '댓글을 찾을 수 없습니다.');
   }
+}
+
+function reactionKey(threadId: string, emoji: string, login: string): string {
+  return `${threadId}\0${emoji}\0${login}`;
 }
 
 function previewReplacement(block: StoredBlock, input: SuggestionInput): StoredBlock {

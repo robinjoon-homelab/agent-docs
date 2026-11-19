@@ -76,8 +76,8 @@ class SearchService(
         access: Access,
         slug: SpaceSlug?,
     ): List<Space> {
-        // Searching every space leaves archived ones out; an archived space is still searched when asked for by name.
-        if (slug == null) return spaces.findAll().filter { access.sees(it.id) && !it.isArchived }
+        // Global search and title quick jump include archived spaces the caller is currently authorized to see.
+        if (slug == null) return spaces.findAll().filter { access.sees(it.id) }
         return listOf(spaces.findBySlug(slug)?.takeIf { access.sees(it.id) } ?: throw SpaceNotFoundException(slug))
     }
 

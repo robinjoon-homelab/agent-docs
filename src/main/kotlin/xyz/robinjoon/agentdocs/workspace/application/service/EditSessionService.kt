@@ -111,7 +111,9 @@ class EditSessionService(
         document: DocumentId,
     ) {
         if (!access.actor.isAgent) return
-        val target = EditSessionTarget(document, visible(access, document).spaceId, access.actor, null)
+        val currentDocument = visible(access, document)
+        Permissions.require(access, currentDocument.spaceId, Permission.EDIT, "updating edit time")
+        val target = EditSessionTarget(document, currentDocument.spaceId, access.actor, null)
         sessions.lock(target.scope)
         val current = sessions.open(target.scope) ?: return
         sessions.save(expired(current).activity(clock.instant()))

@@ -14,4 +14,27 @@ describe('navigation', () => {
     ]);
     expect([...targets]).toEqual(['one']);
   });
+
+  it('treats canonical app document URLs and doc: syntax as the same document ID and ignores unrelated origins', () => {
+    const targets = backlinkTargets(
+      [
+        {
+          id: 'urls',
+          type: 'paragraph',
+          text: [
+            '[doc](doc:doc-1)',
+            '[canon](https://docs.example.com/s/team/d/doc-2#thread-1)',
+            '[short](https://docs.example.com:443/d/doc-3?via=x)',
+            '[rel-space](/s/old/d/doc-4)',
+            '[rel-short](/d/doc-5#block-p1)',
+            '[foreign](https://evil.example.com/s/team/d/doc-9)',
+            '[proto-rel](//docs.example.com/d/doc-9)',
+            '[history](https://docs.example.com/s/team/d/doc-9/history)',
+          ].join(' '),
+        },
+      ],
+      'https://docs.example.com',
+    );
+    expect([...targets]).toEqual(['doc-1', 'doc-2', 'doc-3', 'doc-4', 'doc-5']);
+  });
 });

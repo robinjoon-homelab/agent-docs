@@ -49,6 +49,19 @@ class ExposedActivityLogTest {
     }
 
     @Test
+    fun `membership targets appear in the instance log only`() {
+        val target = UUID.randomUUID()
+        val member = record(space, 1).copy(kind = "membership.invited", subject = ActivitySubject(space, null, null, null, target))
+        val change = record(space, 0)
+        database.inTransaction { listOf(change, member).forEach(log::record) }
+
+        val instance = database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = false)) }
+        val scoped = database.inTransaction { log.find(ActivityQuery(setOf(space), null, null, 10, oldestFirst = false)) }
+        assertThat(instance.map { it.record }).containsExactly(member, change)
+        assertThat(scoped.map { it.record }).containsExactly(change)
+    }
+
+    @Test
     fun `id cursor preserves same timestamp page boundary and initial since and space filters`() {
         database.inTransaction {
             log.record(record(space, -1))

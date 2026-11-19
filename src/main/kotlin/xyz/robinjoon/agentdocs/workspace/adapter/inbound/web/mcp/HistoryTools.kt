@@ -7,6 +7,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.McpToolResult
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.RevisionMetadataJson
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.Wire
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WorkspaceJson
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.countConflict
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadPass
@@ -73,7 +74,10 @@ class DocsHistoryTool(
             "restore" -> {
                 val revision = arguments.optionalInt("revision") ?: throw InvalidRequestException("restore needs revision")
                 val base = arguments.optionalInt("baseVersion") ?: throw InvalidRequestException("restore needs baseVersion", READ_FIRST)
-                val written = documents.restore(RevisionMetadataJson.context(context, arguments.node), document, revision, base)
+                val written =
+                    recorder.countConflict(context.access, document) {
+                        documents.restore(RevisionMetadataJson.context(context, arguments.node), document, revision, base)
+                    }
                 recorder.agent(context.access, written.document.id)
                 WriteResults.of(written, all = false)
             }

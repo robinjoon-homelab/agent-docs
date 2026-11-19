@@ -3,7 +3,9 @@ package xyz.robinjoon.agentdocs.workspace.adapter.inbound.startup
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.scheduling.annotation.Scheduled
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
+import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
 
 // Documents written before paths had parent documents left folders that no document holds. Each start turns those
@@ -11,16 +13,23 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
 // since paths are people's data.
 class FolderBackfill(
     private val documents: DocumentUseCase,
-    private val owner: String,
+    private val owner: () -> Access?,
 ) : ApplicationRunner {
-    override fun run(args: ApplicationArguments) {
+    private var completed = false
+
+    override fun run(args: ApplicationArguments) = backfill()
+
+    @Scheduled(fixedDelayString = "PT30S", initialDelayString = "PT30S")
+    @Synchronized
+    fun backfill() {
+        if (completed) return
+        val confirmed = owner() ?: return
         try {
-            val created = documents.fillMissingParents(owner)
+            val created = documents.fillMissingParents(confirmed)
+            completed = true
             if (created.isNotEmpty()) log.info("Turned {} folders into documents", created.size)
         } catch (exception: PathTakenException) {
-            // A request on the instance still running took a folder path first. Nothing was written; the next start
-            // tries again, and the app works meanwhile because a folder without a document still shows in the tree.
-            log.warn("Folders were not turned into documents; the next start retries", exception)
+            log.warn("Folders were not turned into documents; the next pass retries", exception)
         }
     }
 

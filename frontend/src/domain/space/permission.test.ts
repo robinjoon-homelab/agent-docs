@@ -19,6 +19,8 @@ describe('space permission', () => {
     const own = thread({ author: human('me') });
     expect(canResolveThread('comment', own, 'me')).toBe(true);
     expect(canResolveThread('comment', own, 'other')).toBe(false);
+    expect(canResolveThread('comment', { ...own, author: human('old-me'), own: true }, 'new-me')).toBe(true);
+    expect(canResolveThread('comment', { ...own, own: false }, 'me')).toBe(false);
     expect(canResolveThread('edit', own, 'other')).toBe(true);
     expect(canResolveThread('read', own, 'me')).toBe(false);
     expect(canResolveThread(null, own, 'me')).toBe(false);

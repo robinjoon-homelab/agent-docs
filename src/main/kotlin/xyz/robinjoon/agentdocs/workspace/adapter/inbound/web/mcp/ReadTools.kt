@@ -4,6 +4,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.McpToolResult
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.Wire
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WorkspaceJson
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListPosition
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownFormat
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
@@ -15,7 +16,6 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
-import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 
 class DocsSearchTool(
@@ -69,7 +69,7 @@ class DocsListTool(
             title = "List documents",
             description =
                 "Documents of a space, most recently changed first. The leading segments of a path are the parent document, so " +
-                    "folder lists the documents under a document; filter by status or tag too.",
+                    "folder lists the documents under a document. For more results pass nextCursor back as cursor.",
             properties =
                 mapOf(
                     "space" to Schemas.string("Space slug"),
@@ -77,6 +77,7 @@ class DocsListTool(
                     "status" to Schemas.choice("Document status", listOf("draft", "in_review", "confirmed", "archived")),
                     "tag" to Schemas.string("Tag"),
                     "trashed" to Schemas.boolean("List the trash instead"),
+                    "cursor" to Schemas.string("nextCursor from the previous page"),
                 ),
             required = listOf("space"),
             readOnly = true,
@@ -86,14 +87,17 @@ class DocsListTool(
         arguments: Arguments,
         context: WriteContext,
     ): McpToolResult {
-        val status =
-            arguments.optionalString("status")?.let { value ->
-                DocumentStatus.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
-            }
+        val status = arguments.optionalString("status")?.let(Wire::status)
         val filter =
-            DocumentFilter(status, arguments.optionalString("tag"), arguments.optionalString("folder"), arguments.boolean("trashed"))
-        val listings = queries.list(context.access, SpaceSlug(arguments.string("space")), filter)
-        return McpToolResult.data(mapOf("documents" to listings.map(WorkspaceJson::listing)))
+            DocumentFilter(
+                status,
+                arguments.optionalString("tag"),
+                arguments.optionalString("folder"),
+                arguments.boolean("trashed"),
+                arguments.optionalString("cursor")?.let(DocumentListPosition::read),
+            )
+        val page = queries.list(context.access, SpaceSlug(arguments.string("space")), filter)
+        return McpToolResult.data(mapOf("documents" to page.documents.map(WorkspaceJson::listing), "nextCursor" to page.nextCursor))
     }
 }
 
@@ -119,7 +123,8 @@ class DocsReadTool(
                     "format" to Schemas.choice("Output format", listOf("markdown", "plain", "outline")),
                     "section" to Schemas.string("Heading block id: read that section only"),
                     "blocks" to Schemas.strings("Block ids: read only these blocks"),
-                    "cursor" to Schemas.integer("cursor named at the end of the previous chunk"),
+                    "cursor" to Schemas.integer("nextCursor in the previous result metadata"),
+                    "revision" to Schemas.integer("Confirmed revision to read instead of the current document"),
                 ),
             required = listOf("document"),
             readOnly = true,
@@ -135,15 +140,23 @@ class DocsReadTool(
                 arguments.optionalString("section")?.let(::BlockId),
                 arguments.strings("blocks")?.map(::BlockId),
                 arguments.optionalInt("cursor") ?: 0,
+                arguments.optionalInt("revision"),
             )
         val chunk = queries.markdown(context.access, DocumentId(arguments.uuid("document")), request)
-        // The front matter carries the document id and revision; a cut-off page says where to continue.
-        val more =
-            chunk.nextCursor
-                ?.let { "\n<!-- more blocks follow (${chunk.totalBlocks} in total): call docs_read again with cursor $it -->\n" }
-                .orEmpty()
-        val notes = if (request.cursor == 0) guideNotes(context, chunk.document) else emptyList()
-        return McpToolResult.markdown(chunk.text + more, notes)
+        val more = chunk.nextCursor?.let { "Continue docs_read with nextCursor $it (${chunk.totalBlocks} blocks in total)." }
+        val guide = if (request.cursor == 0) guideNotes(context, chunk.document) else emptyList()
+        val notes = guide + listOfNotNull(more)
+        val metadata =
+            chunk.nextCursor?.let {
+                mapOf(
+                    "documentId" to chunk.document.id.value,
+                    "version" to chunk.document.version,
+                    "revision" to chunk.document.revision,
+                    "totalBlocks" to chunk.totalBlocks,
+                    "nextCursor" to it,
+                )
+            }
+        return McpToolResult.markdown(chunk.text, notes, metadata)
     }
 
     // Reading the guide itself needs no pointer to it.

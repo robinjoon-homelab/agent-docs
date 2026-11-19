@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.workspace.application.port.input
 
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListing
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListingPage
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentView
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownChunk
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
@@ -25,7 +26,7 @@ interface DocumentQueryUseCase {
         access: Access,
         space: SpaceSlug,
         filter: DocumentFilter,
-    ): List<DocumentListing>
+    ): DocumentListingPage
 
     // Documents of every visible space, most recently changed first.
     fun recent(

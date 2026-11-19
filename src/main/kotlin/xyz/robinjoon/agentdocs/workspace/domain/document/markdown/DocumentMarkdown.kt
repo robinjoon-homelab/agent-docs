@@ -1,5 +1,6 @@
 package xyz.robinjoon.agentdocs.workspace.domain.document.markdown
 
+import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
@@ -10,7 +11,14 @@ object DocumentMarkdown {
         document: Document,
         space: SpaceSlug,
         annotated: Boolean,
-    ): String {
+    ): String = parts(document, space, annotated, document.blocks).joinToString("")
+
+    internal fun parts(
+        document: Document,
+        space: SpaceSlug,
+        annotated: Boolean,
+        blocks: List<Block>,
+    ): Sequence<String> {
         val header = document.header
         val entries =
             listOfNotNull(
@@ -25,8 +33,8 @@ object DocumentMarkdown {
                 header.properties.assignee?.let { "assignee" to it },
                 "version" to document.version.toString(),
             )
-        val body = BlockMarkdown.write(document.blocks, annotated)
-        return FrontMatter(entries).render() + "\n\n" + body + "\n"
+        val head = FrontMatter(entries).render() + "\n\n"
+        return sequenceOf(head) + BlockMarkdown.parts(blocks, annotated) + sequenceOf("\n")
     }
 
     fun statusOf(value: String): DocumentStatus? =

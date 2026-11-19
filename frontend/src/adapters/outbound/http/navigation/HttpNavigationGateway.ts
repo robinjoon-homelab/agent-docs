@@ -114,6 +114,7 @@ export class HttpNavigationGateway implements NavigationGateway {
           path: command.path,
           title: command.path.split('/').at(-1),
           blocks: [block],
+          inputTrace: command.inputTrace,
         },
         documentId: null,
       };
@@ -129,6 +130,7 @@ export class HttpNavigationGateway implements NavigationGateway {
       body: {
         opId: command.opId,
         operations: [{ op: 'insert', ...position, markdown: `<!-- b:${command.blockId} -->\n${block.text}` }],
+        inputTrace: command.inputTrace,
       },
     };
   }

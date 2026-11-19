@@ -6,6 +6,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionLabel
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
+import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
@@ -99,5 +100,5 @@ interface DocumentUseCase {
     // Gives every folder path that has no document an empty one, written in the name of the person with the owner's
     // login. Paths that already have a document are left alone, so running it again adds nothing. Returns the
     // documents it created.
-    fun fillMissingParents(owner: String): List<Document>
+    fun fillMissingParents(owner: Access): List<Document>
 }

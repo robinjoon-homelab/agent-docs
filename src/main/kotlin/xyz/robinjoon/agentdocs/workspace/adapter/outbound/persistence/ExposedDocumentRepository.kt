@@ -222,7 +222,7 @@ class ExposedDocumentRepository : DocumentRepository {
         val columns = DocumentsTable.columns - DocumentsTable.body - DocumentsTable.searchText + DocumentRevisionsTable.actor.columns
         val query = latest.select(columns).where { DocumentsTable.spaceId inList spaces.map { it.value } }
         return filtered(query, filter)
-            .orderBy(DocumentsTable.updatedAt to SortOrder.DESC)
+            .orderBy(DocumentsTable.updatedAt to SortOrder.DESC, DocumentsTable.id to SortOrder.DESC)
             .limit(limit)
             .map {
                 DocumentListing(
@@ -260,6 +260,12 @@ class ExposedDocumentRepository : DocumentRepository {
         filter.status?.let { status -> query.andWhere { DocumentsTable.status eq status } }
         filter.tag?.let { tag -> query.andWhere { DocumentsTable.tags like LikePatterns.containing(" $tag ") } }
         filter.folder?.let { folder -> query.andWhere { DocumentsTable.path like LikePatterns.startingWith("${folder.trimEnd('/')}/") } }
+        filter.after?.let { cursor ->
+            val time = cursor.updatedAt.utc()
+            query.andWhere {
+                (DocumentsTable.updatedAt less time) or ((DocumentsTable.updatedAt eq time) and (DocumentsTable.id less cursor.id))
+            }
+        }
         return query
     }
 

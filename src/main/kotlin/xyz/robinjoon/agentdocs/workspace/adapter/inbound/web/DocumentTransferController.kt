@@ -28,7 +28,7 @@ class DocumentTransferController(
         val base = body.get("baseVersion")?.takeIf { it.isInt }?.intValue() ?: throw InvalidRequestException("baseVersion is required")
         val request = DocumentTransfer(SpaceSlug(Wire.required(body, "space")), DocumentPath(Wire.required(body, "path")), base)
         val context = CallerAccess.write(principal, Wire.optional(body, "opId"), null)
-        val written = documents.transfer(context, DocumentId(id), request)
+        val written = statistics.countConflict(context.access, DocumentId(id)) { documents.transfer(context, DocumentId(id), request) }
         statistics.agent(context.access, DocumentId(id))
         return DocumentTransferJson.result(written)
     }

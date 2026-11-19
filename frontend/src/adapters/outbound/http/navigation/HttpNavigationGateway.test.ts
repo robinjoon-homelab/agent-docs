@@ -80,6 +80,40 @@ describe('HttpNavigationGateway', () => {
     ]);
   });
 
+  it.each([false, true])(
+    'sends the actual input trace with a mobile creation or append (%s)',
+    async (exists) => {
+      const at = '2026-11-19T00:00:00Z';
+      const input = {
+        batchId: 'batch',
+        traces: [
+          {
+            tabId: 'tab',
+            batchId: 'trace',
+            firstInputAt: at,
+            lastInputAt: at,
+            intervals: [{ firstInputAt: at, lastInputAt: at }],
+          },
+        ],
+      };
+      const http = new HttpClient({
+        cookies: () => '',
+        fetch: (url, init) => {
+          if (url.startsWith('/api/navigation/mobile-target'))
+            return Promise.resolve(
+              exists ? Response.json({ id: 'doc', blocks: [] }) : new Response('', { status: 200 }),
+            );
+          const body = JSON.parse(bodyText(init?.body)) as { inputTrace?: typeof input };
+          const saved = JSON.stringify(body.inputTrace) === JSON.stringify(input);
+          return Promise.resolve(Response.json({ id: 'doc' }, { status: saved ? 200 : 400 }));
+        },
+      });
+
+      const gateway = new HttpNavigationGateway(http, storage(), 'Asia/Seoul');
+      expect(await gateway.writeMemo({ ...command, inputTrace: input })).toBe('doc');
+    },
+  );
+
   it.each(['legacy_operation', 'result_removed'])(
     'keeps %s from becoming a new write attempt',
     async (code) => {

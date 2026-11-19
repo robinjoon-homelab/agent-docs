@@ -15,6 +15,29 @@ function gatewayReturning(status: number, body: unknown): HttpDocumentGateway {
 }
 
 describe('HttpDocumentGateway', () => {
+  it('keeps the folder filter and collects every page of the document and trash listings', async () => {
+    const fetch = (path: string) => {
+      const url = new URL(path, 'http://local');
+      const trash = url.pathname.endsWith('/trash');
+      if (!trash && url.searchParams.get('folder') !== 'a/b') throw new Error('folder missing');
+      const cursor = url.searchParams.get('cursor');
+      const item = (id: string) => ({
+        ...document({ id }),
+        updatedBy: actor,
+        trashedAt: '2026-11-19T00:00:00Z',
+      });
+      if (cursor === 'next-page') return Promise.resolve(Response.json([item('older')]));
+      return Promise.resolve(Response.json([item('newest')], { headers: { 'X-Next-Cursor': 'next-page' } }));
+    };
+    const gateway = new HttpDocumentGateway(new HttpClient({ fetch, cookies: () => '' }));
+
+    expect((await gateway.listInSpace('team', { under: 'a/b' })).map(({ id }) => id)).toEqual([
+      'newest',
+      'older',
+    ]);
+    expect((await gateway.listTrash('team')).map(({ id }) => id)).toEqual(['newest', 'older']);
+  });
+
   it('confirms only the supplied version with a bodyless keepalive request', async () => {
     const fetch: typeof globalThis.fetch = (input, init) => {
       if (

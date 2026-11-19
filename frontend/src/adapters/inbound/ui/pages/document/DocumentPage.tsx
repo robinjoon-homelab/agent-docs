@@ -1,3 +1,4 @@
+import { Dialog } from '../../common/Dialog';
 import { DocumentAccessBanner } from './DocumentAccessBanner';
 import { commentAnchorPreparation } from '../../../../../domain/document/commentAnchor';
 import { RetainedDocumentContext } from '../../hooks/RetainedDocumentContext';
@@ -405,22 +406,31 @@ function DocumentWorkspace({
     }
   };
 
-  const trash = async (): Promise<void> => {
+  const [trashPreview, setTrashPreview] = useState<number | null>(null);
+  const [trashing, setTrashing] = useState(false);
+
+  const previewTrash = async (): Promise<void> => {
+    if (!(await saveFirst())) return;
     try {
-      // Asked just now for the documents under it, not taken from the space's list on screen, which can be older and
-      // stops at the most recent 1,000 documents.
-      const along = (await services.documents.listInSpace(spaceSlug, { under: state.meta.path })).length;
-      const question =
-        along > 0
-          ? `이 문서와 하위 문서 ${along}개를 휴지통으로 옮길까요? 스페이스 설정에서 함께 복원할 수 있습니다.`
-          : '이 문서를 휴지통으로 옮길까요? 스페이스 설정에서 복원할 수 있습니다.';
-      if (!window.confirm(question)) return;
+      const along = await services.documents.listInSpace(spaceSlug, { under: session.getState().meta.path });
+      setTrashPreview(along.length);
+    } catch (error) {
+      toast(errorMessage(error));
+    }
+  };
+
+  const trash = async (): Promise<void> => {
+    setTrashing(true);
+    try {
       if (!(await saveFirst())) return;
       await services.documents.trash(document.id);
+      setTrashPreview(null);
       shell.refreshTree();
       void navigate(`/s/${document.space.slug}`);
     } catch (error) {
       toast(errorMessage(error));
+    } finally {
+      setTrashing(false);
     }
   };
 
@@ -534,7 +544,7 @@ function DocumentWorkspace({
                   inputTime.discard(key);
                 }}
                 onTransfer={() => void openTransfer()}
-                onTrash={() => void trash()}
+                onTrash={() => void previewTrash()}
                 onRetrySave={() => {
                   void saveFirst().then((saved) => {
                     if (saved) toast('저장했습니다');
@@ -581,6 +591,42 @@ function DocumentWorkspace({
                   revision={state.revisionNameSuggestion}
                   onClose={() => session.dismissRevisionNameSuggestion()}
                 />
+              )}
+              {trashPreview === null || !editable ? null : (
+                <Dialog
+                  open
+                  title="휴지통으로 이동"
+                  onClose={() => setTrashPreview(null)}
+                  footer={
+                    <>
+                      <button type="button" className="btn" onClick={() => setTrashPreview(null)}>
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={trashing}
+                        onClick={() => void trash()}
+                      >
+                        휴지통으로 이동
+                      </button>
+                    </>
+                  }
+                >
+                  <p>
+                    {trashPreview > 0
+                      ? `이 문서와 하위 문서 ${trashPreview}개를 휴지통으로 옮깁니다.`
+                      : '이 문서를 휴지통으로 옮깁니다.'}{' '}
+                    스페이스 설정에서 복원할 수 있습니다.
+                  </p>
+                  {me.owner ? (
+                    <p>
+                      <Link to="/settings/data" target="_blank" rel="noreferrer">
+                        이동 전에 스페이스 내보내기
+                      </Link>
+                    </p>
+                  ) : null}
+                </Dialog>
               )}
               {transferSpaces === null || !editable ? null : (
                 <TransferDialog

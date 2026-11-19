@@ -1,10 +1,13 @@
 package xyz.robinjoon.agentdocs.workspace.application
 
+import com.knuddels.jtokkit.Encodings
+import com.knuddels.jtokkit.api.EncodingType
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import xyz.robinjoon.agentdocs.workspace.adapter.outbound.tokenization.O200kMarkdownTokenCounter
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.agentAccess
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.document
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.documentId
@@ -29,10 +32,12 @@ import xyz.robinjoon.agentdocs.workspace.application.service.DocumentQueryServic
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
+import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Heading
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.BlockChangeKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.ChangeOrigin
+import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.DocumentMarkdown
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 import java.util.UUID
 
@@ -41,7 +46,7 @@ class DocumentQueryServiceTest {
     private val revisions = mockk<RevisionCatalog>()
     private val spaces = mockk<SpaceRepository>()
     private val threads = mockk<ThreadRepository>()
-    private val service = DocumentQueryService(documents, revisions, spaces, threads)
+    private val service = DocumentQueryService(documents, revisions, spaces, threads, O200kMarkdownTokenCounter())
     private val intro = Heading(BlockId("head01"), 1, InlineText("Intro"))
     private val details = Heading(BlockId("head02"), 2, InlineText("Details"))
     private val next = Heading(BlockId("head03"), 1, InlineText("Next"))
@@ -61,23 +66,42 @@ class DocumentQueryServiceTest {
     }
 
     @Test
-    fun `a long document comes in chunks that continue from the cursor`() {
-        val long = (1..30).map { paragraph("long%02d".format(it), "x".repeat(3_000)) }
-        every { documents.findById(documentId) } returns document(long, revision = 1)
+    fun `one oversized block yields canonical bytes across token bounded pages`() {
+        val code = CodeBlock(BlockId("long01"), "txt", "漢字🙂\n".repeat(15_000))
+        val long = document(listOf(intro, code, details), revision = 2)
+        every { documents.findById(documentId) } returns long
         every { spaces.findById(spaceId) } returns space
+        val encoding = Encodings.newLazyEncodingRegistry().getEncoding(EncodingType.O200K_BASE)
+        val request = MarkdownRequest(MarkdownFormat.ANNOTATED, null, null, 0)
+        val pages =
+            generateSequence(service.markdown(ownerAccess, documentId, request)) { page ->
+                page.nextCursor?.let { service.markdown(ownerAccess, documentId, request.copy(cursor = it)) }
+            }.toList()
 
-        val first = service.markdown(ownerAccess, documentId, MarkdownRequest(MarkdownFormat.ANNOTATED, null, null, 0))
-        val second =
-            service.markdown(
-                ownerAccess,
-                documentId,
-                MarkdownRequest(MarkdownFormat.ANNOTATED, null, null, requireNotNull(first.nextCursor)),
+        assertThat(pages).hasSizeGreaterThan(1)
+        assertThat(pages).allSatisfy { assertThat(encoding.countTokensOrdinary(it.text)).isLessThanOrEqualTo(20_000) }
+        assertThat(pages.joinToString("") { it.text }).isEqualTo(DocumentMarkdown.write(long, space.slug, true))
+        val outline = service.markdown(ownerAccess, documentId, request.copy(format = MarkdownFormat.OUTLINE))
+        assertThat(outline.text).contains("b:long01", "b:head02")
+        assertThat(outline.nextCursor).isNull()
+    }
+
+    @Test
+    fun `a historical markdown read uses stored contents and the current slug`() {
+        every { documents.findById(documentId) } returns document(blocks, revision = 3)
+        every { spaces.findById(spaceId) } returns space
+        every { revisions.find(documentId, 1) } returns
+            revision(
+                1,
+                listOf(paragraph("para01", "historical")),
+                ChangeOrigin(owner, ChangeSource.WEB),
+                now,
             )
 
-        assertThat(first.nextCursor).isEqualTo(13)
-        assertThat(second.nextCursor).isEqualTo(26)
-        assertThat(second.text).startsWith("<!-- b:long14 ")
-        assertThat(second.totalBlocks).isEqualTo(30)
+        val historical = service.markdown(ownerAccess, documentId, MarkdownRequest(MarkdownFormat.PLAIN, null, null, 0, 1))
+
+        assertThat(historical.text).contains("space: agent-docs\n", "version: 1\n").endsWith("\n\nhistorical\n")
+        assertThat(historical.document.revision).isEqualTo(1)
     }
 
     @Test

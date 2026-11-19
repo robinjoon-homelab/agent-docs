@@ -2,7 +2,9 @@ package xyz.robinjoon.agentdocs.workspace.application.service
 
 import org.springframework.transaction.annotation.Transactional
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListPosition
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListing
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListingPage
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentView
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownChunk
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
@@ -13,6 +15,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUse
 import xyz.robinjoon.agentdocs.workspace.application.port.input.RevisionNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
+import xyz.robinjoon.agentdocs.workspace.application.port.output.MarkdownTokenCounter
 import xyz.robinjoon.agentdocs.workspace.application.port.output.RevisionCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepository
@@ -29,7 +32,10 @@ class DocumentQueryService(
     private val revisions: RevisionCatalog,
     private val spaces: SpaceRepository,
     private val threads: ThreadRepository,
+    tokens: MarkdownTokenCounter,
 ) : DocumentQueryUseCase {
+    private val markdownPages = MarkdownPages(tokens)
+
     override fun open(
         access: Access,
         id: DocumentId,
@@ -43,9 +49,12 @@ class DocumentQueryService(
         access: Access,
         space: SpaceSlug,
         filter: DocumentFilter,
-    ): List<DocumentListing> {
+    ): DocumentListingPage {
         val target = spaces.findBySlug(space)?.takeIf { access.sees(it.id) } ?: throw SpaceNotFoundException(space)
-        return documents.list(setOf(target.id), filter, LIST_LIMIT)
+        val found = documents.list(setOf(target.id), filter, PAGE_SIZE + 1)
+        val visible = found.take(PAGE_SIZE)
+        val last = visible.lastOrNull()?.takeIf { found.size > PAGE_SIZE }
+        return DocumentListingPage(visible, last?.let { DocumentListPosition(it.lifecycle.updatedAt, it.id.value).toString() })
     }
 
     override fun recent(
@@ -99,7 +108,18 @@ class DocumentQueryService(
     ): MarkdownChunk {
         val document = readable(access, id)
         val space = spaces.findById(document.spaceId) ?: throw DocumentNotFoundException(id)
-        return MarkdownPages.chunk(document, space.slug, request)
+        val source = request.revision?.let { markdownRevision(document, it) } ?: document
+        return markdownPages.chunk(source, space.slug, request)
+    }
+
+    private fun markdownRevision(
+        document: Document,
+        number: Int,
+    ): Document {
+        val revision = revisions.find(document.id, number) ?: throw RevisionNotFoundException("${document.id} rev $number")
+        val header = revision.content.header.copy(spaceId = document.spaceId)
+        val lifecycle = document.lifecycle.copy(revision = revision.number, version = revision.version)
+        return Document.restore(document.id, header, revision.content.blocks, lifecycle)
     }
 
     private fun readable(
@@ -109,5 +129,6 @@ class DocumentQueryService(
 
     private companion object {
         const val LIST_LIMIT = 1_000
+        const val PAGE_SIZE = 200
     }
 }

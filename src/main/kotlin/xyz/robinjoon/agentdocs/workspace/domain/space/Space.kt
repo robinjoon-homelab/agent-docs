@@ -7,8 +7,8 @@ import java.util.UUID
 
 // An isolation boundary the owner defines. It exists on its own, independent of GitHub or any other service, and every
 // document, thread, and asset belongs to exactly one space. The private constructor and copy keep changes behind
-// create, restore, and the setting methods. An archived space drops out of space lists, search across spaces, and an
-// agent's space lookup, and still opens at its address.
+// create, restore, and the setting methods. An archived space drops out of space lists and an agent's space lookup,
+// while still opening at its address and appearing in authorized global search.
 @AggregateRoot
 @ConsistentCopyVisibility
 data class Space private constructor(

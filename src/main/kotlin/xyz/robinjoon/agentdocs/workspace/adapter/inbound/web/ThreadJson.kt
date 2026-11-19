@@ -4,39 +4,50 @@ import tools.jackson.databind.JsonNode
 import xyz.robinjoon.agentdocs.workspace.application.model.AnchorRequest
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.ThreadView
+import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Anchor
 import xyz.robinjoon.agentdocs.workspace.domain.thread.AnchorResolution
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Comment
+import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadReaction
 
 object ThreadJson {
-    fun thread(view: ThreadView): Map<String, Any?> {
+    fun thread(
+        view: ThreadView,
+        access: Access? = null,
+    ): Map<String, Any?> {
         val thread = view.thread
         val timeline = thread.progress.timeline
-        return mapOf(
-            "id" to thread.id.value,
-            "documentId" to thread.location.documentId.value,
-            "anchor" to anchor(thread.location.anchor),
-            "anchoredRevision" to thread.location.anchoredRevision,
-            "resolution" to resolution(view.resolution),
-            "status" to thread.status.name.lowercase(),
-            "author" to WorkspaceJson.actor(thread.author),
-            "comments" to thread.comments.map(::comment),
-            "claim" to
-                thread.collaboration.claim?.let {
-                    mapOf(
-                        "actor" to WorkspaceJson.actor(it.actor),
-                        "acquiredAt" to it.acquiredAt,
-                        "expiresAt" to it.expiresAt,
-                    )
-                },
-            "reactions" to thread.collaboration.reactions.map { mapOf("actor" to WorkspaceJson.actor(it.actor), "emoji" to it.emoji) },
-            "suggestions" to thread.collaboration.suggestions.map(::suggestion),
-            "linkedRevisions" to thread.progress.linkedRevisions,
-            "createdAt" to timeline.createdAt,
-            "updatedAt" to timeline.updatedAt,
-            "resolvedAt" to timeline.resolvedAt,
-        ) + contextOf(view)
+        val base =
+            mapOf(
+                "id" to thread.id.value,
+                "documentId" to thread.location.documentId.value,
+                "anchor" to anchor(thread.location.anchor),
+                "anchoredRevision" to thread.location.anchoredRevision,
+                "resolution" to resolution(view.resolution),
+                "status" to thread.status.name.lowercase(),
+                "author" to WorkspaceJson.actor(thread.author),
+                "comments" to thread.comments.map { comment(it, access) },
+                "claim" to thread.collaboration.claim?.let(::claim),
+                "reactions" to thread.collaboration.reactions.map { reaction(it, access) },
+                "suggestions" to thread.collaboration.suggestions.map(::suggestion),
+                "linkedRevisions" to thread.progress.linkedRevisions,
+                "createdAt" to timeline.createdAt,
+                "updatedAt" to timeline.updatedAt,
+                "resolvedAt" to timeline.resolvedAt,
+            ) + contextOf(view)
+        return access?.let { base + ("own" to thread.author.isSameAuthorAs(it.actor)) } ?: base
+    }
+
+    private fun claim(claim: xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadClaim): Map<String, Any?> =
+        mapOf("actor" to WorkspaceJson.actor(claim.actor), "acquiredAt" to claim.acquiredAt, "expiresAt" to claim.expiresAt)
+
+    private fun reaction(
+        reaction: ThreadReaction,
+        access: Access?,
+    ): Map<String, Any?> {
+        val base = mapOf("actor" to WorkspaceJson.actor(reaction.actor), "emoji" to reaction.emoji)
+        return access?.let { base + ("own" to reaction.actor.isSameAuthorAs(it.actor)) } ?: base
     }
 
     private fun suggestion(value: xyz.robinjoon.agentdocs.workspace.domain.thread.Suggestion): Map<String, Any?> =
@@ -57,15 +68,21 @@ object ThreadJson {
                 },
         )
 
-    fun comment(comment: Comment): Map<String, Any?> =
-        mapOf(
-            "id" to comment.id.value,
-            "author" to WorkspaceJson.actor(comment.author),
-            "body" to comment.body,
-            "createdAt" to comment.history.createdAt,
-            "editedAt" to comment.editedAt,
-            "deleted" to comment.isDeleted,
-        )
+    fun comment(
+        comment: Comment,
+        access: Access? = null,
+    ): Map<String, Any?> {
+        val base =
+            mapOf(
+                "id" to comment.id.value,
+                "author" to WorkspaceJson.actor(comment.author),
+                "body" to comment.body,
+                "createdAt" to comment.history.createdAt,
+                "editedAt" to comment.editedAt,
+                "deleted" to comment.isDeleted,
+            )
+        return access?.let { base + ("own" to (!comment.isDeleted && comment.author.isSameAuthorAs(it.actor))) } ?: base
+    }
 
     fun anchor(anchor: Anchor): Map<String, Any?> =
         when (anchor) {

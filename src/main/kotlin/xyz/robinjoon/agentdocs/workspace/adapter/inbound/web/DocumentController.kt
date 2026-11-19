@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RestController
 import tools.jackson.databind.JsonNode
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListPosition
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListingPage
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentView
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
@@ -22,6 +24,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUse
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.Access
+import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
@@ -49,17 +52,27 @@ class DocumentController(
         @PathVariable slug: String,
         query: DocumentListQuery,
         principal: Principal?,
-    ): List<Map<String, Any?>> {
-        val filter = DocumentFilter(query.status?.let(Wire::status), query.tag, query.folder, false)
-        return queries.list(CallerAccess.of(principal), SpaceSlug(slug), filter).map(WorkspaceJson::listing)
+    ): ResponseEntity<List<Map<String, Any?>>> {
+        val filter =
+            DocumentFilter(query.status?.let(Wire::status), query.tag, query.folder, false, query.cursor?.let(DocumentListPosition::read))
+        return listing(queries.list(CallerAccess.of(principal), SpaceSlug(slug), filter))
     }
 
     @GetMapping("/api/spaces/{slug}/trash")
     fun trashList(
         @PathVariable slug: String,
+        @RequestParam(required = false) cursor: String?,
         principal: Principal?,
-    ): List<Map<String, Any?>> =
-        queries.list(CallerAccess.of(principal), SpaceSlug(slug), DocumentFilter(null, null, null, true)).map(WorkspaceJson::listing)
+    ): ResponseEntity<List<Map<String, Any?>>> {
+        val filter = DocumentFilter(null, null, null, true, cursor?.let(DocumentListPosition::read))
+        return listing(queries.list(CallerAccess.of(principal), SpaceSlug(slug), filter))
+    }
+
+    private fun listing(page: DocumentListingPage): ResponseEntity<List<Map<String, Any?>>> {
+        val response = ResponseEntity.ok()
+        page.nextCursor?.let { response.header("X-Next-Cursor", it) }
+        return response.body(page.documents.map(WorkspaceJson::listing))
+    }
 
     @GetMapping("/api/documents/recent")
     fun recent(
@@ -74,6 +87,7 @@ class DocumentController(
         @RequestBody body: JsonNode,
         principal: Principal?,
     ): ResponseEntity<Map<String, Any?>> {
+        Wire.requireObject(body)
         val properties =
             DocumentProperties.of(
                 Wire.strings(body.get("tags")),
@@ -119,6 +133,7 @@ class DocumentController(
                 query.section?.let(::BlockId),
                 query.blocks?.map(::BlockId),
                 query.cursor ?: 0,
+                query.revision,
             )
         val chunk = queries.markdown(CallerAccess.of(principal), DocumentId(id), request)
         return mapOf(
@@ -127,6 +142,7 @@ class DocumentController(
             "version" to chunk.document.version,
             "markdown" to chunk.text,
             "nextCursor" to chunk.nextCursor,
+            "contiguous" to true,
             "totalBlocks" to chunk.totalBlocks,
             "agentGuide" to
                 spaces
@@ -142,16 +158,20 @@ class DocumentController(
         @RequestBody body: JsonNode,
         principal: Principal?,
     ): Map<String, Any?> {
+        Wire.requireObject(body)
         val base =
             body.get("baseVersion")?.takeIf(JsonNode::isInt)?.intValue() ?: throw InvalidRequestException("baseVersion is required")
-        val blocks = body.path("blocks").values().map(BlockJson::read)
+        val blocks = readBlocks(body.get("blocks"))
+        val context = RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body)
         val written =
-            documents.save(
-                RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body),
-                DocumentId(id),
-                base,
-                blocks,
-            )
+            recorder.countConflict(context.access, DocumentId(id)) {
+                documents.save(
+                    context,
+                    DocumentId(id),
+                    base,
+                    blocks,
+                )
+            }
         record(principal, written, body)
         return writeResult(written)
     }
@@ -170,13 +190,17 @@ class DocumentController(
         @RequestBody body: JsonNode,
         principal: Principal?,
     ): Map<String, Any?> {
-        val answering = Wire.optional(body, "answering")?.let { ThreadId(UUID.fromString(it)) }
+        Wire.requireObject(body)
+        val answering = Wire.optional(body, "answering")?.let { ThreadId(Wire.identifier(it, "answering")) }
         val context =
             RevisionMetadataJson.context(
                 CallerAccess.write(principal, Wire.optional(body, "opId"), Wire.optional(body, "summary")),
                 body,
             )
-        val written = documents.edit(context, DocumentId(id), EditJson.operations(body.get("operations")), answering)
+        val written =
+            recorder.countConflict(context.access, DocumentId(id)) {
+                documents.edit(context, DocumentId(id), EditJson.operations(body.get("operations")), answering)
+            }
         record(principal, written, body)
         return writeResult(written)
     }
@@ -188,12 +212,16 @@ class DocumentController(
         @RequestBody body: JsonNode,
         principal: Principal?,
     ): Map<String, Any?> {
+        Wire.requireObject(body)
+        val context = RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body)
         val written =
-            documents.changeHeader(
-                RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body),
-                DocumentId(id),
-                Wire.headerChange(body),
-            )
+            recorder.countConflict(context.access, DocumentId(id)) {
+                documents.changeHeader(
+                    context,
+                    DocumentId(id),
+                    Wire.headerChange(body),
+                )
+            }
         record(principal, written, body)
         val access = CallerAccess.of(principal)
         return responseView(written, queries.open(access, DocumentId(id)).space, access)
@@ -248,16 +276,20 @@ class DocumentController(
     ): Map<String, Any?> {
         val view =
             WorkspaceJson.view(DocumentView(written.document, space, written.marks)) +
-                WorkspaceJson.permission(access, space.id)
+                WorkspaceJson.permission(access, space.id) +
+                mapOf("alsoChanged" to written.related.map(WorkspaceJson::related))
         val captured = written.space ?: return view
         return view + mapOf("space" to mapOf("id" to captured.id.value, "slug" to captured.slug.value, "name" to captured.name))
     }
 
     private fun blocksOf(body: JsonNode) =
-        body.get("markdown")?.takeIf(JsonNode::isString)?.let { markdown ->
-            MarkdownReader.readBlocks(markdown.stringValue()).map { it.block }
-        }
-            ?: body.path("blocks").values().map(BlockJson::read)
+        Wire.optional(body, "markdown")?.let { markdown -> MarkdownReader.readBlocks(markdown).map { it.block } }
+            ?: body.get("blocks")?.let(::readBlocks).orEmpty()
+
+    private fun readBlocks(node: JsonNode?): List<Block> {
+        if (node == null || !node.isArray) throw InvalidRequestException("blocks must be an array")
+        return node.values().map(BlockJson::read)
+    }
 
     private fun writeResult(written: DocumentWrite): Map<String, Any?> =
         mapOf(
@@ -278,6 +310,7 @@ data class MarkdownQuery(
     val section: String?,
     val blocks: List<String>?,
     val cursor: Int?,
+    val revision: Int?,
 )
 
 // Optional filters of the document list, bound from query parameters.
@@ -285,4 +318,5 @@ data class DocumentListQuery(
     val status: String?,
     val tag: String?,
     val folder: String?,
+    val cursor: String?,
 )

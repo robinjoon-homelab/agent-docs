@@ -186,14 +186,33 @@ export class HttpDocumentGateway implements DocumentGateway {
     this.http = http;
   }
 
-  async listInSpace(spaceSlug: string, filter: DocumentFilter = {}): Promise<DocumentSummary[]> {
-    const params = query({ status: filter.status, tag: filter.tag, folder: filter.under });
-    const url = `/api/spaces/${segment(spaceSlug)}/documents${params}`;
-    return list(await this.http.get(url), toDocumentSummary);
+  listInSpace(spaceSlug: string, filter: DocumentFilter = {}): Promise<DocumentSummary[]> {
+    const path = `/api/spaces/${segment(spaceSlug)}/documents`;
+    const filters = { status: filter.status, tag: filter.tag, folder: filter.under };
+    return this.collectPages(path, filters, toDocumentSummary);
   }
 
-  async listTrash(spaceSlug: string): Promise<TrashedDocument[]> {
-    return list(await this.http.get(`/api/spaces/${segment(spaceSlug)}/trash`), toTrashed);
+  listTrash(spaceSlug: string): Promise<TrashedDocument[]> {
+    return this.collectPages(`/api/spaces/${segment(spaceSlug)}/trash`, {}, toTrashed);
+  }
+
+  private async collectPages<T extends { id: string }>(
+    path: string,
+    filters: Record<string, string | undefined>,
+    parse: (value: unknown) => T,
+  ): Promise<T[]> {
+    const items = new Map<string, T>();
+    const visited = new Set<string>();
+    let cursor: string | null = null;
+    do {
+      const page = await this.http.getPage(path + query({ ...filters, cursor }));
+      for (const item of list(page.body, parse)) if (!items.has(item.id)) items.set(item.id, item);
+      cursor = page.nextCursor;
+      if (cursor !== null && visited.has(cursor))
+        throw new Error('문서 목록의 다음 페이지를 확인할 수 없습니다.');
+      if (cursor !== null) visited.add(cursor);
+    } while (cursor !== null);
+    return [...items.values()];
   }
 
   async create(spaceSlug: string, document: NewDocument): Promise<AgentDocument> {

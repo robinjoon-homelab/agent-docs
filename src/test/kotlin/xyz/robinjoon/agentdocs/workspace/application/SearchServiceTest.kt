@@ -22,6 +22,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.SearchCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.service.SearchService
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.space.Space
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceProfile
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
@@ -69,5 +70,37 @@ class SearchServiceTest {
         assertThatThrownBy { service.search(ownerAccess, "  ", null) }
             .isInstanceOf(InvalidRequestException::class.java)
             .hasMessage("search for 1 to 100 characters")
+    }
+
+    @Test
+    fun `global search and titles include authorized archived spaces and exclude inaccessible archived ones`() {
+        val archivedSpace = space.archive(now)
+        val hiddenArchived = diary.archive(now)
+        val hiddenDocId = DocumentId(UUID.randomUUID())
+        val archivedDoc = document(listOf(paragraph("para01", "재시도 기록")), revision = 2)
+        every { spaces.findAll() } returns listOf(archivedSpace, hiddenArchived)
+        every { catalog.documents(setOf(spaceId, otherSpaceId), "재시도", 50) } returns listOf(documentId, hiddenDocId)
+        every { catalog.comments(setOf(spaceId, otherSpaceId), "재시도", 50) } returns emptyList()
+        every { catalog.titles(setOf(spaceId, otherSpaceId), "재시도", 20) } returns listOf(documentId)
+        every { catalog.documents(setOf(spaceId), "재시도", 50) } returns listOf(documentId)
+        every { catalog.comments(setOf(spaceId), "재시도", 50) } returns emptyList()
+        every { catalog.titles(setOf(spaceId), "재시도", 20) } returns listOf(documentId)
+        every { documents.findByIds(listOf(documentId, hiddenDocId)) } returns listOf(archivedDoc)
+        every { documents.findByIds(listOf(documentId)) } returns listOf(archivedDoc)
+        every { documents.findByIds(emptyList()) } returns emptyList()
+
+        val ownerHits = service.search(ownerAccess, "재시도", null)
+        val ownerTitles = service.titles(ownerAccess, "재시도")
+        val scopedAccess = agentAccess(Permission.READ, setOf(spaceId))
+        val scopedHits = service.search(scopedAccess, "재시도", null)
+        val scopedTitles = service.titles(scopedAccess, "재시도")
+        val noArchiveAccess = agentAccess(Permission.READ, emptySet())
+
+        assertThat(ownerHits.map { it.space.id to it.document.id }).containsExactly(spaceId to documentId)
+        assertThat(ownerTitles.map { it.first.id to it.second.id }).containsExactly(spaceId to documentId)
+        assertThat(scopedHits.map { it.space.id to it.document.id }).containsExactly(spaceId to documentId)
+        assertThat(scopedTitles.map { it.first.id to it.second.id }).containsExactly(spaceId to documentId)
+        assertThat(service.search(noArchiveAccess, "재시도", null)).isEmpty()
+        assertThat(service.titles(noArchiveAccess, "재시도")).isEmpty()
     }
 }

@@ -34,6 +34,7 @@ export type Resolution = {
 export type Comment = {
   readonly id: string;
   readonly author: Actor;
+  readonly own?: boolean;
   readonly body: string;
   readonly createdAt: string;
   readonly editedAt: string | null;
@@ -41,7 +42,7 @@ export type Comment = {
 };
 
 export type ThreadClaim = { readonly actor: Actor; readonly acquiredAt: string; readonly expiresAt: string };
-export type ThreadReaction = { readonly actor: Actor; readonly emoji: string };
+export type ThreadReaction = { readonly actor: Actor; readonly emoji: string; readonly own?: boolean };
 export type SuggestionInput = {
   readonly anchor: Anchor;
   readonly hash?: string;
@@ -69,6 +70,7 @@ export type Thread = {
   readonly resolution: Resolution;
   readonly status: ThreadStatus;
   readonly author: Actor;
+  readonly own?: boolean;
   readonly comments: readonly Comment[];
   readonly linkedRevisions: readonly number[];
   readonly createdAt: string;
@@ -149,5 +151,6 @@ export function commentText(comment: Comment): string {
 }
 
 export function isOwnComment(comment: Comment, login: string): boolean {
-  return comment.author.kind === 'human' && comment.author.login === login && !comment.deleted;
+  if (comment.deleted) return false;
+  return comment.own ?? (comment.author.kind === 'human' && comment.author.login === login);
 }

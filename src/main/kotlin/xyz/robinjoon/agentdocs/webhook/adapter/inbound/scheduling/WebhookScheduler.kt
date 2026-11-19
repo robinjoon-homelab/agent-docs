@@ -9,10 +9,13 @@ class WebhookScheduler(
     private val sweep: WebhookSweepUseCase,
     private val dispatch: WebhookDispatchUseCase,
 ) {
-    // Every 5 seconds: plan what the last minutes of the log added, then send what is due.
-    @Scheduled(fixedDelayString = "PT5S", initialDelayString = "PT30S")
-    fun deliver() {
+    @Scheduled(fixedRateString = "PT5S", initialDelayString = "PT30S")
+    fun sweepRecent() {
         sweep.sweepRecent()
+    }
+
+    @Scheduled(fixedDelayString = "PT5S", initialDelayString = "PT30S", scheduler = "webhookDispatchScheduler")
+    fun deliver() {
         dispatch.dispatchDue()
     }
 

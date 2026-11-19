@@ -15,6 +15,7 @@ import xyz.robinjoon.agentdocs.access.domain.user.User
 import xyz.robinjoon.agentdocs.access.domain.user.UserId
 import xyz.robinjoon.agentdocs.access.domain.user.UserProfile
 import xyz.robinjoon.agentdocs.access.domain.user.UserRole
+import xyz.robinjoon.agentdocs.application.model.ActivitySubject
 import java.util.UUID
 
 // GitHub only says who the person is. Whether they may enter is decided here: the allowlist, a live invitation of the
@@ -44,9 +45,19 @@ class SignInService(
         val caller = Callers.person(user, role, joined + newlyJoined)
         newlyJoined.forEach {
             val label = SpaceMembershipService.nameOf(it.role)
-            journal.record(caller, "membership.joined", "초대받은 멤버 첫 로그인: @${user.account.login} $label")
+            journal.record(
+                caller,
+                "membership.joined",
+                "초대받은 멤버 첫 로그인: @${user.account.login} $label",
+                ActivitySubject(it.spaceId, null, null, null, it.id.value),
+            )
         }
         return caller
+    }
+
+    override fun confirmedOwner(login: String): Caller? {
+        if (allowlist.roleOf(login) != UserRole.OWNER) return null
+        return users.findByLogin(login)?.let { Callers.person(it, UserRole.OWNER) }
     }
 
     private fun saved(

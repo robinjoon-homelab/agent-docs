@@ -211,11 +211,10 @@ class DocumentTreeTest {
         acceptWrites()
         every { documents.livePaths() } returns
             listOf(location("기획/기능-정의서"), location("기획/디자인/화면"), location("기획/디자인"), location("메모"))
-        every { revisions.authorOf("robin") } returns owner
         every { documents.lockLiveAt(spaceId, listOf(path("기획"))) } returns emptyList()
         every { documents.lockLiveUnder(spaceId, path("기획")) } returns listOf(live("기획/기능-정의서"))
 
-        val created = service.fillMissingParents("robin").single()
+        val created = service.fillMissingParents(ownerAccess).single()
 
         assertThat(created.header.path).isEqualTo(path("기획"))
         assertThat(created.header.title).isEqualTo("기획")
@@ -226,18 +225,17 @@ class DocumentTreeTest {
     @Test
     fun `a folder whose documents went to the trash after the paths were read gets no document`() {
         every { documents.livePaths() } returns listOf(location("a"), location("a/b/c"))
-        every { revisions.authorOf("robin") } returns owner
         every { documents.lockLiveAt(spaceId, listOf(path("a"), path("a/b"))) } returns emptyList()
         every { documents.lockLiveUnder(spaceId, path("a/b")) } returns emptyList()
 
-        assertThat(service.fillMissingParents("robin")).isEmpty()
+        assertThat(service.fillMissingParents(ownerAccess)).isEmpty()
     }
 
     @Test
     fun `filling in parents again finds nothing to add`() {
         every { documents.livePaths() } returns listOf(location("기획"), location("기획/기능-정의서"))
 
-        assertThat(service.fillMissingParents("robin")).isEmpty()
+        assertThat(service.fillMissingParents(ownerAccess)).isEmpty()
     }
 
     private fun acceptWrites() {

@@ -13,6 +13,7 @@ internal object ActivitiesTable : Table("activities") {
     val actorLogin = varchar("actor_login", 39).nullable()
     val actorConnectionId = javaUUID("actor_connection_id").nullable()
     val actorClientName = varchar("actor_client_name", 200).nullable()
+    val membershipId = javaUUID("membership_id").nullable()
     val spaceId = javaUUID("space_id").nullable()
     val documentId = javaUUID("document_id").nullable()
     val threadId = javaUUID("thread_id").nullable()

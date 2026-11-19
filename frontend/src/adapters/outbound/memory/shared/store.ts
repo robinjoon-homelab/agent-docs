@@ -59,6 +59,9 @@ export class MemoryStore {
   documents: Map<string, AgentDocument> = new DocumentKeyedMap((id) => this.documentChanged(id));
   revisions = new Map<string, StoredRevision[]>();
   threads: Map<string, Thread[]> = new DocumentKeyedMap((id) => this.documentChanged(id));
+  threadAuthors = new Map<string, string>();
+  commentAuthors = new Map<string, string>();
+  reactionAuthors = new Map<string, string>();
   inbox: InboxItem[] = [];
   activity: Activity[] = [];
   connections: Connection[] = [];

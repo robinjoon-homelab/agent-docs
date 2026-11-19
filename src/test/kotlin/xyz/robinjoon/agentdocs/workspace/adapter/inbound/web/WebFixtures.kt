@@ -153,7 +153,7 @@ object WebFixtures {
                 fieldWithPath("$prefix.archivedAt")
                     .type(JsonFieldType.STRING)
                     .optional()
-                    .description("보관한 시각. 보관한 스페이스는 목록·검색·에이전트의 스페이스 찾기에서 빠지고 주소로는 열린다"),
+                    .description("보관한 시각. 보관한 스페이스는 목록·에이전트의 스페이스 찾기에서 빠지지만 주소로 열리고 권한이 있는 전체 검색·제목 찾기에 포함된다"),
                 fieldWithPath("$prefix.permission").description(PERMISSION),
             )
 

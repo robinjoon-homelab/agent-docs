@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.config
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 import xyz.robinjoon.agentdocs.application.port.output.ActivityCatalog
 import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
 import xyz.robinjoon.agentdocs.webhook.adapter.inbound.scheduling.WebhookScheduler
@@ -74,6 +75,13 @@ class WebhookConfig {
         gateway: WebhookGateway,
         clock: Clock,
     ): WebhookDispatchUseCase = WebhookDispatchService(ledger, gateway, clock)
+
+    @Bean(defaultCandidate = false)
+    fun webhookDispatchScheduler(): ThreadPoolTaskScheduler =
+        ThreadPoolTaskScheduler().apply {
+            setPoolSize(1)
+            setThreadNamePrefix("webhook-dispatch-")
+        }
 
     @Bean
     fun webhookScheduler(

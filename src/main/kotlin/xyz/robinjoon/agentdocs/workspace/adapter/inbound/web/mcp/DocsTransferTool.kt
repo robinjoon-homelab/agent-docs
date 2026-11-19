@@ -3,6 +3,7 @@ package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.DocumentTransferJson
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.EditStatisticsRecorder
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.McpToolResult
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.countConflict
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentTransfer
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
@@ -42,7 +43,7 @@ class DocsTransferTool(
         val base = arguments.optionalInt("baseVersion") ?: throw InvalidRequestException("baseVersion is required", READ_FIRST)
         val request = DocumentTransfer(SpaceSlug(arguments.string("space")), DocumentPath(arguments.string("path")), base)
         val id = DocumentId(arguments.uuid("document"))
-        val written = documents.transfer(context, id, request)
+        val written = statistics.countConflict(context.access, id) { documents.transfer(context, id, request) }
         statistics.agent(context.access, id)
         return McpToolResult.data(DocumentTransferJson.result(written))
     }

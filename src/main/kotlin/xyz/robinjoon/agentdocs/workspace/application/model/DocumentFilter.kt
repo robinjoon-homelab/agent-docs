@@ -8,6 +8,7 @@ data class DocumentFilter(
     val tag: String?,
     val folder: String?,
     val trashed: Boolean,
+    val after: DocumentListPosition? = null,
 ) {
     companion object {
         val active = DocumentFilter(null, null, null, false)

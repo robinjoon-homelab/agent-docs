@@ -143,10 +143,13 @@ include::{snippets}/spaces-not-found/response-fields.adoc[]
 
 === 문서 목록
 
+한 페이지에 최대 200개를 반환합니다. 수정 시각과 문서 ID로 순서를 정합니다. 응답에 `X-Next-Cursor`가 있으면 같은 조회 조건과 함께 `cursor`로 보내 이어 읽습니다.
+
 include::{snippets}/documents-list/http-request.adoc[]
 include::{snippets}/documents-list/path-parameters.adoc[]
 include::{snippets}/documents-list/query-parameters.adoc[]
 include::{snippets}/documents-list/http-response.adoc[]
+include::{snippets}/documents-list/response-headers.adoc[]
 include::{snippets}/documents-list/response-fields.adoc[]
 
 === 문서 만들기
@@ -168,7 +171,7 @@ include::{snippets}/documents-open/response-fields.adoc[]
 
 === 마크다운으로 읽기
 
-MCP `docs_read`와 같은 마크다운입니다. 큰 문서는 나눠 주고 `nextCursor`로 이어 읽습니다.
+MCP `docs_read`와 같은 마크다운입니다. 각 페이지는 고정된 o200k_base 기준 최대 20,000토큰입니다. `nextCursor`를 다음 요청의 `cursor`로 보내고, 받은 마크다운을 구분자 없이 이어 붙입니다. `revision`을 지정하면 확정 리비전으로 읽고, 머리말의 스페이스 주소는 현재 주소를 사용합니다.
 
 include::{snippets}/documents-markdown/http-request.adoc[]
 include::{snippets}/documents-markdown/query-parameters.adoc[]
@@ -236,7 +239,10 @@ include::{snippets}/documents-purge/http-response.adoc[]
 
 === 휴지통 목록
 
+문서 목록과 같은 `X-Next-Cursor`와 `cursor`로 이어 읽습니다.
+
 include::{snippets}/documents-trash-list/http-request.adoc[]
+include::{snippets}/documents-trash-list/query-parameters.adoc[]
 include::{snippets}/documents-trash-list/http-response.adoc[]
 include::{snippets}/documents-trash-list/response-fields.adoc[]
 
@@ -518,6 +524,12 @@ include::{snippets}/mcp-tools-list/response-fields.adoc[]
 include::{snippets}/mcp-tools-call/http-request.adoc[]
 include::{snippets}/mcp-tools-call/http-response.adoc[]
 include::{snippets}/mcp-tools-call/response-fields.adoc[]
+
+==== Markdown 이어 읽기
+
+include::{snippets}/mcp-tools-call-markdown-page/http-response.adoc[]
+
+include::{snippets}/mcp-tools-call-markdown-page/response-fields.adoc[]
 
 === 도구 오류
 
