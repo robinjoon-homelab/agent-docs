@@ -63,18 +63,29 @@ class DocumentEditorTest {
 
     @Test
     fun `a text replacement changes exactly one occurrence inside the block`() {
-        val edited = DocumentEditor.apply(blocks, listOf(EditOperation.ReplaceText(second.id, "teh", "the")))
+        val edited = DocumentEditor.apply(blocks, listOf(EditOperation.ReplaceText(second.id, hash(second), "teh", "the")))
 
         assertThat(edited[1]).isEqualTo(paragraph("second", "Second has a typo: the"))
     }
 
     @Test
+    fun `replaceText conflicts on any change to the block even when the find text is still present`() {
+        val changed = paragraph("second", "A new prefix. Second has a typo: teh")
+        val operation = EditOperation.ReplaceText(second.id, hash(second), "teh", "the")
+
+        assertThatThrownBy { DocumentEditor.apply(listOf(changed), listOf(operation)) }
+            .isInstanceOfSatisfying(EditConflictException::class.java) {
+                assertThat(it.conflicts).containsExactly(BlockConflict(second.id, hash(changed), BlockMarkdown.of(changed)))
+            }
+    }
+
+    @Test
     fun `text that is gone answers with the block as it is now, and text found twice is rejected`() {
-        assertThatThrownBy { DocumentEditor.apply(blocks, listOf(EditOperation.ReplaceText(second.id, "missing", "x"))) }
+        assertThatThrownBy { DocumentEditor.apply(blocks, listOf(EditOperation.ReplaceText(second.id, hash(second), "missing", "x"))) }
             .isInstanceOfSatisfying(EditConflictException::class.java) {
                 assertThat(it.conflicts).containsExactly(BlockConflict(second.id, BlockMarkdown.hash(second), BlockMarkdown.of(second)))
             }
-        assertThatThrownBy { DocumentEditor.apply(blocks, listOf(EditOperation.ReplaceText(second.id, "e", "x"))) }
+        assertThatThrownBy { DocumentEditor.apply(blocks, listOf(EditOperation.ReplaceText(second.id, hash(second), "e", "x"))) }
             .isInstanceOf(InvalidEditException::class.java)
             .hasMessage("operation 0: find text must occur exactly once in block second, found 2")
     }
@@ -88,7 +99,12 @@ class DocumentEditorTest {
                 .block
         val plain = MarkdownReader.readBlocks("| A | B |\n| --- | --- |\n| 1 | 4 |").map { it.block }
 
-        val replacedText = DocumentEditor.apply(listOf(table), listOf(EditOperation.ReplaceText(table.id, "3", "4"))).single() as TableBlock
+        val replacedText =
+            DocumentEditor
+                .apply(
+                    listOf(table),
+                    listOf(EditOperation.ReplaceText(table.id, hash(table), "3", "4")),
+                ).single() as TableBlock
         val rewritten =
             DocumentEditor
                 .apply(
@@ -120,11 +136,16 @@ class DocumentEditorTest {
                 "operation 0: block tbl001 is a table, so its replacement must start with a table; send the table without an " +
                     "annotation line to keep its row and column ids, or delete it and insert the new blocks",
             )
+        val replaceWithText = EditOperation.ReplaceText(table.id, hash(table), BlockMarkdown.of(table), "Not a table")
+        assertThatThrownBy { DocumentEditor.apply(listOf(table), listOf(replaceWithText)) }
+            .isInstanceOf(InvalidEditException::class.java)
+            .hasMessageContaining("its replacement must start with a table")
     }
 
     @Test
     fun `an operation on a block an earlier operation removed names the operation`() {
-        val operations = listOf(EditOperation.Delete(second.id, hash(second)), EditOperation.ReplaceText(second.id, "teh", "the"))
+        val operations =
+            listOf(EditOperation.Delete(second.id, hash(second)), EditOperation.ReplaceText(second.id, hash(second), "teh", "the"))
 
         assertThatThrownBy { DocumentEditor.apply(blocks, operations) }
             .isInstanceOf(InvalidEditException::class.java)

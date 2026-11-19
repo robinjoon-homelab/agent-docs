@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { paragraph } from '../../test-support/fixtures';
-import { conflictingBlocks, mergeAfterConflict } from './merge';
+import { conflictingBlocks, hasOrderConflict, mergeAfterConflict } from './merge';
 
 describe('three-way block merge', () => {
   it('preserves independent edits and remote insertions after their predecessor', () => {
@@ -21,6 +21,29 @@ describe('three-way block merge', () => {
     expect(conflictingBlocks(base, [paragraph('a', 'new')], [])).toEqual(['a']);
     expect(mergeAfterConflict(base, [], [paragraph('a', 'new')], new Map([['a', 'mine']]))).toEqual([]);
     expect(mergeAfterConflict(base, [paragraph('a', 'new')], [], new Map([['a', 'theirs']]))).toEqual([]);
+  });
+
+  it('preserves a remote move and a local insertion with its predecessor', () => {
+    const a = paragraph('a', 'one');
+    const b = paragraph('b', 'two');
+    const c = paragraph('c', 'three');
+    const added = paragraph('x', 'local');
+    expect(mergeAfterConflict([a, b, c], [a, added, b, c], [c, a, b], new Map())).toEqual([c, a, added, b]);
+  });
+
+  it('combines compatible moves and asks for a choice when the combined order cycles', () => {
+    const a = paragraph('a', 'a');
+    const b = paragraph('b', 'b');
+    const c = paragraph('c', 'c');
+    const d = paragraph('d', 'd');
+    const base = [a, b, c, d];
+    const mine = [b, a, c, d];
+    const compatible = [a, b, d, c];
+    const incompatible = [a, c, b, d];
+    expect(hasOrderConflict(base, mine, compatible)).toBe(false);
+    expect(mergeAfterConflict(base, mine, compatible, new Map())).toEqual([b, a, d, c]);
+    expect(hasOrderConflict(base, mine, incompatible)).toBe(true);
+    expect(mergeAfterConflict(base, mine, incompatible, new Map(), 'theirs')).toEqual(incompatible);
   });
 
   it('accepts identical concurrent edits', () => {

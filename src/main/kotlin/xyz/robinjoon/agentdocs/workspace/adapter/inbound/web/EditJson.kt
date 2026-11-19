@@ -27,7 +27,7 @@ object EditJson {
             "insert" -> EditOperation.Insert(position(node, index), blocks(node, index))
             "delete" -> EditOperation.Delete(target(), hash())
             "move" -> EditOperation.Move(target(), hash(), position(node, index))
-            "replaceText" -> EditOperation.ReplaceText(target(), field(node, "find", index), node.path("replace").asString(""))
+            "replaceText" -> EditOperation.ReplaceText(target(), hash(), field(node, "find", index), node.path("replace").asString(""))
             else -> throw InvalidRequestException("operation $index: op must be replace, insert, delete, move, or replaceText, not '$op'")
         }
     }

@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import xyz.robinjoon.agentdocs.application.model.ActivityRecord
 import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
 import java.time.Instant
+import java.util.UUID
 
 // Every write is recorded in the activity log, so counting what passes through gives the write counts by actor kind
 // (agentdocs.writes). A write whose transaction rolls back after it was recorded is still counted.
@@ -23,6 +24,8 @@ class MeteredActivityReporter(
                     .lowercase(),
             ).increment()
     }
+
+    override fun redactCommentExcerpt(commentId: UUID) = log.redactCommentExcerpt(commentId)
 
     override fun pruneBefore(cutoff: Instant): Int = log.pruneBefore(cutoff)
 

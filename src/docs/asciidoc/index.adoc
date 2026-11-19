@@ -74,7 +74,7 @@
 |insert |`markdown`, 위치(`after`: 블록 ID, `before`: 블록 ID, `at`: start 또는 end. 기본 end)
 |delete |`blockId`, `ifHash`
 |move |`blockId`, `ifHash`, 위치
-|replaceText |`blockId`, `find`, `replace`. `find`는 그 블록 마크다운에 정확히 한 번 나와야 하고, 바꾼 결과도 블록 하나여야 함
+|replaceText |`blockId`, `ifHash`, `find`, `replace`. `find`는 그 블록 마크다운에 정확히 한 번 나와야 하고, 바꾼 결과도 블록 하나여야 함
 |===
 
 == 스페이스
@@ -255,7 +255,7 @@ include::{snippets}/documents-legacy-operation/http-request.adoc[]
 include::{snippets}/documents-legacy-operation/http-response.adoc[]
 include::{snippets}/documents-legacy-operation/response-fields.adoc[]
 
-삭제된 문서·댓글의 본문이나 수정 이력을 복사한 멱등 응답은 함께 제거하고 성공 기록만 유지합니다. 해당 키는 `result_removed`(409)로 거절하며 원요청을 재전송하지 않도록 안내합니다. 배포 전 최초 응답 정보가 없는 `legacy_operation`과 구분합니다.
+삭제된 문서·댓글의 본문이나 수정 이력을 복사한 멱등 응답은 함께 제거합니다. 처음 요청한 주체에게 성공 기록은 남아 있으며, 문서가 영구 삭제되었다면 마지막 소속 스페이스의 편집 권한을 확인합니다. 권한을 확인한 재요청에는 `result_removed`(409)로 응답하고 원요청을 재전송하지 않도록 안내합니다. 배포 전 최초 응답 정보가 없는 키는 `legacy_operation`으로 응답합니다.
 
 include::{snippets}/documents-result-removed/http-request.adoc[]
 include::{snippets}/documents-result-removed/http-response.adoc[]
@@ -313,6 +313,8 @@ include::{snippets}/history-diff/response-fields.adoc[]
 
 === 되돌리기
 
+복원하면 선택한 리비전의 본문·제목·상태·태그·담당자를 현재 스페이스와 경로에 새 리비전으로 저장합니다.
+
 include::{snippets}/history-restore/http-request.adoc[]
 include::{snippets}/history-restore/request-fields.adoc[]
 include::{snippets}/history-restore/http-response.adoc[]
@@ -357,6 +359,8 @@ include::{snippets}/comments-edit/response-fields.adoc[]
 === 댓글 지우기
 
 스레드는 남고 댓글은 '삭제된 댓글'로 보입니다.
+
+삭제한 댓글의 본문·수정 이력과 받은편지함·활동 로그의 본문 발췌를 함께 지웁니다. 댓글의 자리와 활동 사건 기록은 유지합니다.
 
 include::{snippets}/comments-delete/http-request.adoc[]
 include::{snippets}/comments-delete/query-parameters.adoc[]
@@ -446,6 +450,8 @@ include::{snippets}/search-titles/http-response.adoc[]
 include::{snippets}/search-titles/response-fields.adoc[]
 
 == 받은편지함
+
+현재 볼 수 있는 스페이스의 알림만 목록·미읽음 수·읽음 처리에 사용합니다. 목록은 권한을 확인한 알림 중 최신 200개까지 반환하고, 접근 범위 밖의 개별 알림은 404로 응답합니다.
 
 === 목록
 

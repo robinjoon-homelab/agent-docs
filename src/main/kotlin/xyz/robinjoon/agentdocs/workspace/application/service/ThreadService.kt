@@ -138,7 +138,8 @@ class ThreadService(
         val (current, document) = lockByComment(context.access, comment)
         if (current.collaboration.suggestions.any { it.comment == comment }) current.requireAvailable(context.access.actor, journal.now())
         val saved = threads.update(current.deleteComment(comment, context.access.actor, journal.now()))
-        journal.removeCommentResults(comment)
+        inbox.redactCommentExcerpt(comment)
+        journal.removeCommentCopies(comment)
         journal.record(context, "comment.deleted", subjectOf(saved), "${document.header.title}: 댓글 삭제")
         return remembered(context, OperationRecord(DELETE_COMMENT, comment.value, null), viewOf(saved, document))
     }

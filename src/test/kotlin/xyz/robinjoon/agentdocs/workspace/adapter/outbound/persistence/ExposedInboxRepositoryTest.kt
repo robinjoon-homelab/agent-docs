@@ -6,7 +6,9 @@ import org.junit.jupiter.api.Test
 import xyz.robinjoon.agentdocs.support.persistence.MigratedH2Database
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.PersistenceFixtures.agent
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.PersistenceFixtures.at
+import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceScope
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItem
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItemId
@@ -35,12 +37,19 @@ class ExposedInboxRepositoryTest {
         database.inTransaction { repository.update(requireNotNull(older.markRead(at.plusSeconds(90)))) }
 
         assertThat(database.inTransaction { repository.claim("robin", robin) }).isEqualTo(2)
-        assertThat(database.inTransaction { repository.list(robin, false, 10) }.map { it.id }).containsExactly(newer.id, older.id)
-        assertThat(database.inTransaction { repository.list(robin, true, 10) }.map { it.id }).containsExactly(newer.id)
+        assertThat(
+            database
+                .inTransaction {
+                    repository.list(robin, false, 10, SpaceScope.AllSpaces)
+                }.map { it.id },
+        ).containsExactly(newer.id, older.id)
+        assertThat(
+            database.inTransaction { repository.list(robin, true, 10, SpaceScope.AllSpaces) }.map { it.id },
+        ).containsExactly(newer.id)
         assertThat(database.inTransaction { repository.findById(newer.id) }?.recipient).isEqualTo(InboxRecipient("robin", robin))
-        assertThat(database.inTransaction { repository.countUnread(robin) }).isEqualTo(1)
-        assertThat(database.inTransaction { repository.markAllRead(robin, at.plusSeconds(120)) }).isEqualTo(1)
-        assertThat(database.inTransaction { repository.countUnread(UUID.randomUUID()) }).isZero()
+        assertThat(database.inTransaction { repository.countUnread(robin, SpaceScope.AllSpaces) }).isEqualTo(1)
+        assertThat(database.inTransaction { repository.markAllRead(robin, at.plusSeconds(120), SpaceScope.AllSpaces) }).isEqualTo(1)
+        assertThat(database.inTransaction { repository.countUnread(UUID.randomUUID(), SpaceScope.AllSpaces) }).isZero()
     }
 
     @Test
@@ -54,8 +63,29 @@ class ExposedInboxRepositoryTest {
         database.inTransaction { repository.claim("robin-renamed", robin) }
 
         assertThat(
-            database.inTransaction { repository.list(robin, false, 10) }.map { it.id },
+            database.inTransaction { repository.list(robin, false, 10, SpaceScope.AllSpaces) }.map { it.id },
         ).containsExactly(afterRename.id, beforeRename.id)
+    }
+
+    @Test
+    fun `space visibility filters before the cap and applies to unread and read actions`() {
+        val visible = item("robin", 0)
+        val hidden = item("robin", 10)
+        val scope = SpaceScope.Listed(mapOf(visible.notice.target.spaceId to Permission.COMMENT))
+        val emptyScope = SpaceScope.Listed(emptyMap())
+        database.inTransaction {
+            repository.addAll(listOf(visible, hidden))
+            repository.claim("robin", robin)
+        }
+
+        assertThat(database.inTransaction { repository.list(robin, true, 1, scope) }.map { it.id }).containsExactly(visible.id)
+        assertThat(database.inTransaction { repository.countUnread(robin, scope) }).isEqualTo(1)
+        assertThat(database.inTransaction { repository.countUnread(robin, emptyScope) }).isZero()
+        assertThat(database.inTransaction { repository.findForRead(hidden.id, robin, scope) }).isNull()
+        assertThat(database.inTransaction { repository.findForRead(visible.id, robin, scope) }?.id).isEqualTo(visible.id)
+        assertThat(database.inTransaction { repository.markAllRead(robin, at, scope) }).isEqualTo(1)
+        assertThat(database.inTransaction { repository.list(robin, true, 1, SpaceScope.AllSpaces) }.map { it.id })
+            .containsExactly(hidden.id)
     }
 
     private fun item(

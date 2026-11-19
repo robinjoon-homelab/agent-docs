@@ -7,6 +7,4 @@ import java.util.UUID
 data class InboxRecipient(
     val login: String,
     val userId: UUID?,
-) {
-    fun isFor(userId: UUID): Boolean = this.userId == userId
-}
+)

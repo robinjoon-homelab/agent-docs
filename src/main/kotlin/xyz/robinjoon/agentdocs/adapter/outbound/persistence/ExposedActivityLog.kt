@@ -2,6 +2,8 @@ package xyz.robinjoon.agentdocs.adapter.outbound.persistence
 
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.inList
@@ -13,6 +15,7 @@ import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
 import xyz.robinjoon.agentdocs.application.model.ActivityActor
 import xyz.robinjoon.agentdocs.application.model.ActivityEntry
 import xyz.robinjoon.agentdocs.application.model.ActivityQuery
@@ -24,6 +27,7 @@ import xyz.robinjoon.agentdocs.application.port.output.ActivityCatalog
 import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.UUID
 
 class ExposedActivityLog :
     ActivityReporter,
@@ -51,6 +55,13 @@ class ExposedActivityLog :
             this[ActivityMentionsTable.activityId] = id
             this[ActivityMentionsTable.login] = login
         }
+    }
+
+    override fun redactCommentExcerpt(commentId: UUID) {
+        ActivitiesTable.update({
+            (ActivitiesTable.kind inList listOf("thread.opened", "comment.added")) and
+                ((ActivitiesTable.createdCommentId eq commentId) or (ActivitiesTable.legacyExcerptCommentId eq commentId))
+        }) { it[summary] = "삭제된 댓글" }
     }
 
     // Mention rows go with their entries through the foreign key's cascade.

@@ -26,8 +26,12 @@ class InboxService(
         unreadOnly: Boolean,
     ): List<InboxView> {
         if (access.actor.isAgent) return emptyList()
-        val items = inbox.list(readerOf(access), unreadOnly, LIMIT).filter { access.sees(it.notice.target.spaceId) }
-        val titles = documents.findByIds(items.map { it.notice.target.documentId }.distinct()).associate { it.id to it.header.title }
+        val items = inbox.list(readerOf(access), unreadOnly, LIMIT, access.spaces)
+        val titles =
+            documents
+                .findByIds(items.map { it.notice.target.documentId }.distinct())
+                .filter { access.sees(it.spaceId) }
+                .associate { it.id to it.header.title }
         val spacesById = spaces.findByIds(items.map { it.notice.target.spaceId }.toSet()).associateBy { it.id }
         return items.mapNotNull { item ->
             val target = item.notice.target
@@ -36,19 +40,19 @@ class InboxService(
         }
     }
 
-    override fun unreadCount(access: Access): Int = if (access.actor.isAgent) 0 else inbox.countUnread(readerOf(access))
+    override fun unreadCount(access: Access): Int = if (access.actor.isAgent) 0 else inbox.countUnread(readerOf(access), access.spaces)
 
     override fun markRead(
         access: Access,
         id: InboxItemId,
     ) {
-        val item =
-            inbox.findById(id)?.takeIf { !access.actor.isAgent && it.recipient.isFor(readerOf(access)) }
-                ?: throw InboxItemNotFoundException(id)
+        if (access.actor.isAgent) throw InboxItemNotFoundException(id)
+        val item = inbox.findForRead(id, readerOf(access), access.spaces) ?: throw InboxItemNotFoundException(id)
         item.markRead(clock.instant())?.let(inbox::update)
     }
 
-    override fun markAllRead(access: Access): Int = if (access.actor.isAgent) 0 else inbox.markAllRead(readerOf(access), clock.instant())
+    override fun markAllRead(access: Access): Int =
+        if (access.actor.isAgent) 0 else inbox.markAllRead(readerOf(access), clock.instant(), access.spaces)
 
     private fun readerOf(access: Access): UUID {
         val actor = access.actor

@@ -146,7 +146,7 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("from").description("이전 리비전"),
                         fieldWithPath("to").description("나중 리비전"),
                         fieldWithPath("changes[].blockId").description("블록 ID"),
-                        fieldWithPath("changes[].change").description("added, modified, removed. 옮기기만 한 블록은 없다"),
+                        fieldWithPath("changes[].change").description("added, modified, removed, moved. moved는 내용이 같고 순서만 바뀐 블록"),
                         subsectionWithPath("changes[].before").type(JsonFieldType.OBJECT).optional().description("이전 블록 JSON"),
                         subsectionWithPath("changes[].after").type(JsonFieldType.OBJECT).optional().description("나중 블록 JSON"),
                         fieldWithPath("changes[].changedCells").description("표에서 바뀐 셀의 rowId, columnId"),
@@ -200,7 +200,7 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
                     "history-restore",
                     requestFields(
                         *WebFixtures.writeMetadataFields(),
-                        fieldWithPath("revision").description("되돌릴 리비전. 이력은 되감지 않고 새 리비전을 만든다"),
+                        fieldWithPath("revision").description("해당 리비전의 본문·제목·상태·태그·담당자를 현재 스페이스와 경로에 새 리비전으로 저장"),
                         fieldWithPath(
                             "baseVersion",
                         ).type(JsonFieldType.NUMBER).description("화면이 보여 준 현재 version. 다르면 409"),

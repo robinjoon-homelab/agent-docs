@@ -40,15 +40,18 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepositor
 import xyz.robinjoon.agentdocs.workspace.application.service.DocumentService
 import xyz.robinjoon.agentdocs.workspace.application.service.WriteJournal
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditConflictException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.ChangeOrigin
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionContent
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
 import java.util.UUID
 
@@ -317,7 +320,7 @@ class DocumentServiceTest {
                 amended = false,
                 unchanged = false,
             )
-        every { operations.find(key) } returns OperationRecord("document.edit", documentId.value, 7, documentWrite = snapshot)
+        every { operations.findForWrite(key) } returns OperationRecord("document.edit", documentId.value, 7, documentWrite = snapshot)
         every { documents.findById(documentId) } returns document(listOf(first), revision = 9)
         every { revisions.find(documentId, 7) } returns revision(7, listOf(first), byAgent, now.minusSeconds(30))
 
@@ -331,7 +334,7 @@ class DocumentServiceTest {
     @Test
     fun `an operation id reused for another kind of write is rejected`() {
         val key = OperationKey(WorkspaceFixtures.connectionId.toString(), "op-1")
-        every { operations.find(key) } returns OperationRecord("thread.open", documentId.value, null)
+        every { operations.findForWrite(key) } returns OperationRecord("thread.open", documentId.value, null)
 
         val agentContext = context(agentAccess(Permission.EDIT, setOf(spaceId)), ChangeSource.MCP, "op-1")
 
@@ -351,7 +354,7 @@ class DocumentServiceTest {
 
     @Test
     fun `a retried trash move answers with the revision the first attempt produced`() {
-        every { operations.find(OperationKey(WorkspaceFixtures.ownerId.toString(), "op-trash")) } returns
+        every { operations.findForWrite(OperationKey(WorkspaceFixtures.ownerId.toString(), "op-trash")) } returns
             OperationRecord(
                 "document.trash",
                 documentId.value,
@@ -376,7 +379,7 @@ class DocumentServiceTest {
 
     @Test
     fun `a retried permanent delete finds the document already gone and succeeds`() {
-        every { operations.find(OperationKey(WorkspaceFixtures.ownerId.toString(), "op-purge")) } returns
+        every { operations.findForWrite(OperationKey(WorkspaceFixtures.ownerId.toString(), "op-purge")) } returns
             OperationRecord("document.purge", documentId.value, null, state = OperationResultState.COMPLETED)
         every { documents.findByIdForUpdate(documentId) } returns null
 
@@ -420,15 +423,28 @@ class DocumentServiceTest {
     }
 
     @Test
-    fun `restoring writes the old blocks as a new revision`() {
+    fun `restoring writes historical content and metadata at the current path and space`() {
+        val historicalHeader =
+            current.header.copy(
+                spaceId = SpaceId(UUID.randomUUID()),
+                path = DocumentPath("removed-parent/earlier-path"),
+                title = "Historical title",
+                properties = DocumentProperties.of(listOf("old-tag"), DocumentStatus.IN_REVIEW, "octocat"),
+            )
+        val historical =
+            revision(1, listOf(first), byOwnerOnWeb, now.minusSeconds(3_600))
+                .copy(content = RevisionContent.of(historicalHeader, listOf(first), trashed = true))
         every { documents.findByIdForUpdate(documentId) } returns current
-        every { revisions.find(documentId, 1) } returns revision(1, listOf(first), byOwnerOnWeb, now.minusSeconds(3_600))
+        every { revisions.find(documentId, 1) } returns historical
         every { documents.update(any(), any(), false) } answers { firstArg() }
 
         val written = service.restore(context(ownerAccess), documentId, 1, 3)
 
         assertThat(written.revision).isEqualTo(4)
+        assertThat(written.document.version).isEqualTo(4)
         assertThat(written.document.blocks).containsExactly(first)
+        assertThat(written.document.header).isEqualTo(historicalHeader.copy(spaceId = current.spaceId, path = current.header.path))
+        assertThat(written.document.isTrashed).isFalse()
     }
 
     @Test
@@ -473,12 +489,13 @@ class DocumentServiceTest {
 
         assertThat(written.unchanged).isFalse()
         assertThat(written.document.blocks).containsExactly(second, first)
-        assertThat(written.changedBlocks).isEmpty()
+        assertThat(written.changedBlocks).containsExactly(second.id, first.id)
     }
 
     @Test
     fun `a removed response never reapplies the successful write or exposes a new result`() {
-        every { operations.find(any()) } returns OperationRecord("document.save", documentId.value, 2, state = OperationResultState.REMOVED)
+        every { operations.findForWrite(any()) } returns
+            OperationRecord("document.save", documentId.value, 2, state = OperationResultState.REMOVED)
         every { documents.findById(documentId) } returns current
 
         repeat(2) {
@@ -490,9 +507,24 @@ class DocumentServiceTest {
     }
 
     @Test
+    fun `a purged root reports removed only to a prior writer still allowed to edit its last space`() {
+        val key = OperationKey(WorkspaceFixtures.connectionId.toString(), "purged")
+        every { operations.findForWrite(key) } returns
+            OperationRecord("document.save", documentId.value, 2, state = OperationResultState.REMOVED, purgedFrom = spaceId)
+        every { documents.findById(documentId) } returns null
+        val stillAuthorized = context(agentAccess(Permission.EDIT, setOf(spaceId)), ChangeSource.MCP, "purged")
+        val lostSpace = context(agentAccess(Permission.EDIT, emptySet()), ChangeSource.MCP, "purged")
+        val readOnly = context(agentAccess(Permission.READ, setOf(spaceId)), ChangeSource.MCP, "purged")
+
+        assertThatThrownBy { service.save(stillAuthorized, documentId, 1, emptyList()) }.isInstanceOf(ResultRemovedException::class.java)
+        assertThatThrownBy { service.save(lostSpace, documentId, 1, emptyList()) }.isInstanceOf(DocumentNotFoundException::class.java)
+        assertThatThrownBy { service.save(readOnly, documentId, 1, emptyList()) }.isInstanceOf(PermissionDeniedException::class.java)
+    }
+
+    @Test
     fun `legacy document keys never reapply a successful write`() {
         val key = OperationKey(WorkspaceFixtures.ownerId.toString(), "legacy")
-        every { operations.find(key) } returns OperationRecord("document.save", documentId.value, 2)
+        every { operations.findForWrite(key) } returns OperationRecord("document.save", documentId.value, 2)
         every { documents.findById(documentId) } returns current
 
         repeat(2) {
@@ -507,7 +539,7 @@ class DocumentServiceTest {
     @Test
     fun `a retry from a connection that lost the space finds nothing`() {
         val key = OperationKey(WorkspaceFixtures.connectionId.toString(), "op-1")
-        every { operations.find(key) } returns OperationRecord("document.edit", documentId.value, 7)
+        every { operations.findForWrite(key) } returns OperationRecord("document.edit", documentId.value, 7)
         every { documents.findById(documentId) } returns document(listOf(first), revision = 9)
 
         val narrowed = context(agentAccess(Permission.EDIT, emptySet()), ChangeSource.MCP, "op-1")

@@ -2,7 +2,7 @@ import { useDocumentPermission } from './DocumentPermissionContext';
 import { canComment, canResolveThread } from '../../../../../domain/space/permission';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { historyHref } from '../../../../../domain/document/document';
+import { replyHistoryHref } from '../../../../../domain/document/document';
 import type { Comment, Thread } from '../../../../../domain/thread/thread';
 import {
   THREAD_STATUS_LABEL,
@@ -173,7 +173,11 @@ export function ThreadCard({
         {thread.linkedRevisions.length === 0 ? null : (
           <div className="comment-revisions">
             {thread.linkedRevisions.map((revision) => (
-              <Link key={revision} className="chip" to={historyHref(spaceSlug, thread.documentId, revision)}>
+              <Link
+                key={revision}
+                className="chip"
+                to={replyHistoryHref(spaceSlug, thread.documentId, revision)}
+              >
                 rev {revision} 변경 보기
               </Link>
             ))}

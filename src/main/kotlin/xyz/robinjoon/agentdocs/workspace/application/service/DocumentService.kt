@@ -192,12 +192,12 @@ class DocumentService(
             throw InvalidRequestException("only a document in the trash can be deleted permanently", "move it to the trash first")
         }
         val together = documents.lockTrashedUnder(document.spaceId, document.header.path)
-        val deletingIds = listOf(id) + together.map { it.id }
+        val deletingSpaces = (listOf(document) + together).associate { it.id to it.spaceId }
         documents.delete(id)
         journal.record(context, "document.purged", subjectOf(document), "${document.header.title}: 영구 삭제")
         tree.purgeAlong(context, together)
         // Thread deletion waits for in-flight writers before their copied results are removed.
-        journal.removeDocumentResults(deletingIds)
+        journal.removeDocumentResults(deletingSpaces)
         journal.remember(context, OperationRecord(PURGE, id.value, null, state = OperationResultState.COMPLETED))
     }
 
@@ -212,7 +212,7 @@ class DocumentService(
         val document = lockForEdit(context.access, id)
         requireVersion(document, baseVersion ?: throw InvalidRequestException("baseVersion is required"))
         val target = revisions.find(id, revision) ?: throw RevisionNotFoundException("$id rev $revision")
-        val header = document.header.copy(title = target.content.header.title)
+        val header = document.header.copy(title = target.content.header.title, properties = target.content.header.properties)
         val restoring = context.copy(summary = context.summary ?: "rev $revision 내용으로 복원")
         return remember(context, RESTORE, write(restoring, document, Content(header, target.content.blocks), WriteMode.RESTORE))
     }
@@ -225,11 +225,11 @@ class DocumentService(
         name: String,
     ): RevisionLabel {
         val recorded = journal.replayed(context, LABEL)
-        val document = lockForEdit(context.access, recorded?.let { DocumentId(it.target) } ?: id)
         if (recorded != null) {
-            if (recorded.state == OperationResultState.REMOVED) throw ResultRemovedException(recorded)
+            DocumentReplay(documents).requireEditable(context.access, recorded, DocumentId(recorded.target))
             return recorded.revisionLabel ?: throw LegacyOperationException(recorded)
         }
+        val document = lockForEdit(context.access, id)
         val target = revisions.find(id, revision) ?: throw RevisionNotFoundException("$id rev $revision")
         val normalized =
             RevisionName
@@ -285,7 +285,7 @@ class DocumentService(
                     it.lifecycle.trashedAt?.isBefore(cutoff) == true
                 } ?: return@forEach
             documents.delete(id)
-            journal.removeDocumentResults(listOf(id))
+            journal.removeDocumentResults(mapOf(id to document.spaceId))
             journal.recordBySystem("document.purged", subjectOf(document), "${document.header.title}: 휴지통 보관 기간이 지나 삭제")
             deleted++
         }
@@ -330,7 +330,6 @@ class DocumentService(
         next: Content,
         mode: WriteMode,
     ): DocumentWrite {
-        // Compared as whole lists: the diff ignores moved blocks, but a new order is still a change.
         val now = journal.now()
         val latest = documents.pending(document.id)
         val typing = mode.groupsInput(context)
@@ -358,8 +357,10 @@ class DocumentService(
         val now = journal.now()
         val edited = document.amend(next.header, next.blocks, now)
         val before = revisions.find(document.id, document.revision)
-        val changes = BlockDiff.between(before?.content?.blocks.orEmpty(), next.blocks)
-        val summary = context.summary ?: ChangeSummary.of(document.header, next.header, changes, false)
+        val beforeBlocks = before?.content?.blocks.orEmpty()
+        val changes = BlockDiff.between(beforeBlocks, next.blocks)
+        val summary =
+            context.summary ?: ChangeSummary.of(document.header, next.header, changes, BlockDiff.reordered(beforeBlocks, next.blocks))
         val incoming = RevisionChange.of(originOf(context, document.spaceId), summary, changes.map { it.blockId }, now)
         val change = latest?.change?.amendedWith(incoming, summary) ?: incoming
         val revision = Revision.of(edited, change).copy(number = document.revision + 1)

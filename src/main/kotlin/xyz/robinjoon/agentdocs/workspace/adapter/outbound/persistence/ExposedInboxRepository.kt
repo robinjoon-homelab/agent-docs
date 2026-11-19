@@ -1,5 +1,6 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence
 
+import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
@@ -12,6 +13,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import xyz.robinjoon.agentdocs.workspace.application.port.output.InboxRepository
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceScope
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.Delivery
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItem
@@ -33,6 +35,10 @@ class ExposedInboxRepository : InboxRepository {
         InboxItemsTable.update({ InboxItemsTable.documentId inList documents.map { it.value } }) { it[spaceId] = space.value }
     }
 
+    override fun redactCommentExcerpt(comment: CommentId) {
+        InboxItemsTable.update({ InboxItemsTable.commentId eq comment.value }) { it[excerpt] = "" }
+    }
+
     override fun addAll(items: List<InboxItem>) {
         InboxItemsTable.batchInsert(items, shouldReturnGeneratedValues = false) { item ->
             val target = item.notice.target
@@ -51,19 +57,31 @@ class ExposedInboxRepository : InboxRepository {
         }
     }
 
-    // Only the read state ever changes.
+    // Reading an item changes only its read state.
     override fun update(item: InboxItem): InboxItem {
         val updated = InboxItemsTable.update({ InboxItemsTable.id eq item.id.value }) { it[readAt] = item.delivery.readAt?.utc() }
         check(updated == 1) { "Inbox item to update does not exist: ${item.id}" }
         return requireNotNull(findById(item.id))
     }
 
-    override fun findById(id: InboxItemId): InboxItem? =
+    internal fun findById(id: InboxItemId): InboxItem? =
         InboxItemsTable
             .selectAll()
             .where {
                 InboxItemsTable.id eq id.value
             }.singleOrNull()
+            ?.toItem()
+
+    override fun findForRead(
+        id: InboxItemId,
+        userId: UUID,
+        scope: SpaceScope,
+    ): InboxItem? =
+        InboxItemsTable
+            .selectAll()
+            .where { (InboxItemsTable.id eq id.value) and visibleTo(userId, scope) }
+            .forUpdate()
+            .singleOrNull()
             ?.toItem()
 
     override fun claim(
@@ -78,27 +96,43 @@ class ExposedInboxRepository : InboxRepository {
         userId: UUID,
         unreadOnly: Boolean,
         limit: Int,
+        scope: SpaceScope,
     ): List<InboxItem> {
-        val query = InboxItemsTable.selectAll().where { InboxItemsTable.recipientUserId eq userId }
+        val query = InboxItemsTable.selectAll().where { visibleTo(userId, scope) }
         if (unreadOnly) query.andWhere { InboxItemsTable.readAt.isNull() }
         return query.orderBy(InboxItemsTable.deliveredAt to SortOrder.DESC).limit(limit).map { it.toItem() }
     }
 
-    override fun countUnread(userId: UUID): Int =
+    override fun countUnread(
+        userId: UUID,
+        scope: SpaceScope,
+    ): Int =
         InboxItemsTable
             .selectAll()
-            .where { (InboxItemsTable.recipientUserId eq userId) and InboxItemsTable.readAt.isNull() }
+            .where { visibleTo(userId, scope) and InboxItemsTable.readAt.isNull() }
             .count()
             .toInt()
 
     override fun markAllRead(
         userId: UUID,
         at: Instant,
+        scope: SpaceScope,
     ): Int =
-        InboxItemsTable.update({ (InboxItemsTable.recipientUserId eq userId) and InboxItemsTable.readAt.isNull() }) {
+        InboxItemsTable.update({ visibleTo(userId, scope) and InboxItemsTable.readAt.isNull() }) {
             it[readAt] =
                 at.utc()
         }
+
+    private fun visibleTo(
+        userId: UUID,
+        scope: SpaceScope,
+    ): Op<Boolean> {
+        val recipient = InboxItemsTable.recipientUserId eq userId
+        return when (scope) {
+            SpaceScope.AllSpaces -> recipient
+            is SpaceScope.Listed -> recipient and (InboxItemsTable.spaceId inList scope.spaces.map { it.value })
+        }
+    }
 
     private fun ResultRow.toItem(): InboxItem {
         val target =

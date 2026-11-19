@@ -93,7 +93,7 @@ export type RevisionSnapshot = RevisionMetadata & {
   readonly createdAt: string;
 };
 
-export type ChangeKind = 'added' | 'modified' | 'removed';
+export type ChangeKind = 'added' | 'modified' | 'removed' | 'moved';
 
 export type CellRef = { readonly rowId: string; readonly columnId: string };
 
@@ -130,6 +130,10 @@ export function threadHref(spaceSlug: string, documentId: string, threadId: stri
 export function historyHref(spaceSlug: string, documentId: string, revision?: number): string {
   const base = `${documentHref(spaceSlug, documentId)}/history`;
   return revision === undefined ? base : `${base}?rev=${revision}`;
+}
+
+export function replyHistoryHref(spaceSlug: string, documentId: string, revision: number): string {
+  return `${historyHref(spaceSlug, documentId)}?replyRev=${revision}`;
 }
 
 export function parseTags(input: string): string[] {

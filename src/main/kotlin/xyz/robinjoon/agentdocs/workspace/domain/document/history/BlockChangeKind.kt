@@ -4,4 +4,5 @@ enum class BlockChangeKind {
     ADDED,
     MODIFIED,
     REMOVED,
+    MOVED,
 }

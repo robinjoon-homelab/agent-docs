@@ -213,13 +213,16 @@ class ExposedOperationStoreTest {
             store.save(completeKey, completed, at)
             store.save(legacyKey, legacy, at)
             store.save(unrelatedKey, unrelated, at)
-            store.removeDocumentResults(listOf(document.id))
-            store.removeDocumentResults(emptyList())
+            store.removeDocumentResults(mapOf(document.id to document.spaceId))
+            store.removeDocumentResults(emptyMap())
         }
 
         affected.forEach { (key, record) ->
-            assertThat(database.inTransaction { store.find(key) })
-                .isEqualTo(record.copy(documentWrite = null, threadView = null, state = OperationResultState.REMOVED))
+            val purgedFrom = document.spaceId.takeIf { record.target == document.id.value }
+            assertThat(database.inTransaction { store.findForWrite(key) })
+                .isEqualTo(
+                    record.copy(documentWrite = null, threadView = null, state = OperationResultState.REMOVED, purgedFrom = purgedFrom),
+                )
             assertThat(payload(key)).isNull()
         }
         assertThat(database.inTransaction { store.find(completeKey) }).isEqualTo(completed)

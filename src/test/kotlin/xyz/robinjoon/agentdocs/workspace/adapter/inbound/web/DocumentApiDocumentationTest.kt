@@ -459,7 +459,8 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
     fun `edits apply guarded operations and can answer a thread`() {
         val thread = ThreadId(UUID.fromString("66666666-6666-4666-8666-666666666666"))
         val context = WriteContext(agentAccess, ChangeSource.REST, "op-2", "재시도 간격 수정")
-        val operations = listOf(EditOperation.ReplaceText(body.id, "30초", "60초"))
+        val hash = BlockMarkdown.hash(body)
+        val operations = listOf(EditOperation.ReplaceText(body.id, hash, "30초", "60초"))
         every { documents.edit(context, documentId, operations, thread) } returns
             DocumentWrite(document(listOf(title, revised), revision = 4), 4, listOf(body.id), amended = false, unchanged = false)
 
@@ -469,7 +470,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     .principal(agent)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
-                        """{"operations":[{"op":"replaceText","blockId":"para01","find":"30초","replace":"60초"}],""" +
+                        """{"operations":[{"op":"replaceText","blockId":"para01","ifHash":"$hash","find":"30초","replace":"60초"}],""" +
                             """"answering":"$thread","opId":"op-2","summary":"재시도 간격 수정"}""",
                     ),
             ).andExpect(status().isOk)
@@ -487,6 +488,18 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                     responseFields(*writeFields()),
                 ),
             )
+    }
+
+    @Test
+    fun `replaceText rejects edits without ifHash`() {
+        mockMvc
+            .perform(
+                post("/api/documents/{id}/edits", documentId)
+                    .principal(agent)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"operations":[{"op":"replaceText","blockId":"para01","find":"30초","replace":"60초"}]}"""),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.detail").value("operation 0: ifHash is required"))
     }
 
     @Test

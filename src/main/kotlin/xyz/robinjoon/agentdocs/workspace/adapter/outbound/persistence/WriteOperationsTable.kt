@@ -13,7 +13,14 @@ internal object WriteOperationsTable : Table("write_operations") {
     val revision = integer("revision").nullable()
     val payload = text("payload").nullable()
     val resultState = enumerationByName<OperationResultState>("result_state", 16)
+    val purgedFrom = javaUUID("purged_from_space_id").nullable()
     val createdAt = timestampWithTimeZone("created_at")
 
     override val primaryKey = PrimaryKey(writer, operationId)
+}
+
+internal object WriteOperationLocksTable : Table("write_operation_locks") {
+    val bucket = integer("bucket")
+
+    override val primaryKey = PrimaryKey(bucket)
 }

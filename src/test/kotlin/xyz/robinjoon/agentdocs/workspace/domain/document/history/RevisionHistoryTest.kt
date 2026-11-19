@@ -22,14 +22,18 @@ class RevisionHistoryTest {
     private val header = DocumentHeader(SpaceId(UUID.randomUUID()), DocumentPath("a"), "Title", DocumentProperties.initial)
 
     @Test
-    fun `a moved but unchanged block is not a change and a removed block sits where it was`() {
+    fun `moved blocks and removed blocks appear in target order and next to their old predecessor`() {
         val a = paragraph("aaaa", "A")
         val b = paragraph("bbbb", "B")
         val c = paragraph("cccc", "C")
 
         val changes = BlockDiff.between(listOf(a, b, c), listOf(c, a))
 
-        assertThat(changes.map { it.blockId.value to it.kind }).containsExactly("bbbb" to BlockChangeKind.REMOVED)
+        assertThat(changes.map { it.blockId.value to it.kind }).containsExactly(
+            "cccc" to BlockChangeKind.MOVED,
+            "aaaa" to BlockChangeKind.MOVED,
+            "bbbb" to BlockChangeKind.REMOVED,
+        )
     }
 
     @Test
@@ -40,7 +44,10 @@ class RevisionHistoryTest {
 
         assertThat(BlockDiff.reordered(listOf(a, b, c), listOf(c, a))).isTrue()
         assertThat(BlockDiff.reordered(listOf(a, b, c), listOf(a, c))).isFalse()
-        assertThat(ChangeSummary.of(header, header, emptyList(), reordered = true)).isEqualTo("블록 순서 변경")
+        val diff = RevisionDiff.between(1, listOf(a, b, c), 2, listOf(c, a, b))
+        assertThat(diff.changedBlocks).containsExactly(c.id, a.id, b.id)
+        assertThat(diff.unified).contains("b:cccc", "b:aaaa", "b:bbbb")
+        assertThat(ChangeSummary.of(header, header, diff.changes)).isEqualTo("블록 순서 변경")
     }
 
     @Test

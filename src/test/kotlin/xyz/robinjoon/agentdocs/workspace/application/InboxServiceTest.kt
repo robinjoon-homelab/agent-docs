@@ -20,6 +20,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.service.InboxService
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceScope
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItem
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItemId
@@ -41,7 +42,8 @@ class InboxServiceTest {
     fun `items about deleted documents are left out`() {
         val kept = item(spaceId, documentId)
         every { inbox.claim("robin", WorkspaceFixtures.ownerId) } returns 0
-        every { inbox.list(WorkspaceFixtures.ownerId, true, 200) } returns listOf(kept, item(spaceId, deletedDocument))
+        every { inbox.list(WorkspaceFixtures.ownerId, true, 200, SpaceScope.AllSpaces) } returns
+            listOf(kept, item(spaceId, deletedDocument))
         every { documents.findByIds(listOf(documentId, deletedDocument)) } returns listOf(document(emptyList(), revision = 1))
         every { spaces.findByIds(setOf(spaceId)) } returns listOf(space)
 
@@ -61,7 +63,7 @@ class InboxServiceTest {
     fun `nobody marks another person's item read`() {
         val someoneElses = InboxItem.deliver(InboxItemId(UUID.randomUUID()), "octocat", notice(spaceId, documentId), now)
         every { inbox.claim("robin", WorkspaceFixtures.ownerId) } returns 0
-        every { inbox.findById(someoneElses.id) } returns someoneElses
+        every { inbox.findForRead(someoneElses.id, WorkspaceFixtures.ownerId, SpaceScope.AllSpaces) } returns null
 
         assertThatThrownBy { service.markRead(ownerAccess, someoneElses.id) }.isInstanceOf(InboxItemNotFoundException::class.java)
     }

@@ -198,7 +198,7 @@ class ThreadServiceTest {
     fun `a legacy comment key reports the successful operation without reapplying it`() {
         val opened = thread(owner)
         val comment = opened.comments.first().id
-        every { operations.find(OperationKey(WorkspaceFixtures.ownerId.toString(), "op-edit")) } returns
+        every { operations.findForWrite(OperationKey(WorkspaceFixtures.ownerId.toString(), "op-edit")) } returns
             OperationRecord("comment.edit", comment.value, null)
         every { threads.findByCommentForUpdate(comment) } returns opened
         every { documents.findById(documentId) } returns current
@@ -215,7 +215,7 @@ class ThreadServiceTest {
 
     @Test
     fun `a legacy thread key cannot reapply the old operation`() {
-        every { operations.find(OperationKey(WorkspaceFixtures.connectionId.toString(), "op-answer")) } returns
+        every { operations.findForWrite(OperationKey(WorkspaceFixtures.connectionId.toString(), "op-answer")) } returns
             OperationRecord("thread.change", threadId.value, null)
         every { threads.findById(threadId) } returns thread(owner)
         every { documents.findById(documentId) } returns current
@@ -232,7 +232,7 @@ class ThreadServiceTest {
     fun `a replay returns the original thread and anchor resolution after later replies and edits`() {
         val original = thread(owner)
         val first = ThreadView(original, AnchorResolution.Attached(12, 19), null, original.comments.first().id)
-        every { operations.find(any()) } returns OperationRecord("thread.open", threadId.value, null, threadView = first)
+        every { operations.findForWrite(any()) } returns OperationRecord("thread.open", threadId.value, null, threadView = first)
         every { threads.findById(threadId) } returns
             original.reply(Comment.write(CommentId(UUID.randomUUID()), owner, "Later reply", now), now)
         every { documents.findById(documentId) } returns document(emptyList(), revision = 6)
@@ -249,7 +249,7 @@ class ThreadServiceTest {
         val original = thread(owner)
         val comment = original.comments.first().id
         val snapshot = ThreadView(original, AnchorResolution.Attached(12, 19), null)
-        every { operations.find(any()) } returns OperationRecord("comment.edit", comment.value, null, threadView = snapshot)
+        every { operations.findForWrite(any()) } returns OperationRecord("comment.edit", comment.value, null, threadView = snapshot)
         every { threads.findByCommentForUpdate(comment) } returns
             thread(agentAccess.actor).let {
                 CommentThread.restore(
@@ -272,7 +272,7 @@ class ThreadServiceTest {
         val comment = original.comments.first().id
         val deleted = original.editComment(comment, owner, "Secret edit", now).deleteComment(comment, owner, now)
         val snapshot = ThreadView(deleted, AnchorResolution.Attached(12, 19), null)
-        every { operations.find(any()) } returns OperationRecord("comment.delete", comment.value, null, threadView = snapshot)
+        every { operations.findForWrite(any()) } returns OperationRecord("comment.delete", comment.value, null, threadView = snapshot)
         every { threads.findByCommentForUpdate(comment) } returns deleted
         every { documents.findById(documentId) } returns current
 
@@ -304,7 +304,7 @@ class ThreadServiceTest {
     fun `a replayed thread write is refused after comment permission is revoked`() {
         val original = thread(owner)
         val snapshot = ThreadView(original, AnchorResolution.Attached(12, 19), null)
-        every { operations.find(any()) } returns OperationRecord("thread.open", threadId.value, null, threadView = snapshot)
+        every { operations.findForWrite(any()) } returns OperationRecord("thread.open", threadId.value, null, threadView = snapshot)
         every { threads.findById(threadId) } returns original
         val readOnly = agentAccess(Permission.READ, setOf(spaceId))
 
@@ -335,7 +335,7 @@ class ThreadServiceTest {
         val comment = original.comments.first().id
         val deleted = original.deleteComment(comment, owner, now)
         val record = OperationRecord("comment.delete", comment.value, null, state = OperationResultState.REMOVED)
-        every { operations.find(any()) } returns record
+        every { operations.findForWrite(any()) } returns record
         every { threads.findByCommentForUpdate(comment) } returns deleted
         every { documents.findById(documentId) } returns current
 
@@ -347,7 +347,7 @@ class ThreadServiceTest {
     @Test
     fun `removed results do not reveal prior success after comment permission is revoked`() {
         val record = OperationRecord("thread.change", threadId.value, null, state = OperationResultState.REMOVED)
-        every { operations.find(any()) } returns record
+        every { operations.findForWrite(any()) } returns record
         every { threads.findById(threadId) } returns thread(owner)
         val readOnly = agentAccess(Permission.READ, setOf(spaceId))
 
@@ -360,7 +360,7 @@ class ThreadServiceTest {
     fun `claim opId replay returns its first claim time after release`() {
         var saved = thread(owner)
         var operation: OperationRecord? = null
-        every { operations.find(any()) } answers { operation }
+        every { operations.findForWrite(any()) } answers { operation }
         every { operations.save(any(), any(), any()) } answers {
             operation = secondArg()
             Unit

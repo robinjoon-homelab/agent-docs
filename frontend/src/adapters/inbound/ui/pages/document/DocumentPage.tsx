@@ -154,6 +154,15 @@ function DocumentWorkspace({
     onError: (failure) => toast(errorMessage(failure)),
     spaces: { get: (slug) => services.spaces.get(slug), update: live.update },
   });
+  const { revoke: revokeAccess, receivePermission: receiveAccessPermission } = access;
+  useLayoutEffect(
+    () =>
+      session.onWriteAccess((change) => {
+        if ('revoked' in change) revokeAccess(change.revoked);
+        else void receiveAccessPermission(change.permission);
+      }),
+    [session, revokeAccess, receiveAccessPermission],
+  );
   const currentAccess = access.currentAccess;
   const spaceInfo = useDocumentLookup(
     `document-space:${document.space.slug}`,
@@ -426,9 +435,12 @@ function DocumentWorkspace({
     }
   };
 
-  const resolveConflicts = async (choices: ReadonlyMap<string, ConflictChoice>): Promise<void> => {
+  const resolveConflicts = async (
+    choices: ReadonlyMap<string, ConflictChoice>,
+    orderChoice?: ConflictChoice,
+  ): Promise<void> => {
     if (!access.beginConflictResolution()) return;
-    const { outcome } = await session.resolveConflicts(choices);
+    const { outcome } = await session.resolveConflicts(choices, orderChoice);
     if (outcome === 'saved') {
       await access.refresh();
       toast('선택한 내용으로 저장했습니다');
@@ -557,6 +569,7 @@ function DocumentWorkspace({
               {state.status === 'conflict' && canEdit(access.permission) && !access.resuming ? (
                 <ConflictPanel
                   conflicts={state.conflicts}
+                  orderConflict={state.orderConflict}
                   mine={session.currentBlocks()}
                   onResolve={resolveConflicts}
                 />

@@ -19,6 +19,7 @@ internal object ActivitiesTable : Table("activities") {
     val revision = integer("revision").nullable()
     val summary = varchar("summary", 300)
     val occurredAt = timestampWithTimeZone("occurred_at")
+    val legacyExcerptCommentId = javaUUID("legacy_excerpt_comment_id").nullable()
     val createdCommentId = javaUUID("created_comment_id").nullable()
 
     override val primaryKey = PrimaryKey(id)

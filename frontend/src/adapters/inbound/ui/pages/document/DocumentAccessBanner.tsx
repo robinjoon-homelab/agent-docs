@@ -18,7 +18,9 @@ export function DocumentAccessBanner({
   return (
     <div className="warning-box doc-banner" role="status">
       {access.revoked !== null
-        ? '접근이 회수됨. 이 탭의 입력은 보존되며 자동 저장과 재연결이 중단되었습니다.'
+        ? access.revoked === 'unauthenticated'
+          ? '로그인이 필요합니다. 저장하지 못한 입력은 이 탭에 남아 있습니다.'
+          : '현재 문서를 열 수 없습니다. 저장하지 못한 입력은 이 탭에 남아 있습니다.'
         : '읽기 전용입니다. 저장하지 못한 입력은 이 탭에 남아 있습니다.'}
       <button type="button" className="btn btn-small" onClick={onCopy}>
         입력 복사
