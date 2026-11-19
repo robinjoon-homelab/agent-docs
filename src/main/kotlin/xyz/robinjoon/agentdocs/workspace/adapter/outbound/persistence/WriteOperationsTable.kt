@@ -14,6 +14,7 @@ internal object WriteOperationsTable : Table("write_operations") {
     val payload = text("payload").nullable()
     val resultState = enumerationByName<OperationResultState>("result_state", 16)
     val purgedFrom = javaUUID("purged_from_space_id").nullable()
+    val threadDocumentId = javaUUID("thread_document_id").nullable()
     val createdAt = timestampWithTimeZone("created_at")
 
     override val primaryKey = PrimaryKey(writer, operationId)

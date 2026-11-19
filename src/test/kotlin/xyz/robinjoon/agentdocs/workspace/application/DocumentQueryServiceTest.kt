@@ -149,9 +149,7 @@ class DocumentQueryServiceTest {
         )
         assertThat(diff.unified).isEqualTo(
             "--- rev 1\n+++ rev 3\n" +
-                "@@ -1,1 +1,1 @@ b:para01\n-old\n+new\n" +
-                "@@ -3,1 +2,0 @@ b:para02\n-gone\n" +
-                "@@ -2,0 +3,1 @@ b:para03\n+added\n",
+                "@@ -1,3 +1,3 @@ b:para01 b:para02 b:para03\n-old\n-\n-gone\n+new\n+\n+added\n",
         )
     }
 

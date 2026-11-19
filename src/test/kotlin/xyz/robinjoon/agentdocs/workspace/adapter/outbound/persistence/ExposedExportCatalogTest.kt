@@ -121,7 +121,7 @@ class ExposedExportCatalogTest {
                 ?.get("body")
                 .toString(),
         ).contains(originalAsset.id.value.toString())
-        assertThat(snapshot.markdown[moved.id.value.toString()]).contains("asset:${originalAsset.id.value}")
+        assertThat(snapshot.documents.getValue(moved.id.toString()).blocks).isEqualTo(moved.blocks)
     }
 
     @Test

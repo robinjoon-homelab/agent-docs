@@ -28,10 +28,15 @@ internal object OperationSnapshotCodec {
     private val json = JsonMapper.builder().build()
 
     fun encode(record: OperationRecord): String? {
-        if (record.documentWrite == null && record.threadView == null && record.revisionLabel == null) return null
+        if (record.documentWrite == null && record.threadView == null && record.revisionLabel == null &&
+            record.assetAlt == null
+        ) {
+            return null
+        }
         return json.writeValueAsString(
             mapOf(
                 "version" to 1,
+                "assetAlt" to record.assetAlt,
                 "revisionLabel" to
                     record.revisionLabel?.let {
                         mapOf("document" to it.documentId.value.toString(), "revision" to it.revision, "name" to it.name)
@@ -51,6 +56,7 @@ internal object OperationSnapshotCodec {
         return record.copy(
             documentWrite = node.fieldNode("documentWrite")?.let(::readWrite),
             threadView = node.fieldNode("threadView")?.let(ThreadSnapshotCodec::decode),
+            assetAlt = node.optionalText("assetAlt"),
             revisionLabel =
                 node.fieldNode("revisionLabel")?.let {
                     RevisionLabel(

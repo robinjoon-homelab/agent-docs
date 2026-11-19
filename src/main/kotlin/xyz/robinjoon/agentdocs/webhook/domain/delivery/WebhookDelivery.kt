@@ -48,12 +48,10 @@ data class WebhookDelivery private constructor(
             when {
                 result.succeeded -> DeliveryProgress(DeliveryState.SUCCEEDED, attempt, null, last)
                 result.gone || attempt >= RetrySchedule.ATTEMPTS -> DeliveryProgress(DeliveryState.FAILED, attempt, null, last)
-                else -> DeliveryProgress(DeliveryState.PENDING, attempt, RetrySchedule.next(attempt, at, retryAfterOf(result)), last)
+                else -> DeliveryProgress(DeliveryState.PENDING, attempt, RetrySchedule.next(attempt, at), last)
             }
         return copy(progress = next)
     }
-
-    private fun retryAfterOf(result: AttemptResult): Duration? = (result as? AttemptResult.Answered)?.retryAfter
 
     companion object {
         // Longer than the 15 second request limit, so an attempt in flight is not taken twice.

@@ -62,6 +62,22 @@ class ExposedActivityLogTest {
     }
 
     @Test
+    fun `the instance log distinguishes identically named connections and keeps older entries without a target`() {
+        val owner = ActivityActor(ActivityActorKind.HUMAN, UUID.randomUUID(), "robin", null, null)
+        val subject = ActivitySubject(null, null, null, null)
+        val legacy = ActivityRecord("connection.revoked", owner, subject, "연결 회수: 빌드", at)
+        val first = legacy.copy(subject = subject.copy(connectionId = UUID.randomUUID()))
+        val second = legacy.copy(subject = subject.copy(connectionId = UUID.randomUUID()))
+        database.inTransaction { listOf(legacy, first, second).forEach(log::record) }
+
+        val instance = database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = true)) }
+        val scoped = database.inTransaction { log.find(ActivityQuery(setOf(space), null, null, 10, oldestFirst = true)) }
+
+        assertThat(instance.map { it.record }).containsExactly(legacy, first, second)
+        assertThat(scoped).isEmpty()
+    }
+
+    @Test
     fun `id cursor preserves same timestamp page boundary and initial since and space filters`() {
         database.inTransaction {
             log.record(record(space, -1))

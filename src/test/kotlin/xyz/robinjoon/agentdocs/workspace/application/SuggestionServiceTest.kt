@@ -9,8 +9,11 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
 import xyz.robinjoon.agentdocs.workspace.application.model.AnchorRequest
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
 import xyz.robinjoon.agentdocs.workspace.application.model.SuggestionRequest
 import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.InboxRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.OperationStore
@@ -95,6 +98,28 @@ class SuggestionServiceTest {
                 .decision
                 ?.revision,
         ).isEqualTo(4)
+    }
+
+    @Test
+    fun `a purged suggestion decision is reported only with current edit permission`() {
+        val record =
+            OperationRecord(
+                "thread.suggestion.decide",
+                thread.id.value,
+                null,
+                state = OperationResultState.REMOVED,
+                purgedFrom = document.spaceId,
+            )
+        every { operations.findForWrite(any()) } returns record
+        every { threads.findById(thread.id) } returns null
+        val comment = CommentId(UUID.randomUUID())
+        val editor = WorkspaceFixtures.memberAccess(mapOf(document.spaceId to Permission.EDIT))
+        val commenter = WorkspaceFixtures.memberAccess(mapOf(document.spaceId to Permission.COMMENT))
+
+        assertThatThrownBy { service.decide(WorkspaceFixtures.context(editor, operationId = "decide"), comment, true) }
+            .isInstanceOf(ResultRemovedException::class.java)
+        assertThatThrownBy { service.decide(WorkspaceFixtures.context(commenter, operationId = "decide"), comment, true) }
+            .isInstanceOf(PermissionDeniedException::class.java)
     }
 
     @Test

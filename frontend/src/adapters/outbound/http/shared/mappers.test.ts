@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { toStoredBlock } from './mappers';
 
 describe('toStoredBlock', () => {
+  it.each([1, 2, 3, 4, 5, 6])('reads a level %i heading from the API', (level) => {
+    const heading = { id: 'head000001', type: 'heading', level, text: '세부 항목', hash: 'abc' };
+    expect(toStoredBlock(heading)).toEqual(heading);
+  });
+
+  it.each([0, 2.5, 7])('rejects heading level %s', (level) => {
+    expect(() => toStoredBlock({ id: 'head000001', type: 'heading', level, text: '세부 항목' })).toThrow();
+  });
+
   it('keeps a display formula so it saves back as $$ instead of a fenced math block', () => {
     const block = toStoredBlock({
       id: 'math000001',

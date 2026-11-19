@@ -7,11 +7,12 @@ import xyz.robinjoon.agentdocs.workspace.domain.space.Space
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 
 interface SearchUseCase {
-    // Titles, blocks, and comments containing the term. space null searches every visible space.
+    // Without an explicit scope the caller may search at most one visible space.
     fun search(
         access: Access,
         term: String,
         space: SpaceSlug?,
+        allSpaces: Boolean = false,
     ): List<SearchHit>
 
     // Title matches across every visible space, for jumping to a document.

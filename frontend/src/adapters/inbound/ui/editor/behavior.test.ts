@@ -134,11 +134,11 @@ describe('editor behavior keeps block ids', () => {
     ]);
   });
 
-  it('markdown shortcuts change the block type without changing its id', () => {
+  it.each([2, 4, 5, 6])('the H%i shortcut keeps the block id and heading level', (level) => {
     const current = open([{ id: 'p000000001', type: 'paragraph', text: '' }]);
     cursorAt(current, 1);
-    typeText(current, '## Title');
-    expect(saved(current)).toEqual([{ id: 'p000000001', type: 'heading', level: 2, text: 'Title' }]);
+    typeText(current, `${'#'.repeat(level)} Title`);
+    expect(saved(current)).toEqual([{ id: 'p000000001', type: 'heading', level, text: 'Title' }]);
   });
 
   it('Backspace at the start of a heading turns it back into a paragraph with the same id', () => {

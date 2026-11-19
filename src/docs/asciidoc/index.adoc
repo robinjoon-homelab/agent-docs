@@ -38,7 +38,7 @@
 
 === 멱등 키
 
-쓰기 요청 본문에 `opId`를 넣으면 같은 `opId`로 다시 보낸 요청은 처음 결과를 그대로 돌려주고 두 번 쓰지 않습니다. 본문이 없는 쓰기(휴지통 이동·복원, 영구 삭제, 댓글 삭제)는 `opId`를 쿼리 파라미터로 받습니다. 네트워크가 끊겨 다시 보낼 때 씁니다.
+네트워크가 끊겨 쓰기를 다시 보낼 때 같은 `opId`를 쓰면 처음 결과를 돌려주고 두 번 쓰지 않습니다. JSON 요청은 본문에, 일반 파일 업로드와 본문 없는 쓰기(열람 기록, 휴지통 이동·복원, 영구 삭제, 댓글 삭제)는 쿼리 파라미터에 `opId`를 넣습니다.
 
 === 블록 형식
 
@@ -48,7 +48,7 @@
 |===
 |type |필드
 
-|heading |`level` 1~3, `text`
+|heading |`level` 1~6, `text`
 |paragraph |`text`
 |listItem |`style`(bullet, numbered, task), `depth` 0~, `checked`(task), `text`
 |quote |`text`
@@ -261,7 +261,7 @@ include::{snippets}/documents-legacy-operation/http-request.adoc[]
 include::{snippets}/documents-legacy-operation/http-response.adoc[]
 include::{snippets}/documents-legacy-operation/response-fields.adoc[]
 
-삭제된 문서·댓글의 본문이나 수정 이력을 복사한 멱등 응답은 함께 제거합니다. 처음 요청한 주체에게 성공 기록은 남아 있으며, 문서가 영구 삭제되었다면 마지막 소속 스페이스의 편집 권한을 확인합니다. 권한을 확인한 재요청에는 `result_removed`(409)로 응답하고 원요청을 재전송하지 않도록 안내합니다. 배포 전 최초 응답 정보가 없는 키는 `legacy_operation`으로 응답합니다.
+댓글이나 문서를 영구 삭제하면 삭제된 내용이 담긴 멱등 응답도 폐기하고, 처음 요청한 주체의 성공 기록을 남깁니다. 영구 삭제 뒤에는 문서의 마지막 스페이스에서 현재 권한을 확인합니다. 문서 쓰기와 수정 제안 결정에는 편집 권한이, 일반 댓글 쓰기와 수정 제안 제출에는 댓글 권한이 필요합니다. 확인된 재요청에는 `result_removed`(409)를 돌려줍니다. 마지막 스페이스를 복구할 수 없는 과거 댓글 기록은 소유자만 폐기 여부를 확인할 수 있습니다. 최초 응답을 저장하기 전의 키는 `legacy_operation`으로 구분합니다.
 
 include::{snippets}/documents-result-removed/http-request.adoc[]
 include::{snippets}/documents-result-removed/http-response.adoc[]
@@ -393,7 +393,10 @@ include::{snippets}/threads-resolve-forbidden/response-fields.adoc[]
 
 === 업로드
 
+MCP `docs_upload`로 파일 내용이나 이미지 URL을 직접 보낼 때 같은 `opId`를 쓰면 최초 첨부 ID와 대체 텍스트를 돌려줍니다. 로컬 파일용 일회용 업로드 명령을 발급할 때는 `opId`를 생략합니다.
+
 include::{snippets}/assets-upload/http-request.adoc[]
+include::{snippets}/assets-upload/query-parameters.adoc[]
 include::{snippets}/assets-upload/request-parts.adoc[]
 include::{snippets}/assets-upload/http-response.adoc[]
 include::{snippets}/assets-upload/response-headers.adoc[]
@@ -491,6 +494,10 @@ include::{snippets}/activity-list/query-parameters.adoc[]
 include::{snippets}/activity-list/http-response.adoc[]
 include::{snippets}/activity-list/response-fields.adoc[]
 
+소유자의 전체 활동 기록에서 에이전트 연결의 승인·발급·권한 변경·회수 대상은 `connectionId`로 구분합니다. 대상 ID를 기록하기 전의 활동은 이 값이 `null`입니다.
+
+include::{snippets}/activity-connection-target/http-response.adoc[]
+
 === 변경 피드
 
 에이전트가 마지막으로 본 뒤 바뀐 것을 가져옵니다. 응답의 `initialSince`를 다음 요청의 `since`로 유지하고 `nextCursor`를 `cursor`로 넘겨 연속 조회합니다. 기존 소비자를 위한 `nextSince`는 마지막 이벤트 시각입니다.
@@ -524,6 +531,17 @@ include::{snippets}/mcp-tools-list/response-fields.adoc[]
 include::{snippets}/mcp-tools-call/http-request.adoc[]
 include::{snippets}/mcp-tools-call/http-response.adoc[]
 include::{snippets}/mcp-tools-call/response-fields.adoc[]
+
+==== 문서 검색 범위
+
+`docs_search`는 `space`로 지정한 스페이스에서 검색합니다. 검색 범위를 생략하면 접근 가능한 스페이스가 하나일 때 그곳을 검색하고, 하나도 없으면 빈 목록을 반환합니다. 여러 곳에 접근할 수 있으면 `space`를 지정하거나 `allSpaces: true`로 전체 검색을 선택해야 합니다. 이전에 범위를 생략해 여러 곳을 검색하던 호출에는 `allSpaces: true`를 추가하세요.
+
+include::{snippets}/mcp-search-all-spaces/http-request.adoc[]
+include::{snippets}/mcp-search-all-spaces/request-fields.adoc[]
+
+`space`와 `allSpaces: true`를 함께 보내면 하나를 고르라는 오류를 반환합니다.
+
+include::{snippets}/mcp-search-conflicting-scope/http-response.adoc[]
 
 ==== Markdown 이어 읽기
 
@@ -654,6 +672,8 @@ SSE는 현재 인증과 문서 가시성을 재검사하고 1초 조회, 15회 �
 === navigation-view
 
 include::{snippets}/navigation-view/http-request.adoc[]
+
+include::{snippets}/navigation-view/query-parameters.adoc[]
 
 include::{snippets}/navigation-view/http-response.adoc[]
 

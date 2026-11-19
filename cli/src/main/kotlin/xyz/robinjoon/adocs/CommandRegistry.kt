@@ -43,6 +43,14 @@ internal object CommandRegistry {
             "statistics" to Route("GET", "/api/documents/{id}/edit-statistics"),
         )
 
+    fun uploadPath(
+        space: String,
+        opId: String?,
+    ): String {
+        val path = "/api/spaces/${encoded(space)}/assets"
+        return if (opId == null) path else "$path?opId=${encoded(opId)}"
+    }
+
     fun path(
         route: Route,
         args: Arguments,

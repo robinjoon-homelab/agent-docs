@@ -124,6 +124,7 @@ object WorkspaceJson {
             "threadId" to record.subject.threadId,
             "revision" to record.subject.revision,
             "membershipId" to record.subject.membershipId,
+            "connectionId" to record.subject.connectionId,
             "summary" to record.summary,
             "at" to record.at,
         )

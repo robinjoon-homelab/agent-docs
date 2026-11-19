@@ -81,6 +81,6 @@ internal class Commands(
             "--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$name\"\r\n" +
                 "Content-Type: application/octet-stream\r\n\r\n"
         val bytes = prefix.toByteArray() + Files.readAllBytes(file) + "\r\n--$boundary--\r\n".toByteArray()
-        return http.upload("/api/spaces/${encoded(space(args))}/assets", credentials.token(), bytes, boundary)
+        return http.upload(CommandRegistry.uploadPath(space(args), args.option("opId")), credentials.token(), bytes, boundary)
     }
 }

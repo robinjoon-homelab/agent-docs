@@ -9,6 +9,15 @@ import { schemaExtensions } from './schema';
 
 const schema = getSchema(schemaExtensions);
 
+it.each([4, 5, 6])('keeps H%i when copying and pasting HTML', (level) => {
+  const clipboard = document.createElement('div');
+  clipboard.innerHTML = `<h${level}>세부 항목</h${level}>`;
+  const parsed = DOMParser.fromSchema(schema).parse(clipboard);
+  expect(parsed.firstChild?.attrs.level).toBe(level);
+  const rendered = DOMSerializer.fromSchema(schema).serializeFragment(parsed.content);
+  expect(rendered.firstElementChild?.localName).toBe(`h${level}`);
+});
+
 it('a drawing copied as HTML and pasted into its own document keeps both assets and its alt text under a new id', () => {
   const blocks = [
     paragraph('para000001', '앞'),

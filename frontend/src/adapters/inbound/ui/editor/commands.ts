@@ -1,7 +1,7 @@
 import type { Editor, JSONContent } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
-import type { Block, ColumnAlign } from '../../../../domain/document/block';
+import type { Block, ColumnAlign, HeadingLevel } from '../../../../domain/document/block';
 import { blocksEqual } from '../../../../domain/document/block';
 import type { Inline } from '../../../../domain/document/inline';
 import type { Grid } from '../../../../domain/document/tableOps';
@@ -27,7 +27,7 @@ import { restoreSelection } from './restoreSelection';
 
 export type TextBlockType =
   | { readonly type: 'paragraph' }
-  | { readonly type: 'heading'; readonly level: 1 | 2 | 3 }
+  | { readonly type: 'heading'; readonly level: HeadingLevel }
   | { readonly type: 'listItem'; readonly style: 'bullet' | 'numbered' | 'task'; readonly checked?: boolean }
   | { readonly type: 'quote' }
   | { readonly type: 'callout'; readonly kind: string }

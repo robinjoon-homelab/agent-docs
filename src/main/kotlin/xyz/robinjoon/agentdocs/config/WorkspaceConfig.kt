@@ -184,9 +184,9 @@ class WorkspaceConfig {
     @Bean
     fun navigationUseCase(
         persistence: WorkspacePersistence,
-        clock: Clock,
+        journal: WriteJournal,
     ): NavigationUseCase =
-        NavigationService(persistence.personalDocuments, persistence.navigation, persistence.documents, persistence.spaces, clock)
+        NavigationService(persistence.personalDocuments, persistence.navigation, persistence.documents, persistence.spaces, journal)
 
     @Bean
     fun editSessionUseCase(

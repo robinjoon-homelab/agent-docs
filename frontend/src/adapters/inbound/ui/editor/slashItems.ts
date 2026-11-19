@@ -1,4 +1,5 @@
 import type { Editor, Range } from '@tiptap/core';
+import { HEADING_LEVELS } from '../../../../domain/document/block';
 import type { TextBlockType } from './commands';
 import { convertBlock, insertBlock, newTableJSON } from './commands';
 import { blockAtPos } from './positions';
@@ -25,27 +26,13 @@ export function slashItems(
   openDrawing: (anchorBlockId: string | null) => void = () => undefined,
 ): (query: string) => SuggestionItem[] {
   const entries: readonly SlashEntry[] = [
-    {
-      key: 'h1',
-      label: '제목 1',
-      aliases: ['h1', 'heading', '제목'],
-      hint: '#',
-      apply: convert({ type: 'heading', level: 1 }),
-    },
-    {
-      key: 'h2',
-      label: '제목 2',
-      aliases: ['h2', 'heading', '제목'],
-      hint: '##',
-      apply: convert({ type: 'heading', level: 2 }),
-    },
-    {
-      key: 'h3',
-      label: '제목 3',
-      aliases: ['h3', 'heading', '제목'],
-      hint: '###',
-      apply: convert({ type: 'heading', level: 3 }),
-    },
+    ...HEADING_LEVELS.map((level) => ({
+      key: `h${level}`,
+      label: `제목 ${level}`,
+      aliases: [`h${level}`, 'heading', '제목'],
+      hint: '#'.repeat(level),
+      apply: convert({ type: 'heading', level }),
+    })),
     {
       key: 'bullet',
       label: '목록',

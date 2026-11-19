@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.workspace.application.port.input
 
 import xyz.robinjoon.agentdocs.workspace.application.model.MobileMemoTarget
 import xyz.robinjoon.agentdocs.workspace.application.model.NavigationPage
+import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 
@@ -28,12 +29,12 @@ interface NavigationUseCase {
     ): NavigationPage
 
     fun recordView(
-        access: Access,
+        context: WriteContext,
         id: DocumentId,
     )
 
     fun favorite(
-        access: Access,
+        context: WriteContext,
         id: DocumentId,
         enabled: Boolean,
     )

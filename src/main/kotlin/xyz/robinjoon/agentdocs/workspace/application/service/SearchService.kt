@@ -27,9 +27,10 @@ class SearchService(
         access: Access,
         term: String,
         space: SpaceSlug?,
+        allSpaces: Boolean,
     ): List<SearchHit> {
         val needle = termOf(term)
-        val scope = scopeOf(access, space).associateBy { it.id }
+        val scope = scopeOf(access, space, allSpaces).associateBy { it.id }
         if (scope.isEmpty()) return emptyList()
         val found = documents.findByIds(catalog.documents(scope.keys, needle, LIMIT))
         val documentHits = found.flatMap { document -> scope[document.spaceId]?.let { hitsIn(document, it, needle) }.orEmpty() }
@@ -48,7 +49,7 @@ class SearchService(
         access: Access,
         term: String,
     ): List<Pair<Space, DocumentRef>> {
-        val scope = scopeOf(access, null).associateBy { it.id }
+        val scope = visibleSpaces(access).associateBy { it.id }
         if (scope.isEmpty()) return emptyList()
         return documents.findByIds(catalog.titles(scope.keys, termOf(term), TITLE_LIMIT)).mapNotNull { document ->
             scope[document.spaceId]?.let { it to refOf(document) }
@@ -75,11 +76,28 @@ class SearchService(
     private fun scopeOf(
         access: Access,
         slug: SpaceSlug?,
+        allSpaces: Boolean,
     ): List<Space> {
-        // Global search and title quick jump include archived spaces the caller is currently authorized to see.
-        if (slug == null) return spaces.findAll().filter { access.sees(it.id) }
-        return listOf(spaces.findBySlug(slug)?.takeIf { access.sees(it.id) } ?: throw SpaceNotFoundException(slug))
+        if (slug != null) {
+            if (allSpaces) {
+                throw InvalidRequestException(
+                    "space and allSpaces=true cannot be combined",
+                    "Choose a space or set allSpaces=true",
+                )
+            }
+            return listOf(spaces.findBySlug(slug)?.takeIf { access.sees(it.id) } ?: throw SpaceNotFoundException(slug))
+        }
+        val visible = visibleSpaces(access)
+        if (!allSpaces && visible.size > 1) {
+            throw InvalidRequestException(
+                "Several spaces are available",
+                "Specify space or set allSpaces=true to search all accessible spaces",
+            )
+        }
+        return visible
     }
+
+    private fun visibleSpaces(access: Access): List<Space> = spaces.findAll().filter { access.sees(it.id) }
 
     private fun termOf(term: String): String {
         val needle = term.trim()

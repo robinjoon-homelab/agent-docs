@@ -38,10 +38,11 @@ class AssetController(
     fun upload(
         @PathVariable slug: String,
         @RequestParam file: MultipartFile,
+        @RequestParam(required = false) opId: String?,
         principal: Principal?,
     ): ResponseEntity<Map<String, Any?>> {
         val uploaded = UploadedFile(file.originalFilename.orEmpty(), file.contentType, file.bytes)
-        return created(assets.upload(CallerAccess.write(principal, null, null), SpaceSlug(slug), uploaded))
+        return created(assets.upload(CallerAccess.write(principal, opId, null), SpaceSlug(slug), uploaded).asset)
     }
 
     // The other end of the command docs_upload hands an agent. The token comes in a header because addresses end up in
@@ -65,7 +66,8 @@ class AssetController(
         @PathVariable slug: String,
         @RequestBody request: ImportRequest,
         principal: Principal?,
-    ): ResponseEntity<Map<String, Any?>> = created(assets.import(CallerAccess.write(principal, null, null), SpaceSlug(slug), request.url))
+    ): ResponseEntity<Map<String, Any?>> =
+        created(assets.import(CallerAccess.write(principal, request.opId, null), SpaceSlug(slug), request.url).asset)
 
     // Files are immutable, so they cache for a year. The sandbox CSP and nosniff keep an SVG or a mislabeled file from
     // running script in this origin.
@@ -113,4 +115,5 @@ class AssetController(
 
 data class ImportRequest(
     val url: String,
+    val opId: String? = null,
 )

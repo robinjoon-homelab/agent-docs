@@ -23,7 +23,6 @@ import xyz.robinjoon.agentdocs.access.domain.connection.ConnectionTerm
 import xyz.robinjoon.agentdocs.access.domain.connection.Credentials
 import java.time.Duration
 import java.time.Instant
-import java.util.UUID
 
 // Access tokens last an hour and refresh tokens rotate, both bounded by the connection's own expiry. Every token is
 // issued for this server's MCP endpoint only.
@@ -49,16 +48,19 @@ class TokenService(
             } catch (exception: AuthorizationFailedException) {
                 throw OAuthException(exception.error, exception.message.orEmpty(), cause = exception)
             }
-        policy.requireOwner(approval.userId)
+        val delegator = policy.requireOwner(approval.userId)
         requests.update(exchanged)
         val client = clients.find(clientId) ?: throw OAuthException("invalid_client", "unknown client_id", OAuthException.UNAUTHORIZED)
         val owner = ConnectionOwner(approval.userId, ConnectionKind.AGENT, ClientRef(client.clientId, client.metadata.name, client.host))
         val term = ConnectionTerm(now, now.plus(approval.lifetime), null, now)
         val (tokens, credentials) = issueTokens(now)
+        // A code exchange creates at most one connection. Reuse its request ID so the approval log also identifies it.
         val connection =
             connections.add(
-                Connection.issue(ConnectionId(UUID.randomUUID()), owner, approval.grant, ConnectionState(term, credentials)),
+                Connection.issue(ConnectionId(request.id.value), owner, approval.grant, ConnectionState(term, credentials)),
             )
+        val caller = Callers.agent(connection, delegator.account.login)
+        journal.recordConnection(caller, "connection.issued", "OAuth 연결 발급: ${client.host ?: client.metadata.name}", connection.id.value)
         return tokens.withScopeOf(connection, now)
     }
 

@@ -12,7 +12,6 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.URI
 import java.net.UnknownHostException
-import java.time.Duration
 import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
@@ -45,7 +44,7 @@ class HttpWebhookGatewayTest {
     fun `the request carries the Standard Webhooks headers and the body exactly as planned`() {
         val result = HttpWebhookGateway().send(request("/ok"))
 
-        assertThat(result).isEqualTo(AttemptResult.Answered(204, null))
+        assertThat(result).isEqualTo(AttemptResult.Answered(204))
         assertThat(received["method"]).isEqualTo("POST")
         assertThat(received["body"]).isEqualTo(PAYLOAD)
         assertThat(received["content-type"]).isEqualTo("application/json")
@@ -67,18 +66,18 @@ class HttpWebhookGatewayTest {
 
         val result = gateway.send(request("/ok").copy(signingSecret = { current }))
 
-        assertThat(result).isEqualTo(AttemptResult.Answered(204, null))
+        assertThat(result).isEqualTo(AttemptResult.Answered(204))
         assertThat(received["webhook-signature"])
             .isEqualTo(StandardWebhookSignature.sign(rotated.key(), MESSAGE_ID, attemptAt.epochSecond, PAYLOAD))
     }
 
     @Test
-    fun `answers are returned as they came, redirects are not followed, and Retry-After seconds are read`() {
+    fun `answers are returned as they came, redirects are not followed, and a receiver delay does not change the result`() {
         val gateway = HttpWebhookGateway()
 
-        assertThat(gateway.send(request("/gone"))).isEqualTo(AttemptResult.Answered(410, null))
-        assertThat(gateway.send(request("/moved"))).isEqualTo(AttemptResult.Answered(302, null))
-        assertThat(gateway.send(request("/busy"))).isEqualTo(AttemptResult.Answered(503, Duration.ofSeconds(120)))
+        assertThat(gateway.send(request("/gone"))).isEqualTo(AttemptResult.Answered(410))
+        assertThat(gateway.send(request("/moved"))).isEqualTo(AttemptResult.Answered(302))
+        assertThat(gateway.send(request("/busy"))).isEqualTo(AttemptResult.Answered(503))
     }
 
     @Test

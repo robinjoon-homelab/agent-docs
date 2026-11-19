@@ -52,7 +52,7 @@ class ConnectionService(
             connections.add(
                 Connection.issue(ConnectionId(UUID.randomUUID()), owner, Grant.of(request.spaces, request.scope), state),
             )
-        journal.record(caller, "connection.issued", "스크립트 토큰 발급: ${connection.owner.client.name}")
+        journal.recordConnection(caller, "connection.issued", "스크립트 토큰 발급: ${connection.owner.client.name}", connection.id.value)
         return IssuedToken(connection, raw)
     }
 
@@ -66,7 +66,7 @@ class ConnectionService(
         val grant = Grant.of(change.spaces ?: connection.grant.spaces, change.scope ?: connection.grant.scope)
         if (grant == connection.grant) return connection
         val saved = connections.update(connection.regrant(grant))
-        journal.record(caller, "connection.regranted", "연결 권한 변경: ${saved.owner.client.name}")
+        journal.recordConnection(caller, "connection.regranted", "연결 권한 변경: ${saved.owner.client.name}", saved.id.value)
         return saved
     }
 
@@ -78,7 +78,7 @@ class ConnectionService(
         val connection = owned(caller, id, "revoking a connection")
         val revoked = connection.revoke(journal.now()) ?: return connection
         val saved = connections.update(revoked)
-        journal.record(caller, "connection.revoked", "연결 회수: ${saved.owner.client.name}")
+        journal.recordConnection(caller, "connection.revoked", "연결 회수: ${saved.owner.client.name}", saved.id.value)
         return saved
     }
 

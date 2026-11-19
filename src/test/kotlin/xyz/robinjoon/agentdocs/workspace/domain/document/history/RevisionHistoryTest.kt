@@ -87,6 +87,47 @@ class RevisionHistoryTest {
         ).isEqualTo("--- rev 1\n+++ rev 2\n@@ -2,1 +2,1 @@ b:item02\n-- two\n+- two!\n")
     }
 
+    @Test
+    fun `append and remove a paragraph with its blank separator`() {
+        val first = paragraph("aaaa", "alpha")
+        val next = paragraph("bbbb", "beta")
+        assertThat(RevisionDiff.between(1, listOf(first), 2, listOf(first, next)).unified)
+            .endsWith("@@ -1,0 +2,2 @@ b:bbbb\n+\n+beta\n")
+        assertThat(RevisionDiff.between(2, listOf(first, next), 3, listOf(first)).unified)
+            .endsWith("@@ -2,2 +1,0 @@ b:bbbb\n-\n-beta\n")
+    }
+
+    @Test
+    fun `first addition and last removal use empty ranges at line zero`() {
+        val only = listOf(paragraph("aaaa", "alpha"))
+        assertThat(RevisionDiff.between(1, emptyList(), 2, only).unified)
+            .endsWith("@@ -0,0 +1,1 @@ b:aaaa\n+alpha\n")
+        assertThat(RevisionDiff.between(2, only, 3, emptyList()).unified)
+            .endsWith("@@ -1,1 +0,0 @@ b:aaaa\n-alpha\n")
+    }
+
+    @Test
+    fun `removing a paragraph between list items removes both separating blank lines`() {
+        val first = item("item01", "one")
+        val last = item("item02", "two")
+        val spaced = listOf(first, paragraph("para01", "between"), last)
+        assertThat(RevisionDiff.between(1, spaced, 2, listOf(first, last)).unified)
+            .endsWith("@@ -2,3 +1,0 @@ b:para01\n-\n-between\n-\n")
+    }
+
+    @Test
+    fun `blocks moving across an unchanged block use nonoverlapping hunks in file order`() {
+        val a = paragraph("aaaa", "first")
+        val b = paragraph("bbbb", "middle")
+        val c = paragraph("cccc", "last")
+        assertThat(RevisionDiff.between(1, listOf(a, b, c), 2, listOf(c, b, a)).unified)
+            .isEqualTo(
+                "--- rev 1\n+++ rev 2\n" +
+                    "@@ -1,1 +1,1 @@ b:aaaa b:cccc\n-first\n+last\n" +
+                    "@@ -5,1 +5,1 @@ b:cccc b:aaaa\n-last\n+first\n",
+            )
+    }
+
     private fun paragraph(
         id: String,
         text: String,

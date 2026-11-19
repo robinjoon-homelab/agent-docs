@@ -51,7 +51,7 @@ class WriteJournal(
     ) {
         val remembered =
             if (record.documentWrite != null || record.threadView != null ||
-                record.revisionLabel != null
+                record.revisionLabel != null || record.assetAlt != null
             ) {
                 record.copy(state = OperationResultState.AVAILABLE)
             } else {

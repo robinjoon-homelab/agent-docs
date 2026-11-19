@@ -1,17 +1,13 @@
 package xyz.robinjoon.agentdocs.webhook.domain.delivery
 
-import java.time.Duration
-
 // What one request produced. Only a 2xx answer delivers; 410 Gone means the receiver wants no more and the endpoint
 // stops; every other answer, including a redirect, which is never followed, is a failure to retry.
 sealed interface AttemptResult {
     val succeeded: Boolean
     val gone: Boolean
 
-    // retryAfter is the receiver's Retry-After in seconds when it sent one.
     data class Answered(
         val status: Int,
-        val retryAfter: Duration?,
     ) : AttemptResult {
         override val succeeded: Boolean get() = status in success
         override val gone: Boolean get() = status == GONE

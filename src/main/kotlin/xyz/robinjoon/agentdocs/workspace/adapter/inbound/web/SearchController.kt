@@ -19,7 +19,7 @@ class SearchController(
         @RequestParam(required = false) space: String?,
         principal: Principal?,
     ): List<Map<String, Any?>> =
-        search.search(CallerAccess.of(principal), q, space?.let(::SpaceSlug)).map { hit ->
+        search.search(CallerAccess.of(principal), q, space?.let(::SpaceSlug), allSpaces = space == null).map { hit ->
             mapOf(
                 "kind" to hit.kind.name.lowercase(),
                 "space" to WorkspaceJson.spaceRef(hit.space),

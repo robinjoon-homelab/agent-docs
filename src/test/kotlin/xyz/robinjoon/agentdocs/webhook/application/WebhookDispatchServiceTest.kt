@@ -52,7 +52,7 @@ class WebhookDispatchServiceTest {
     @Test
     fun `a 2xx answer delivers the claimed delivery on its first attempt`() {
         every { deliveries.lockNextDue(now) } returnsMany listOf(delivery, null)
-        every { gateway.send(any()) } returns AttemptResult.Answered(204, null)
+        every { gateway.send(any()) } returns AttemptResult.Answered(204)
 
         val sent = dispatch.dispatchDue()
 
@@ -64,7 +64,7 @@ class WebhookDispatchServiceTest {
     @Test
     fun `a failed answer schedules the next attempt five seconds later with its status shown`() {
         every { deliveries.lockNextDue(now) } returnsMany listOf(delivery, null)
-        every { gateway.send(any()) } returns AttemptResult.Answered(503, null)
+        every { gateway.send(any()) } returns AttemptResult.Answered(503)
 
         val sent = dispatch.dispatchDue().single()
 
@@ -88,7 +88,7 @@ class WebhookDispatchServiceTest {
     @Test
     fun `a 410 answer ends the delivery and the receiver's endpoint stops as gone`() {
         every { deliveries.lockNextDue(now) } returnsMany listOf(delivery, null)
-        every { gateway.send(any()) } returns AttemptResult.Answered(410, null)
+        every { gateway.send(any()) } returns AttemptResult.Answered(410)
 
         val sent = dispatch.dispatchDue().single()
         val stopped = ledger.stopGone(endpoint.id, now)

@@ -47,7 +47,15 @@ class TokenServiceTest {
     private val clients = mockk<OAuthClientRepository>()
     private val secrets = mockk<SecretSource>()
     private val users = mockk<UserRepository>()
-    private val service = TokenService(requests, connections, clients, secrets, AccessJournal(mockk(), clock), TokenPolicy(users, settings))
+    private val service =
+        TokenService(
+            requests,
+            connections,
+            clients,
+            secrets,
+            AccessJournal(mockk(relaxUnitFun = true), clock),
+            TokenPolicy(users, settings),
+        )
 
     init {
         every { users.findById(UserId(ownerId)) } returns

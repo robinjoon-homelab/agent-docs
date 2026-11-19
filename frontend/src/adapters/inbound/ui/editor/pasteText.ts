@@ -132,8 +132,7 @@ function lineNode(line: string, allowedOrigin?: string): JSONContent | null {
     }
   }
   const heading = /^(#{1,6})\s+(.+)$/.exec(line);
-  if (heading)
-    return textNode('heading', heading[2] ?? '', { level: Math.min(3, (heading[1] ?? '').length) });
+  if (heading) return textNode('heading', heading[2] ?? '', { level: heading[1]?.length });
   const list = /^(\s*)([-+*]|\d+[.)])\s+(?:\[([ xX])\]\s+)?(.*)$/.exec(line);
   if (list)
     return textNode('listItem', list[4] ?? '', {

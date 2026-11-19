@@ -1,7 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.application.port.input
 
-import xyz.robinjoon.agentdocs.workspace.application.model.GrantedUpload
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadPass
+import xyz.robinjoon.agentdocs.workspace.application.model.UploadedAsset
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
@@ -28,7 +28,7 @@ interface UploadGrantUseCase {
         context: WriteContext,
         secret: String,
         file: UploadedFile,
-    ): GrantedUpload
+    ): UploadedAsset
 
     fun forgetExpired()
 }

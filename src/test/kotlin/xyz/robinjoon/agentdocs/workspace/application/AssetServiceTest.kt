@@ -16,6 +16,8 @@ import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.ownerAcce
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.space
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.spaceId
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationKey
+import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
 import xyz.robinjoon.agentdocs.workspace.application.model.RemoteImage
 import xyz.robinjoon.agentdocs.workspace.application.model.UploadedFile
 import xyz.robinjoon.agentdocs.workspace.application.model.VerifiedImage
@@ -48,6 +50,7 @@ class AssetServiceTest {
     private val scenes = mockk<SceneVerifier>()
     private val remote = mockk<RemoteImageSource>()
     private val activity = mockk<ActivityReporter>()
+    private val operations = mockk<OperationStore>()
     private val service =
         AssetService(
             spaces,
@@ -55,7 +58,7 @@ class AssetServiceTest {
             store,
             AttachmentVerifier(verifier, scenes),
             remote,
-            WriteJournal(activity, mockk<OperationStore>(), WorkspaceFixtures.clock),
+            WriteJournal(activity, operations, WorkspaceFixtures.clock),
         )
     private val png = byteArrayOf(1, 2, 3)
     private val content = AssetContent.of(AssetMediaType.PNG, png)
@@ -71,7 +74,7 @@ class AssetServiceTest {
         every { store.put(content.sha256, "image/png", png) } just runs
         every { assets.add(any()) } answers { firstArg() }
 
-        val asset = service.upload(context(ownerAccess), space.slug, UploadedFile("C:\\shots\\flow.png", "image/png", png))
+        val asset = service.upload(context(ownerAccess), space.slug, UploadedFile("C:\\shots\\flow.png", "image/png", png)).asset
 
         assertThat(asset.content).isEqualTo(content)
         assertThat(asset.origin).isEqualTo(AssetOrigin("flow.png", null, owner, now))
@@ -86,7 +89,13 @@ class AssetServiceTest {
         every { store.put(stored.sha256, "application/vnd.excalidraw+json", scene) } just runs
         every { assets.add(any()) } answers { firstArg() }
 
-        val asset = service.upload(context(ownerAccess), space.slug, UploadedFile("draw0001.excalidraw", "application/octet-stream", scene))
+        val asset =
+            service
+                .upload(
+                    context(ownerAccess),
+                    space.slug,
+                    UploadedFile("draw0001.excalidraw", "application/octet-stream", scene),
+                ).asset
 
         assertThat(asset.content).isEqualTo(stored)
     }
@@ -99,8 +108,8 @@ class AssetServiceTest {
         every { store.put(content.sha256, "image/png", png) } just runs
         every { assets.add(any()) } answers { firstArg() }
 
-        val first = service.upload(context(ownerAccess), space.slug, UploadedFile("flow.png", "image/png", png))
-        val again = service.import(context(ownerAccess), space.slug, url)
+        val first = service.upload(context(ownerAccess), space.slug, UploadedFile("flow.png", "image/png", png)).asset
+        val again = service.import(context(ownerAccess), space.slug, url).asset
 
         assertThat(again.id).isNotEqualTo(first.id)
         assertThat(again.content).isEqualTo(first.content)
@@ -126,7 +135,7 @@ class AssetServiceTest {
                 kept,
                 AttachmentVerifier(verifier, scenes),
                 remote,
-                WriteJournal(activity, mockk<OperationStore>(), WorkspaceFixtures.clock),
+                WriteJournal(activity, operations, WorkspaceFixtures.clock),
             )
         every { verifier.verify(png) } returns VerifiedImage(AssetMediaType.PNG, png)
 
@@ -144,7 +153,7 @@ class AssetServiceTest {
         every { store.put(content.sha256, "image/png", png) } just runs
         every { assets.add(any()) } answers { firstArg() }
 
-        val asset = service.import(context(ownerAccess), space.slug, url)
+        val asset = service.import(context(ownerAccess), space.slug, url).asset
 
         assertThat(asset.origin.fileName).isEqualTo("flow.png")
         assertThat(asset.origin.sourceUrl).isEqualTo(url)
@@ -160,6 +169,44 @@ class AssetServiceTest {
         assertThatThrownBy { service.import(context(ownerAccess), space.slug, "https://10.0.0.1/a.png") }
             .isInstanceOf(InvalidRequestException::class.java)
             .hasMessage("could not download a public image from https://10.0.0.1/a.png")
+    }
+
+    @Test
+    fun `direct uploads with one key keep the original ID and Markdown label`() {
+        val key = OperationKey(owner.userId.toString(), "upload-1")
+        val context = context(ownerAccess, operationId = "upload-1")
+        var stored: OperationRecord? = null
+        every { operations.findForWrite(key) } answers { stored }
+        every { operations.save(key, any(), now) } answers { stored = secondArg() }
+        every { verifier.verify(png) } returns VerifiedImage(AssetMediaType.PNG, png)
+        every { store.put(content.sha256, "image/png", png) } just runs
+        every { assets.add(any()) } answers { firstArg() }
+
+        val first = service.upload(context, space.slug, UploadedFile("first.png", "image/png", png), "원본")
+        every { assets.findByIdForUpdate(first.asset.id) } returns first.asset
+        val replay = service.upload(context, space.slug, UploadedFile("different.png", "image/png", png), "다른 설명")
+
+        assertThat(replay).isEqualTo(first)
+        assertThat(replay.alt).isEqualTo("원본")
+    }
+
+    @Test
+    fun `a retried URL import returns its first attachment and label from its current space`() {
+        val currentSpace = WorkspaceFixtures.otherSpaceId
+        val access = agentAccess(Permission.EDIT, setOf(currentSpace))
+        val context = context(access, operationId = "upload-1")
+        val asset = Asset.upload(AssetId(UUID.randomUUID()), currentSpace, content, AssetOrigin("flow.png", null, owner, now))
+        val record = OperationRecord("asset.import", asset.id.value, null, assetAlt = "first label")
+        every { operations.findForWrite(OperationKey(WorkspaceFixtures.connectionId.toString(), "upload-1")) } returns record
+        every { assets.findByIdForUpdate(asset.id) } returns asset
+
+        val replayed = service.import(context, space.slug, "https://example.com/changed.png", "changed label")
+
+        assertThat(replayed.asset).isEqualTo(asset)
+        assertThat(replayed.alt).isEqualTo("first label")
+        assertThatThrownBy {
+            service.import(context.copy(access = agentAccess(Permission.EDIT, setOf(spaceId))), space.slug, "https://example.com/flow.png")
+        }.isInstanceOf(AssetNotFoundException::class.java)
     }
 
     @Test

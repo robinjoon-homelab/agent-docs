@@ -9,4 +9,5 @@ data class ActivitySubject(
     val threadId: UUID?,
     val revision: Int?,
     val membershipId: UUID? = null,
+    val connectionId: UUID? = null,
 )
