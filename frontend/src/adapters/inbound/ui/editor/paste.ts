@@ -49,7 +49,8 @@ export function pasteStructuredText(view: EditorView, event: ClipboardEvent): bo
   const data = event.clipboardData;
   if (!data || data.getData('text/html') !== '') return false;
   const csv = data.getData('text/csv');
-  const nodes = pastedTextNodes(csv || data.getData('text/plain'), csv !== '');
+  const origin = typeof window === 'undefined' ? undefined : window.location.origin;
+  const nodes = pastedTextNodes(csv || data.getData('text/plain'), csv !== '', origin);
   if (nodes === null || nodes.length === 0) return false;
   const content = nodes.map((node) => view.state.schema.nodeFromJSON(node));
   const first = content[0];

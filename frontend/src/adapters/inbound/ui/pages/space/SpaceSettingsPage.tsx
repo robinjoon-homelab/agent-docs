@@ -1,7 +1,7 @@
 import { useSession } from '../../app/SessionContext';
 import { SpaceMembersSection } from './SpaceMembersSection';
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import {
   CONNECTION_KIND_LABEL,
   SCOPE_LABEL,
@@ -23,7 +23,7 @@ import { useShell } from '../../app/ShellContext';
 import { Dialog } from '../../common/Dialog';
 import { Icon } from '../../common/Icon';
 import { RelativeTime } from '../../common/RelativeTime';
-import { ErrorBox, Loading, LoadError, errorMessage } from '../../common/States';
+import { ErrorBox, Loading, LoadError, NotFound, errorMessage } from '../../common/States';
 import { useToast } from '../../common/Toast';
 import { useLoad } from '../../hooks/useLoad';
 import { useNow } from '../../hooks/useNow';
@@ -430,14 +430,29 @@ function SpaceSettings({ space, onSaved }: { space: Space; onSaved: (space: Spac
   );
 }
 
+function AuthorizedSpaceSettingsPage() {
+  const { space: slug = '' } = useParams();
+  const location = useLocation();
+  const space = useSpace(slug);
+  if (space.state === 'loading') return <Loading />;
+  if (space.state === 'error') return <LoadError error={space.error} onRetry={space.reload} />;
+  if (space.data.slug !== slug) {
+    return (
+      <Navigate
+        to={`/s/${encodeURIComponent(space.data.slug)}/settings${location.search}${location.hash}`}
+        replace
+      />
+    );
+  }
+  return <SpaceSettings space={space.data} onSaved={(updated) => space.setData(() => updated)} />;
+}
+
 /**
  * S8: space name, slug, description, external links, the agent guide, the default GitHub repository, trash,
  * archiving and the connections allowed here.
  */
 export function SpaceSettingsPage() {
-  const { space: slug = '' } = useParams();
-  const space = useSpace(slug);
-  if (space.state === 'loading') return <Loading />;
-  if (space.state === 'error') return <LoadError error={space.error} onRetry={space.reload} />;
-  return <SpaceSettings space={space.data} onSaved={(updated) => space.setData(() => updated)} />;
+  const { me } = useSession();
+  if (!me.owner) return <NotFound />;
+  return <AuthorizedSpaceSettingsPage />;
 }

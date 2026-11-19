@@ -1,6 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence
 
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
@@ -8,14 +9,42 @@ import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
 import xyz.robinjoon.agentdocs.workspace.domain.document.AssetReferences
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
+import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.InvalidDocumentException
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.MarkdownAssetReferences
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentThread
 
 // Reference writers and transfers take the same asset locks, so an exclusive move cannot race a new retained reference.
 internal object DocumentAssetWriteGuard {
-    fun document(document: Document) =
+    fun document(
+        document: Document,
+        kind: RevisionKind = RevisionKind.RESTORE,
+    ) {
+        if (kind == RevisionKind.EDIT) requirePairedDrawingEdits(document)
         requireSpace(document.id, document.spaceId, AssetReferences.of(document.blocks), AssetReferences.expectedTypes(document.blocks))
+    }
+
+    // Normal edits may keep both assets (alt-only edit) or replace both SVG and scene together on the same block id;
+    // historic restores are exempt so older revisions always remain restorable.
+    private fun requirePairedDrawingEdits(document: Document) {
+        val currentDrawings = document.blocks.filterIsInstance<DrawingBlock>()
+        if (currentDrawings.isEmpty()) return
+        val previousBody =
+            DocumentsTable
+                .select(DocumentsTable.body)
+                .where { DocumentsTable.id eq document.id.value }
+                .singleOrNull()
+                ?.get(DocumentsTable.body)
+                ?: return
+        val previousDrawings = DocumentRows.blocksOf(previousBody).filterIsInstance<DrawingBlock>().associateBy { it.id }
+        currentDrawings.forEach { drawing ->
+            val prior = previousDrawings[drawing.id] ?: return@forEach
+            if ((drawing.svg != prior.svg) != (drawing.scene != prior.scene)) {
+                throw InvalidDocumentException("updating drawing ${drawing.id} must replace both its SVG and its scene together")
+            }
+        }
+    }
 
     fun thread(thread: CommentThread) {
         val comments =

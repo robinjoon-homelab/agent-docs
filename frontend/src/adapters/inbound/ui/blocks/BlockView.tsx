@@ -61,7 +61,13 @@ function ImageView({ assetId, alt, caption }: { assetId: string; alt: string; ca
   return (
     <figure className="bv-image">
       <img src={assets.contentUrl(assetId)} alt={alt} loading="lazy" />
-      {caption === '' ? null : <figcaption>{caption}</figcaption>}
+      {caption === '' || caption === 'mockup' ? null : <figcaption>{caption}</figcaption>}
+      {alt.trim() === '' ? null : (
+        <p className="bv-image-alt">
+          <span className="bv-image-alt-label">대체 텍스트</span>
+          <span>{alt}</span>
+        </p>
+      )}
     </figure>
   );
 }
@@ -72,6 +78,12 @@ function DrawingImage({ svgAssetId, alt }: { svgAssetId: string; alt: string }) 
   return (
     <figure className="bv-image bv-drawing">
       <img className="drawing-picture" src={assets.contentUrl(svgAssetId)} alt={alt} loading="lazy" />
+      {alt.trim() === '' ? null : (
+        <p className="bv-image-alt">
+          <span className="bv-image-alt-label">대체 텍스트</span>
+          <span>{alt}</span>
+        </p>
+      )}
     </figure>
   );
 }

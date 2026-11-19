@@ -49,4 +49,29 @@ describe('structured text paste', () => {
       },
     ]);
   });
+
+  it('recognizes valid HTML mockup markdown while leaving invalid targets or raw HTML as ordinary text', () => {
+    const assetId = '11111111-1111-4111-8111-111111111111';
+    const docId = '22222222-2222-4222-8222-222222222222';
+    expect(pastedTextNodes(`![로그인 [초안\\]](asset:${assetId} "mockup")`)).toEqual([
+      { type: 'image', attrs: { assetId, alt: '로그인 [초안]', caption: 'mockup' } },
+    ]);
+    expect(
+      pastedTextNodes(
+        `![시안](<https://docs.example.com/api/documents/${docId}/assets/${assetId}/content> "mockup")`,
+        false,
+        'https://docs.example.com',
+      ),
+    ).toEqual([{ type: 'image', attrs: { assetId, alt: '시안', caption: 'mockup' } }]);
+
+    expect(
+      pastedTextNodes(
+        `![외부](<https://evil.example/api/assets/${assetId}/content> "mockup")`,
+        false,
+        'https://docs.example.com',
+      ),
+    ).toBeNull();
+    expect(pastedTextNodes('![잘못됨](asset:not-a-uuid "mockup")')).toBeNull();
+    expect(pastedTextNodes('<div><h1>Raw HTML</h1></div>')).toBeNull();
+  });
 });

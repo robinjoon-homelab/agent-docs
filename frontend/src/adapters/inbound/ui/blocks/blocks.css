@@ -179,6 +179,24 @@
   text-align: center;
 }
 
+.bv-image-alt {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.bv-image-alt-label {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-sunken);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .bv-divider {
   height: 1px;
   margin: 8px 0;

@@ -20,6 +20,8 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DrawingEditState } from '../../../../../domain/document/drawingInput';
 import { externalReferences } from '../../../../../domain/document/drawingSvg';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { NARROW_DRAWING_QUERY } from './DrawingView';
 import type { DrawingDialogProps, DrawingPair } from './drawingTypes';
 import { drawingFileNames } from './drawingTypes';
 import { hasRemoteImage } from './pasteGuard';
@@ -29,6 +31,8 @@ const FONT_MISSING =
   '손글씨 폰트를 이 앱에서 불러오지 못해 저장하지 않았습니다. 새로고침한 뒤 다시 저장하세요. 그림은 이 창에 남아 있습니다.';
 const READ_ONLY =
   '지금은 이 문서를 편집할 수 없어 저장하지 않습니다. 그림은 이 창에만 있으니 장면 파일로 내려받아 보관하세요.';
+const NARROW_VIEWPORT =
+  '화면 폭이 1023px 이하라 지금은 편집하고 저장할 수 없습니다. 화면을 다시 넓히면 편집·저장할 수 있으며, 작업 중인 그림은 이 창에 남아 있습니다.';
 const NO_REMOTE_IMAGES =
   '외부 주소의 이미지는 가져오지 않습니다. 이미지는 도구 막대의 이미지 도구로 넣어 주세요.';
 const NO_FILE_DROP = '파일은 끌어놓을 수 없습니다. 이미지는 도구 막대의 이미지 도구로 넣어 주세요.';
@@ -140,6 +144,8 @@ export default function DrawingDialog(props: DrawingDialogProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [expected, setExpected] = useState<DrawingPair | null>(target.kind === 'edit' ? target.pair : null);
   const [blockId, setBlockId] = useState<string | null>(target.kind === 'edit' ? target.blockId : null);
+  const narrow = useMediaQuery(NARROW_DRAWING_QUERY);
+  const canEdit = editable && !narrow;
   useOutsideGuards(wrapper, setMessage);
 
   // The original is read once; a later permission change never makes the dialog fetch it again.
@@ -160,7 +166,7 @@ export default function DrawingDialog(props: DrawingDialogProps) {
   }, [dirty, phase, onDraftChange]);
 
   const save = async () => {
-    if (api === null || phase === 'saving' || !editable) return;
+    if (api === null || phase === 'saving' || !canEdit) return;
     if (!edits.current.isDirty()) {
       onClose(phase === 'applied' ? 'keep' : 'discard');
       return;
@@ -254,7 +260,7 @@ export default function DrawingDialog(props: DrawingDialogProps) {
               type="button"
               className="btn btn-small btn-primary"
               onClick={() => void save()}
-              disabled={api === null || phase === 'saving' || !editable}
+              disabled={api === null || phase === 'saving' || !canEdit}
             >
               {phase === 'saving' ? '저장 중…' : '저장'}
             </button>
@@ -263,6 +269,11 @@ export default function DrawingDialog(props: DrawingDialogProps) {
         {!editable ? (
           <p className="drawing-dialog-notice" role="alert">
             {READ_ONLY}
+          </p>
+        ) : null}
+        {narrow ? (
+          <p className="drawing-dialog-notice" role="alert">
+            {NARROW_VIEWPORT}
           </p>
         ) : null}
         {message !== null ? (
@@ -278,6 +289,7 @@ export default function DrawingDialog(props: DrawingDialogProps) {
               excalidrawAPI={setApi}
               initialData={loaded.data}
               theme={theme}
+              viewModeEnabled={!canEdit}
               langCode="ko-KR"
               aiEnabled={false}
               validateEmbeddable={false}

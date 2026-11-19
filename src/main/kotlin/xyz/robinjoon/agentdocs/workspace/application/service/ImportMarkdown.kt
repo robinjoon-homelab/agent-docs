@@ -59,7 +59,7 @@ internal object ImportMarkdown {
     }
 
     private val fenceMarker = Regex("^ {0,3}(`{3,}|~{3,})")
-    private val image = Regex("""!\[([^\]]*)]\((<[^>]+>|[^\s()]+)(\s+"[^"]*")?\)""")
+    private val image = Regex("""!\[((?:\\.|[^\]\\])*)]\((<[^>]+>|[^\s()]+)(\s+"(?:\\.|[^"\\])*")?\)""")
     private val imageStart = Regex("""(?<!\\)!\[""")
     private val inlineCode = Regex("""(`+).*?\1""")
 }

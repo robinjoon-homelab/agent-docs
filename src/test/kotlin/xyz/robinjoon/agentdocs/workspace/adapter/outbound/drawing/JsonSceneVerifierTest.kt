@@ -72,6 +72,19 @@ class JsonSceneVerifierTest {
     }
 
     @Test
+    fun `Liberation Sans is refused in visible elements and appState while deleted elements stay as history`() {
+        val visibleFont = scene("""{"id":"t","type":"text","text":"hi","fontFamily":9}""")
+        val defaultFont = """{"type":"excalidraw","version":2,"appState":{"currentItemFontFamily":9},"elements":[]}""".toByteArray()
+        val deletedFont = scene("""{"id":"t","type":"text","text":"old","fontFamily":9,"isDeleted":true}""")
+        val allowedFont = scene("""{"id":"t","type":"text","text":"ok","fontFamily":5}""")
+
+        assertThatThrownBy { verifier.verify(visibleFont) }.isInstanceOf(InvalidAssetException::class.java)
+        assertThatThrownBy { verifier.verify(defaultFont) }.isInstanceOf(InvalidAssetException::class.java)
+        assertThat(verifier.verify(deletedFont).elementCount).isZero()
+        assertThat(verifier.verify(allowedFont).elementCount).isEqualTo(1)
+    }
+
+    @Test
     fun `a scene that is not UTF-8 is refused because its source is read as UTF-8 text`() {
         val latin1 = """{"type":"excalidraw","elements":[{"id":"t","type":"text","text":"café"}]}""".toByteArray(Charsets.ISO_8859_1)
 

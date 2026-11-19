@@ -28,6 +28,18 @@ export function isExternalImageUrl(text: string): boolean {
   return /^https?:\/\/\S+\.(png|jpe?g|gif|webp|svg)(\?\S*)?$/i.test(text.trim());
 }
 
+/** A single standalone http(s) URL without spaces, offered as an explicit import candidate when extensionless. */
+export function standaloneHttpUrl(text: string): string | null {
+  const trimmed = text.trim();
+  if (trimmed === '' || /\s/.test(trimmed) || !/^https?:\/\//i.test(trimmed)) return null;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
 export type UploadError = 'not_image' | 'too_large' | 'empty';
 
 export function checkUpload(mediaType: string, size: number): UploadError | null {
