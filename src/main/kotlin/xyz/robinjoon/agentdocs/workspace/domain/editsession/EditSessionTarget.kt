@@ -15,5 +15,8 @@ data class EditSessionTarget(
         require(actor.isAgent == (tabId == null)) { "A human session needs a tab ID" }
     }
 
-    val scope: String get() = "${documentId.value}:${spaceId.value}:${actor.userId}:${actor.agent?.connectionId ?: tabId}"
+    val scope: String
+        get() =
+            actor.agent?.let { "agent:${documentId.value}:${actor.userId}:${it.connectionId}" }
+                ?: "${documentId.value}:${spaceId.value}:${actor.userId}:$tabId"
 }

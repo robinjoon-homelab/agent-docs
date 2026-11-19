@@ -7,6 +7,7 @@ internal class MarkdownChunks(
 ) {
     private val pieces = arrayListOf<String>()
     private var version: Long? = null
+    private var contiguous: Boolean? = null
     var cursor: Int = 0
         private set
 
@@ -16,6 +17,9 @@ internal class MarkdownChunks(
         ) { "invalid markdown chunk identity" }
         val current = chunk.path("version").asLong()
         if (version != null && version != current) throw CliFailure("version_changed", "Document changed during pull; run pull again")
+        val exact = chunk.path("contiguous").asBoolean(false)
+        require(contiguous == null || contiguous == exact) { "markdown page format changed during pull" }
+        contiguous = exact
         version = current
         pieces += chunk.path("markdown").asString()
         val next = chunk.path("nextCursor")
@@ -26,6 +30,6 @@ internal class MarkdownChunks(
 
     fun text(): String {
         require(cursor == -1) { "markdown download is incomplete" }
-        return pieces.joinToString("\n\n").trimEnd() + "\n"
+        return if (contiguous == true) pieces.joinToString("") else pieces.joinToString("\n\n").trimEnd() + "\n"
     }
 }

@@ -2,10 +2,14 @@ package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web
 
 import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
+import org.springframework.http.HttpStatusCode
 import org.springframework.http.ProblemDetail
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.context.request.WebRequest
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler
 import xyz.robinjoon.agentdocs.workspace.application.model.AssetContentMissingException
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
@@ -183,6 +187,21 @@ class WorkspaceExceptionHandler : ResponseEntityExceptionHandler() {
             )
         problem.setProperty("candidates", exception.candidates.map(WorkspaceJson::space))
         return problem
+    }
+
+    override fun createResponseEntity(
+        body: Any?,
+        headers: HttpHeaders,
+        statusCode: HttpStatusCode,
+        request: WebRequest,
+    ): ResponseEntity<Any> {
+        if (statusCode == HttpStatus.BAD_REQUEST || statusCode == HttpStatus.UNSUPPORTED_MEDIA_TYPE) {
+            val problem = body as? ProblemDetail ?: ProblemDetail.forStatus(statusCode)
+            problem.setProperty("code", "invalid")
+            problem.setProperty("fix", ProblemFixes.INVALID)
+            return super.createResponseEntity(problem, headers, statusCode, request)
+        }
+        return super.createResponseEntity(body, headers, statusCode, request)
     }
 
     private fun problem(

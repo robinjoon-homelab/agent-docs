@@ -65,6 +65,27 @@ class CommentExcerptMigrationTest {
         assertThat(database.inTransaction { threads.findById(root.id) }).isEqualTo(deleted)
     }
 
+    @Test
+    fun `a retained exact delete key redacts its linked activity after purge`() {
+        val deleted = UUID.randomUUID()
+        val other = UUID.randomUUID()
+        database.execute(
+            "INSERT INTO write_operations (writer, operation_id, kind, target_id, created_at, result_state) VALUES " +
+                "('person', 'delete-once', 'comment.delete', '$deleted', TIMESTAMP WITH TIME ZONE '$at', 'REMOVED')",
+        )
+        database.execute(
+            "INSERT INTO activities (kind, actor_kind, summary, occurred_at, created_comment_id) VALUES " +
+                "('comment.added', 'HUMAN', 'Private', TIMESTAMP WITH TIME ZONE '$at', '$deleted'), " +
+                "('comment.added', 'HUMAN', 'Other', TIMESTAMP WITH TIME ZONE '$at', '$other')",
+        )
+
+        database.migrate()
+
+        val entries = database.inTransaction { log.find(ActivityQuery(null, null, null, 20, oldestFirst = true)) }.map { it.record }
+        assertThat(entries.map { it.summary }).containsExactly("삭제된 댓글", "Other")
+        assertThat(entries.map { it.createdComment?.id }).containsExactly(deleted, other)
+    }
+
     private fun item(
         thread: CommentThread,
         comment: Comment,

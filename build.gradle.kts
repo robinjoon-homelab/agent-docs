@@ -52,6 +52,7 @@ dependencies {
     implementation("software.amazon.awssdk:s3:2.56.0")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
+    implementation("com.knuddels:jtokkit:1.1.0")
     implementation("org.jetbrains.exposed:exposed-spring-boot4-starter:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-java-time:$exposedVersion")
     implementation("io.modelcontextprotocol.sdk:mcp-core:$mcpSdkVersion")

@@ -5,6 +5,7 @@ import xyz.robinjoon.agentdocs.application.model.ActivityActorKind
 import xyz.robinjoon.agentdocs.workspace.application.model.ActivityView
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListing
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentView
+import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceOverview
 import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.Actor
@@ -77,6 +78,16 @@ object WorkspaceJson {
             "trashedAt" to lifecycle.trashedAt,
         )
 
+    fun related(related: RelatedWrite): Map<String, Any?> =
+        mapOf(
+            "documentId" to related.document.id.value,
+            "path" to related.document.header.path.value,
+            "title" to related.document.header.title,
+            "revision" to related.document.revision,
+            "version" to related.document.version,
+            "change" to related.change.name.lowercase(),
+        )
+
     fun listing(listing: DocumentListing): Map<String, Any?> =
         mapOf("id" to listing.id.value) + header(listing.header, listing.lifecycle) + mapOf("updatedBy" to actor(listing.updatedBy))
 
@@ -112,6 +123,7 @@ object WorkspaceJson {
             "documentTitle" to view.documentTitle,
             "threadId" to record.subject.threadId,
             "revision" to record.subject.revision,
+            "membershipId" to record.subject.membershipId,
             "summary" to record.summary,
             "at" to record.at,
         )

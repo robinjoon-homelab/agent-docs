@@ -170,6 +170,7 @@ class ActivityApiDocumentationTest : RestDocsWebTest() {
             fieldWithPath("${prefix}documentTitle").type(JsonFieldType.STRING).optional().description("문서 제목. 문서가 지워졌으면 null"),
             fieldWithPath("${prefix}threadId").type(JsonFieldType.STRING).optional().description("스레드 ID"),
             fieldWithPath("${prefix}revision").type(JsonFieldType.NUMBER).optional().description("리비전"),
+            fieldWithPath("${prefix}membershipId").type(JsonFieldType.STRING).optional().description("인스턴스 멤버십 변경 대상 ID"),
             fieldWithPath("${prefix}summary").description("요약"),
             fieldWithPath("${prefix}at").description("시각"),
         )

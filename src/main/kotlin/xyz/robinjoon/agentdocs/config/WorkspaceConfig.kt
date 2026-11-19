@@ -10,6 +10,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.json.JsonMapper
 import xyz.robinjoon.agentdocs.access.application.port.input.CallerUseCase
+import xyz.robinjoon.agentdocs.access.application.port.input.SignInUseCase
 import xyz.robinjoon.agentdocs.access.application.port.input.WebSessionUseCase
 import xyz.robinjoon.agentdocs.access.application.service.CurrentCallerService
 import xyz.robinjoon.agentdocs.application.port.input.CurrentCallerUseCase
@@ -27,6 +28,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.outbound.image.SniffingImageVer
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.image.SvgSanitizer
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.storage.FileSystemAssetStore
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.storage.S3AssetStore
+import xyz.robinjoon.agentdocs.workspace.adapter.outbound.tokenization.O200kMarkdownTokenCounter
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ActivityUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentAssetUseCase
@@ -65,6 +67,10 @@ import xyz.robinjoon.agentdocs.workspace.application.service.SuggestionService
 import xyz.robinjoon.agentdocs.workspace.application.service.ThreadService
 import xyz.robinjoon.agentdocs.workspace.application.service.UploadGrantService
 import xyz.robinjoon.agentdocs.workspace.application.service.WriteJournal
+import xyz.robinjoon.agentdocs.workspace.domain.Access
+import xyz.robinjoon.agentdocs.workspace.domain.Actor
+import xyz.robinjoon.agentdocs.workspace.domain.Permission
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceScope
 import java.net.URI
 import java.nio.file.Path
 import java.time.Clock
@@ -108,7 +114,13 @@ class WorkspaceConfig {
     fun folderBackfill(
         documents: DocumentUseCase,
         properties: AgentDocsProperties,
-    ): FolderBackfill = FolderBackfill(documents, properties.owner)
+        signIn: SignInUseCase,
+    ): FolderBackfill =
+        FolderBackfill(documents) {
+            signIn.confirmedOwner(properties.owner.trim())?.let { owner ->
+                Access(Actor.human(owner.userId, owner.login), SpaceScope.AllSpaces, Permission.OWNER)
+            }
+        }
 
     @Bean
     fun pendingEditScheduler(documents: DocumentUseCase): PendingEditScheduler = PendingEditScheduler(documents)
@@ -120,6 +132,7 @@ class WorkspaceConfig {
             persistence.revisions,
             persistence.spaces,
             persistence.threads,
+            O200kMarkdownTokenCounter(),
         )
 
     @Bean

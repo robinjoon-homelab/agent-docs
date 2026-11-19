@@ -27,7 +27,6 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepositor
 import xyz.robinjoon.agentdocs.workspace.domain.Access
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
-import xyz.robinjoon.agentdocs.workspace.domain.SpaceScope
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
@@ -293,12 +292,10 @@ class DocumentService(
     }
 
     @Transactional
-    override fun fillMissingParents(owner: String): List<Document> {
+    override fun fillMissingParents(owner: Access): List<Document> {
+        Permissions.requireOwner(owner, "backfilling parent documents")
         val missing = DocumentTree.missingParents(documents.livePaths())
-        if (missing.isEmpty()) return emptyList()
-        // Revisions name a person, and the owner is the one the folders belonged to. One who never wrote has none.
-        val author = revisions.authorOf(owner) ?: return emptyList()
-        val context = WriteContext(Access(author, SpaceScope.AllSpaces, Permission.OWNER), ChangeSource.SYSTEM, null, null)
+        val context = WriteContext(owner, ChangeSource.SYSTEM, null, null)
         return missing.flatMap { tree.fillFolder(context, it) }
     }
 

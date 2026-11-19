@@ -13,6 +13,7 @@ import xyz.robinjoon.agentdocs.webhook.domain.delivery.WebhookDelivery
 import xyz.robinjoon.agentdocs.webhook.domain.endpoint.StopReason
 import xyz.robinjoon.agentdocs.webhook.domain.endpoint.WebhookEndpoint
 import xyz.robinjoon.agentdocs.webhook.domain.endpoint.WebhookEndpointId
+import xyz.robinjoon.agentdocs.webhook.domain.endpoint.WebhookSecret
 import java.time.Instant
 
 // The short transactions around one attempt: take a due delivery, record what the request produced, and stop an
@@ -32,6 +33,8 @@ class WebhookDeliveryLedger(
         val endpoint = if (claimed.inFlight) endpoints.findById(claimed.endpointId)?.takeIf { it.active } else null
         return DeliveryClaim(claimed, endpoint)
     }
+
+    fun signingSecret(id: WebhookEndpointId): WebhookSecret? = endpoints.findById(id)?.takeIf { it.active }?.secret
 
     // A result for an attempt that is no longer current changes nothing and returns the delivery as it is.
     @Transactional

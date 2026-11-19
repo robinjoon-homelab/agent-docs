@@ -68,6 +68,7 @@ class McpToolSpecifications(
         McpSchema.CallToolResult
             .builder()
             .content(listOf(McpSchema.TextContent(markdown ?: json.writeValueAsString(data))) + notes.map { McpSchema.TextContent(it) })
+            .apply { if (markdown != null && data != null) structuredContent(data) }
             .isError(isError)
             .build()
 

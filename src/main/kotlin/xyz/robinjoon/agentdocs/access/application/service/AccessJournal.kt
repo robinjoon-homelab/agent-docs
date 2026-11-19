@@ -9,7 +9,7 @@ import xyz.robinjoon.agentdocs.application.port.output.ActivityReporter
 import java.time.Clock
 import java.time.Instant
 
-// The clock and the activity log for connection and permission changes, which belong to no space.
+// The clock and shared activity log for access changes.
 class AccessJournal(
     private val activity: ActivityReporter,
     private val clock: Clock,
@@ -20,8 +20,9 @@ class AccessJournal(
         caller: Caller,
         kind: String,
         summary: String,
+        subject: ActivitySubject = ActivitySubject(null, null, null, null),
     ) {
         val actor = ActivityActor(ActivityActorKind.HUMAN, caller.userId, caller.login, null, null)
-        activity.record(ActivityRecord(kind, actor, ActivitySubject(null, null, null, null), summary, now()))
+        activity.record(ActivityRecord(kind, actor, subject, summary, now()))
     }
 }

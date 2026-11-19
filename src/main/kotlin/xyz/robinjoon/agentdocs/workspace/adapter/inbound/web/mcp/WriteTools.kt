@@ -5,12 +5,13 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.EditJson
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.EditStatisticsRecorder
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.McpToolResult
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.RevisionMetadataJson
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WorkspaceJson
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.countConflict
 import xyz.robinjoon.agentdocs.workspace.application.model.AssigneeChange
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
-import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
@@ -115,14 +116,17 @@ class DocsEditTool(
         context: WriteContext,
     ): McpToolResult {
         val answering = arguments.optionalUuid("answering")?.let(::ThreadId)
+        val id = DocumentId(arguments.uuid("document"))
         val written =
-            documents.edit(
-                RevisionMetadataJson
-                    .context(context, arguments.node),
-                DocumentId(arguments.uuid("document")),
-                EditJson.operations(arguments.node.get("operations")),
-                answering,
-            )
+            recorder.countConflict(context.access, id) {
+                documents.edit(
+                    RevisionMetadataJson
+                        .context(context, arguments.node),
+                    id,
+                    EditJson.operations(arguments.node.get("operations")),
+                    answering,
+                )
+            }
         recorder.agent(context.access, written.document.id)
         return WriteResults.of(written, all = false)
     }
@@ -174,13 +178,16 @@ class DocsMoveTool(
                 assignee,
                 arguments.optionalInt("baseVersion") ?: throw InvalidRequestException("docs_move needs baseVersion", READ_FIRST),
             )
+        val id = DocumentId(arguments.uuid("document"))
         val written =
-            documents.changeHeader(
-                RevisionMetadataJson
-                    .context(context, arguments.node),
-                DocumentId(arguments.uuid("document")),
-                change,
-            )
+            recorder.countConflict(context.access, id) {
+                documents.changeHeader(
+                    RevisionMetadataJson
+                        .context(context, arguments.node),
+                    id,
+                    change,
+                )
+            }
         recorder.agent(context.access, written.document.id)
         return WriteResults.of(written, all = false)
     }
@@ -217,18 +224,8 @@ internal object WriteResults {
                 "unchanged" to written.unchanged,
                 "changedBlockIds" to written.changedBlocks.map { it.value },
                 "blocks" to blocks,
-                "alsoChanged" to written.related.map(::relatedOf),
+                "alsoChanged" to written.related.map(WorkspaceJson::related),
             ),
         )
     }
-
-    private fun relatedOf(related: RelatedWrite): Map<String, Any?> =
-        mapOf(
-            "documentId" to related.document.id.value,
-            "path" to related.document.header.path.value,
-            "title" to related.document.header.title,
-            "revision" to related.document.revision,
-            "version" to related.document.version,
-            "change" to related.change.name.lowercase(),
-        )
 }

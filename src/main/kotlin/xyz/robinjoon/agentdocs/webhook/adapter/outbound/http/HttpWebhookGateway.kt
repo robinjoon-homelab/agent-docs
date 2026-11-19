@@ -36,13 +36,18 @@ class HttpWebhookGateway(
             }
         if (addresses.isEmpty()) return AttemptResult.Unanswered(UNKNOWN_HOST)
         if (addresses.any(WebhookAddressPolicy::refuses)) return AttemptResult.Unanswered(REFUSED_ADDRESS)
-        return exchange(build(request))
+        val key = request.signingSecret()?.key() ?: return AttemptResult.Unanswered("endpoint_stopped")
+        val timestamp = request.attemptAt.epochSecond
+        val signature = StandardWebhookSignature.sign(key, request.messageId, timestamp, request.payload)
+        return exchange(build(request, timestamp, signature))
     }
 
-    private fun build(request: OutgoingWebhook): HttpRequest {
-        val timestamp = request.attemptAt.epochSecond
-        val signature = StandardWebhookSignature.sign(request.secret.key(), request.messageId, timestamp, request.payload)
-        return HttpRequest
+    private fun build(
+        request: OutgoingWebhook,
+        timestamp: Long,
+        signature: String,
+    ): HttpRequest =
+        HttpRequest
             .newBuilder(request.url)
             .timeout(timeout)
             .header("Content-Type", "application/json")
@@ -52,7 +57,6 @@ class HttpWebhookGateway(
             .header("webhook-signature", signature)
             .POST(HttpRequest.BodyPublishers.ofString(request.payload, Charsets.UTF_8))
             .build()
-    }
 
     private fun exchange(request: HttpRequest): AttemptResult {
         val pending = client.sendAsync(request, HttpResponse.BodyHandlers.discarding())

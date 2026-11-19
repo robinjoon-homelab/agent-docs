@@ -52,6 +52,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.BlockMark
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListing
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListingPage
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentView
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
@@ -60,6 +61,8 @@ import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownFormat
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
+import xyz.robinjoon.agentdocs.workspace.application.model.RelatedChange
+import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceReference
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
@@ -75,6 +78,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentHeader
+import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentLifecycle
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
@@ -132,12 +136,13 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
     fun `list returns documents of the space filtered by status, tag, and folder`() {
         every {
             queries.list(ownerAccess, SpaceSlug("agent-docs"), DocumentFilter(DocumentStatus.IN_REVIEW, "payments", "payments", false))
-        } returns listOf(listing)
+        } returns DocumentListingPage(listOf(listing), "2026-11-19T00:00:00Z/$documentId")
 
         mockMvc
             .perform(get("/api/spaces/{slug}/documents?status=in_review&tag=payments&folder=payments", "agent-docs").principal(owner))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$[0].updatedBy.kind").value("agent"))
+            .andExpect(header().string("X-Next-Cursor", "2026-11-19T00:00:00Z/$documentId"))
             .andDo(
                 documented(
                     "documents-list",
@@ -146,7 +151,9 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                         parameterWithName("status").optional().description("draft, in_review, confirmed, archived"),
                         parameterWithName("tag").optional().description("태그"),
                         parameterWithName("folder").optional().description("이 경로의 문서 아래에 있는 문서만"),
+                        parameterWithName("cursor").optional().description("직전 응답 X-Next-Cursor"),
                     ),
+                    responseHeaders(headerWithName("X-Next-Cursor").optional().description("목록의 다음 페이지 커서")),
                     responseFields(*listingFields("[].")),
                 ),
             )
@@ -155,6 +162,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
     @Test
     fun `create from markdown returns the first revision and its block hashes`() {
         val created = document(listOf(title), revision = 1)
+        val parent = Document.create(DocumentId(UUID.randomUUID()), created.header.copy(path = DocumentPath("payments")), emptyList(), at)
         val draft =
             DocumentDraft(
                 DocumentPath("payments/retry"),
@@ -170,6 +178,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                 amended = false,
                 unchanged = false,
                 marks = listOf(BlockMark(title.id, agentActor, 1, at)),
+                related = listOf(RelatedWrite(parent, RelatedChange.CREATED)),
             )
         every { queries.open(ownerAccess, documentId) } returns DocumentView(document(revision = 9), space, emptyList())
 
@@ -185,6 +194,9 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
             .andExpect(header().string("Location", "/api/documents/$documentId"))
             .andExpect(jsonPath("$.revision").value(1))
             .andExpect(jsonPath("$.blockChanges[0].revision").value(1))
+            .andExpect(jsonPath("$.alsoChanged[0].documentId").value(parent.id.value.toString()))
+            .andExpect(jsonPath("$.alsoChanged[0].path").value("payments"))
+            .andExpect(jsonPath("$.alsoChanged[0].change").value("created"))
             .andDo(
                 documented(
                     "documents-create",
@@ -201,7 +213,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("summary").optional().type(JsonFieldType.STRING).description("한 줄 변경 요약. 비우면 자동으로 채운다"),
                     ),
                     responseHeaders(headerWithName("Location").description("문서 조회 경로")),
-                    responseFields(*documentFields()),
+                    responseFields(*documentFields(), *relatedFields()),
                 ),
             )
     }
@@ -262,6 +274,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                         parameterWithName("section").optional().description("이 제목 블록의 절만"),
                         parameterWithName("blocks").optional().description("이 블록들만. 여러 번 줄 수 있다"),
                         parameterWithName("cursor").optional().description("앞 조각의 nextCursor"),
+                        parameterWithName("revision").optional().description("읽을 확정 리비전. 생략하면 현재 문서"),
                     ),
                     responseFields(
                         fieldWithPath("documentId").description("문서 ID"),
@@ -269,7 +282,8 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("revision").description("마지막 확정 리비전"),
                         fieldWithPath("markdown").description("마크다운"),
                         *WebFixtures.guideFields("agentGuide"),
-                        fieldWithPath("nextCursor").type(JsonFieldType.NUMBER).optional().description("남은 블록이 있으면 다음 cursor"),
+                        fieldWithPath("nextCursor").type(JsonFieldType.NUMBER).optional().description("남은 바이트가 있으면 다음 cursor"),
+                        fieldWithPath("contiguous").description("페이지를 구분자 없이 이어 붙이면 원본이 됨"),
                         fieldWithPath("totalBlocks").description("문서의 블록 수"),
                     ),
                 ),
@@ -491,6 +505,21 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
+    fun `malformed bodies and answering identifiers give public error guidance`() {
+        listOf("{", "[]", """{"answering":"bad-id","operations":[]}""").forEach { json ->
+            mockMvc
+                .perform(
+                    post("/api/documents/{id}/edits", documentId)
+                        .principal(agent)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json),
+                ).andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.code").value("invalid"))
+                .andExpect(jsonPath("$.fix").isString)
+        }
+    }
+
+    @Test
     fun `replaceText rejects edits without ifHash`() {
         mockMvc
             .perform(
@@ -540,7 +569,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("assignee").optional().type(JsonFieldType.NULL).description("담당자. null이면 지우고, 빠지면 그대로 둔다"),
                         fieldWithPath("opId").optional().type(JsonFieldType.STRING).description("멱등 키"),
                     ),
-                    responseFields(*documentFields()),
+                    responseFields(*documentFields(), *relatedFields()),
                 ),
             )
     }
@@ -612,13 +641,20 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
 
     @Test
     fun `trash and recent lists use the list shape`() {
-        every { queries.list(ownerAccess, SpaceSlug("agent-docs"), DocumentFilter(null, null, null, true)) } returns listOf(listing)
+        every { queries.list(ownerAccess, SpaceSlug("agent-docs"), DocumentFilter(null, null, null, true)) } returns
+            DocumentListingPage(listOf(listing), null)
         every { queries.recent(ownerAccess, 5) } returns listOf(listing)
 
         mockMvc
             .perform(get("/api/spaces/{slug}/trash", "agent-docs").principal(owner))
             .andExpect(status().isOk)
-            .andDo(documented("documents-trash-list", responseFields(*listingFields("[]."))))
+            .andDo(
+                documented(
+                    "documents-trash-list",
+                    queryParameters(parameterWithName("cursor").optional().description("직전 응답 X-Next-Cursor")),
+                    responseFields(*listingFields("[].")),
+                ),
+            )
         mockMvc
             .perform(get("/api/documents/recent?limit=5").principal(owner))
             .andExpect(status().isOk)
@@ -711,6 +747,17 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
         arrayOf(
             fieldWithPath("${prefix}id").description("문서 ID"),
         ) + headerFields(prefix) + actorFields("${prefix}updatedBy")
+
+    private fun relatedFields(): Array<FieldDescriptor> =
+        arrayOf(
+            fieldWithPath("alsoChanged").description("함께 생성하거나 이동한 문서"),
+            fieldWithPath("alsoChanged[].documentId").optional().type(JsonFieldType.STRING).description("문서 ID"),
+            fieldWithPath("alsoChanged[].path").optional().type(JsonFieldType.STRING).description("쓰기 직후 경로"),
+            fieldWithPath("alsoChanged[].title").optional().type(JsonFieldType.STRING).description("쓰기 직후 제목"),
+            fieldWithPath("alsoChanged[].revision").optional().type(JsonFieldType.NUMBER).description("쓰기 직후 확정 리비전"),
+            fieldWithPath("alsoChanged[].version").optional().type(JsonFieldType.NUMBER).description("쓰기 직후 콘텐츠 버전"),
+            fieldWithPath("alsoChanged[].change").optional().type(JsonFieldType.STRING).description("created 또는 moved"),
+        )
 
     private fun documentFields(): Array<FieldDescriptor> =
         arrayOf(

@@ -195,6 +195,34 @@ class McpApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
+    fun `a partial document returns the cursor separately from the exact markdown`() {
+        val markdown = "---\nversion: 3\n---\n\n<!-- b:para01"
+        every { queries.markdown(agentAccess, documentId, any()) } returns MarkdownChunk(document(), markdown, 44, 2)
+
+        call("""{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"docs_read","arguments":{"document":"$documentId"}}}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.content[0].text").value(markdown))
+            .andExpect(jsonPath("$.result.structuredContent.nextCursor").value(44))
+            .andDo(
+                documented(
+                    "mcp-tools-call-markdown-page",
+                    responseFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
+                        fieldWithPath("result.content[].type").description("text"),
+                        fieldWithPath("result.content[].text").description("첫 항목은 그대로 이어 붙일 Markdown. 다음 항목은 이어 읽기 안내"),
+                        fieldWithPath("result.structuredContent.documentId").description("문서 ID"),
+                        fieldWithPath("result.structuredContent.version").description("콘텐츠 버전"),
+                        fieldWithPath("result.structuredContent.revision").description("확정 리비전"),
+                        fieldWithPath("result.structuredContent.totalBlocks").description("선택한 블록 수"),
+                        fieldWithPath("result.structuredContent.nextCursor").description("다음 호출에 넘길 커서"),
+                        fieldWithPath("result.isError").description("false"),
+                    ),
+                ),
+            )
+    }
+
+    @Test
     fun `a changed block comes back as a tool error with the block as it is now and is counted as a conflict`() {
         val operations = listOf(EditOperation.Delete(body.id, "00000000"))
         every { documents.edit(mcpContext, documentId, operations, null) } throws

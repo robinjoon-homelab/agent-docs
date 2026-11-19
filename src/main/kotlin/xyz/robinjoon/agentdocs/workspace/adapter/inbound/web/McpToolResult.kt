@@ -15,7 +15,8 @@ class McpToolResult private constructor(
         fun markdown(
             text: String,
             notes: List<String> = emptyList(),
-        ): McpToolResult = McpToolResult(text, null, false, notes.toList())
+            metadata: Map<String, Any?>? = null,
+        ): McpToolResult = McpToolResult(text, metadata, false, notes.toList())
 
         // code is the same error code the REST API uses; fix tells the agent what to do next.
         fun error(

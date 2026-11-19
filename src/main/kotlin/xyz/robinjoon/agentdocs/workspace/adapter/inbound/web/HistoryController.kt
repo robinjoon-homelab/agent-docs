@@ -74,13 +74,16 @@ class HistoryController(
         @RequestBody body: JsonNode,
         principal: Principal?,
     ): Map<String, Any?> {
+        val context = RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body)
         val written =
-            documents.restore(
-                RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body),
-                DocumentId(id),
-                requiredInt(body, "revision"),
-                requiredInt(body, "baseVersion"),
-            )
+            recorder.countConflict(context.access, DocumentId(id)) {
+                documents.restore(
+                    context,
+                    DocumentId(id),
+                    requiredInt(body, "revision"),
+                    requiredInt(body, "baseVersion"),
+                )
+            }
         recorder.human(CallerAccess.write(principal, null, null), written, body)
         val access = CallerAccess.of(principal)
         if (access.actor.isAgent) recorder.agent(access, written.document.id)
@@ -114,16 +117,19 @@ class HistoryController(
         @RequestBody body: JsonNode,
         principal: Principal?,
     ): Map<String, Any?> {
+        val context = RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body)
         val written =
-            documents.restoreBlock(
-                RevisionMetadataJson.context(CallerAccess.write(principal, Wire.optional(body, "opId"), null), body),
-                DocumentId(id),
-                BlockRestore(
-                    requiredInt(body, "revision"),
-                    BlockId(Wire.required(body, "blockId")),
-                    requiredInt(body, "baseVersion"),
-                ),
-            )
+            recorder.countConflict(context.access, DocumentId(id)) {
+                documents.restoreBlock(
+                    context,
+                    DocumentId(id),
+                    BlockRestore(
+                        requiredInt(body, "revision"),
+                        BlockId(Wire.required(body, "blockId")),
+                        requiredInt(body, "baseVersion"),
+                    ),
+                )
+            }
         recorder.human(CallerAccess.write(principal, null, null), written, body)
         val access = CallerAccess.of(principal)
         if (access.actor.isAgent) recorder.agent(access, written.document.id)

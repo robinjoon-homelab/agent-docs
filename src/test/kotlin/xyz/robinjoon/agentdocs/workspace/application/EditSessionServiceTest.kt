@@ -12,7 +12,9 @@ import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentReposit
 import xyz.robinjoon.agentdocs.workspace.application.port.output.EditSessionRepository
 import xyz.robinjoon.agentdocs.workspace.application.service.EditSessionService
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
+import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.editsession.EditEndReason
 import xyz.robinjoon.agentdocs.workspace.domain.editsession.EditSession
 import xyz.robinjoon.agentdocs.workspace.domain.editsession.EditSessionTarget
@@ -43,6 +45,22 @@ class EditSessionServiceTest {
         val existing = EditSession.start(target, WorkspaceFixtures.now.minusSeconds(20))
         every { sessions.open(any()) } returns existing
         assertThat(service.start(context, document.id).id).isEqualTo(existing.id)
+    }
+
+    @Test
+    fun `a start after allowed transfer reuses the same connection and document session`() {
+        val destination = SpaceId(UUID.randomUUID())
+        val targetAccess = WorkspaceFixtures.agentAccess(Permission.EDIT, setOf(destination))
+        val moved = Document.restore(document.id, document.header.copy(spaceId = destination), document.blocks, document.lifecycle)
+        val existing = EditSession.start(target, WorkspaceFixtures.now.minusSeconds(20))
+        every { documents.findById(document.id) } returns moved
+        every { sessions.open(target.scope) } returns existing
+
+        val result = service.start(context.copy(access = targetAccess), document.id)
+
+        assertThat(result.id).isEqualTo(existing.id)
+        assertThat(result.period.lastActivityAt).isEqualTo(WorkspaceFixtures.now)
+        assertThat(result.target.actor).isEqualTo(target.actor)
     }
 
     @Test

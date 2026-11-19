@@ -8,6 +8,7 @@ import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNotNull
+import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.jdbc.andWhere
@@ -42,6 +43,7 @@ class ExposedActivityLog :
                 it[actorConnectionId] = record.actor.connectionId
                 it[actorClientName] = record.actor.clientName
                 it[spaceId] = record.subject.spaceId
+                it[membershipId] = record.subject.membershipId
                 it[documentId] = record.subject.documentId
                 it[threadId] = record.subject.threadId
                 it[revision] = record.subject.revision
@@ -70,7 +72,9 @@ class ExposedActivityLog :
     override fun find(query: ActivityQuery): List<ActivityEntry> {
         if (query.spaceIds?.isEmpty() == true) return emptyList()
         val select = ActivitiesTable.selectAll()
-        query.spaceIds?.let { spaces -> select.andWhere { ActivitiesTable.spaceId inList spaces } }
+        query.spaceIds?.let { spaces ->
+            select.andWhere { (ActivitiesTable.spaceId inList spaces) and ActivitiesTable.membershipId.isNull() }
+        }
         query.since?.let { since -> select.andWhere { ActivitiesTable.occurredAt greater since.atOffset(ZoneOffset.UTC) } }
         query.beforeId?.let { before -> select.andWhere { ActivitiesTable.id less before } }
         query.afterId?.let { after -> select.andWhere { ActivitiesTable.id greater after } }
@@ -119,6 +123,7 @@ class ExposedActivityLog :
                 this[ActivitiesTable.documentId],
                 this[ActivitiesTable.threadId],
                 this[ActivitiesTable.revision],
+                this[ActivitiesTable.membershipId],
             )
         val record =
             ActivityRecord(

@@ -105,6 +105,11 @@ export class HttpClient {
     return this.request('GET', path, null);
   }
 
+  async getPage(path: string): Promise<{ body: unknown; nextCursor: string | null }> {
+    const response = await this.response('GET', path, null);
+    return { body: await this.json(response), nextCursor: response.headers.get('X-Next-Cursor') };
+  }
+
   post(path: string, json?: unknown): Promise<unknown> {
     return this.request('POST', path, json === undefined ? null : { json });
   }
@@ -140,6 +145,10 @@ export class HttpClient {
   }
 
   private async request(method: string, path: string, body: Body, keepalive = false): Promise<unknown> {
+    return this.json(await this.response(method, path, body, keepalive));
+  }
+
+  private async response(method: string, path: string, body: Body, keepalive = false): Promise<Response> {
     // Redirects are not followed: for API calls a redirect means the session is gone and Spring
     // Security is sending the browser to the login flow.
     const init: RequestInit = {
@@ -164,6 +173,10 @@ export class HttpClient {
       throw new ApiError('unauthenticated', 401, DEFAULT_MESSAGE.unauthenticated);
     }
     if (!response.ok) throw await problemFrom(response);
+    return response;
+  }
+
+  private async json(response: Response): Promise<unknown> {
     if (!(response.headers.get('content-type') ?? '').includes('json')) return undefined;
     const text = await response.text();
     return text === '' ? undefined : (JSON.parse(text) as unknown);

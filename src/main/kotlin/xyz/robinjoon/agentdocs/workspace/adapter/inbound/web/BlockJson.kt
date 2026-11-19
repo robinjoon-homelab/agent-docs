@@ -22,7 +22,6 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.TableBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.TableColumn
 import xyz.robinjoon.agentdocs.workspace.domain.document.TableRow
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
-import java.util.UUID
 
 // The JSON form of a block the web editor sends and receives. Text fields carry inline markdown. Every response block
 // also carries its hash, the same one the annotated markdown shows.
@@ -58,7 +57,7 @@ object BlockJson {
             "image" to { id, node ->
                 ImageBlock(
                     id,
-                    AssetId(UUID.fromString(text(node, "assetId"))),
+                    AssetId(Wire.identifier(text(node, "assetId"), "assetId")),
                     node.path("alt").asString(""),
                     node.path("caption").asString(""),
                 )
@@ -167,7 +166,7 @@ object BlockJson {
         field: String,
     ): AssetId =
         try {
-            AssetId(UUID.fromString(text(node, field)))
+            AssetId(Wire.identifier(text(node, field), field))
         } catch (exception: IllegalArgumentException) {
             throw InvalidRequestException("block field $field must be an asset id", cause = exception)
         }

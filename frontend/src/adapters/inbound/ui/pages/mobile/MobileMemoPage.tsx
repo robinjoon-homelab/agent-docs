@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { InputTimeTracker } from '../../../../../application/statistics/inputTimeTracker';
+import type { InputTrace } from '../../../../../domain/statistics/statistics';
 import { isApiError } from '../../../../../application/shared/ports/errors';
 import { Link } from 'react-router';
 import type { NavigationUseCases } from '../../../../../application/navigation/navigationUseCases';
@@ -48,6 +50,40 @@ export function MobileMemoPage({
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const foreground = useRef<InputTimeTracker | null>(null);
+  const input = useRef<InputTimeTracker[]>([]);
+  const frozen = useRef<{ tracker: InputTimeTracker; trace: InputTrace }[]>([]);
+  useEffect(() => {
+    const hide = () => {
+      if (document.visibilityState === 'hidden') foreground.current = null;
+    };
+    document.addEventListener('visibilitychange', hide);
+    return () => document.removeEventListener('visibilitychange', hide);
+  }, []);
+  const enterText = (value: string) => {
+    if (foreground.current === null) {
+      foreground.current = new InputTimeTracker(crypto.randomUUID(), () => crypto.randomUUID());
+      input.current.push(foreground.current);
+    }
+    foreground.current.input(new Date());
+    setText(value);
+  };
+  const draft = (): MemoCommand => {
+    const opId = crypto.randomUUID();
+    frozen.current = input.current.flatMap((tracker) => {
+      const trace = tracker.snapshot();
+      return trace === null ? [] : [{ tracker, trace }];
+    });
+    const traces = frozen.current.map(({ trace }) => trace);
+    return {
+      opId,
+      blockId: newBlockId(randomByte),
+      space: preferences.space,
+      path,
+      text,
+      ...(traces.length === 0 ? {} : { inputTrace: { batchId: opId, traces } }),
+    };
+  };
   let date = '';
   try {
     date = today(preferences.timeZone);
@@ -73,18 +109,17 @@ export function MobileMemoPage({
       setError(new Error('오프라인에서는 저장할 수 없습니다. 입력은 이 화면에 유지됩니다.'));
       return;
     }
-    const command = pending ?? {
-      opId: crypto.randomUUID(),
-      blockId: newBlockId(randomByte),
-      space: preferences.space,
-      path,
-      text,
-    };
+    const command = pending ?? draft();
     setPending(command);
     setBusy(true);
     setError(null);
     try {
       const id = await navigation.writeMemo(command);
+      for (const { tracker, trace } of frozen.current) tracker.accepted(trace);
+      input.current = input.current.filter(
+        (tracker) => tracker === foreground.current || tracker.hasPendingInput(),
+      );
+      frozen.current = [];
       setSaved(id);
       setText('');
       setPending(null);
@@ -150,7 +185,12 @@ export function MobileMemoPage({
       </p>
       <label>
         메모
-        <textarea rows={8} disabled={locked} value={text} onChange={(event) => setText(event.target.value)} />
+        <textarea
+          rows={8}
+          disabled={locked}
+          value={text}
+          onChange={(event) => enterText(event.target.value)}
+        />
       </label>
       {error !== null ? <ErrorBox error={error} /> : null}
       {pending !== null && !busy ? (

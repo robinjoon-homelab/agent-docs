@@ -1,3 +1,4 @@
+import type { InputTraceBatch } from '../statistics/statistics';
 export type NavigationDocument = {
   readonly id: string;
   readonly spaceId: string;
@@ -18,6 +19,7 @@ export type MemoCommand = {
   readonly space: string;
   readonly path: string;
   readonly text: string;
+  readonly inputTrace?: InputTraceBatch;
 };
 
 export function diaryPath(pattern: string, date: string): string {

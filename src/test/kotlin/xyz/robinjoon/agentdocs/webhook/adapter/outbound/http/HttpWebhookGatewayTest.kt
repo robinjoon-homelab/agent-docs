@@ -56,6 +56,23 @@ class HttpWebhookGatewayTest {
     }
 
     @Test
+    fun `a key rotated during request preparation signs the request that follows`() {
+        val rotated = WebhookSecret.parse("whsec_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+        var current = secret
+        val gateway =
+            HttpWebhookGateway(resolve = {
+                current = rotated
+                listOf(InetAddress.getLoopbackAddress())
+            })
+
+        val result = gateway.send(request("/ok").copy(signingSecret = { current }))
+
+        assertThat(result).isEqualTo(AttemptResult.Answered(204, null))
+        assertThat(received["webhook-signature"])
+            .isEqualTo(StandardWebhookSignature.sign(rotated.key(), MESSAGE_ID, attemptAt.epochSecond, PAYLOAD))
+    }
+
+    @Test
     fun `answers are returned as they came, redirects are not followed, and Retry-After seconds are read`() {
         val gateway = HttpWebhookGateway()
 
@@ -93,7 +110,7 @@ class HttpWebhookGatewayTest {
     }
 
     private fun request(path: String): OutgoingWebhook =
-        OutgoingWebhook(URI.create("http://127.0.0.1:${server.address.port}$path"), MESSAGE_ID, attemptAt, PAYLOAD, secret)
+        OutgoingWebhook(URI.create("http://127.0.0.1:${server.address.port}$path"), MESSAGE_ID, attemptAt, PAYLOAD) { secret }
 
     private fun statusOf(path: String): Int =
         when (path) {

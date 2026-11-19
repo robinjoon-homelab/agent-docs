@@ -19,9 +19,10 @@ import xyz.robinjoon.agentdocs.access.domain.membership.SpaceRole
 import xyz.robinjoon.agentdocs.access.domain.user.Allowlist
 import xyz.robinjoon.agentdocs.access.domain.user.UserId
 import xyz.robinjoon.agentdocs.access.domain.user.UserRole
+import xyz.robinjoon.agentdocs.application.model.ActivitySubject
 import java.util.UUID
 
-// Membership changes are permission changes outside any space, so the activity log keeps them for the owner only.
+// Membership changes carry their target space and stay visible only in the instance log.
 @Transactional(readOnly = true)
 class SpaceMembershipService(
     private val memberships: SpaceMembershipRepository,
@@ -55,7 +56,7 @@ class SpaceMembershipService(
             ?.let { throw MembershipTakenException(it.id) }
         val invitation = SpaceInvitation(invite.space, login, UserId(caller.userId), journal.now())
         val saved = viewOf(memberships.add(SpaceMembership.invite(SpaceMembershipId(UUID.randomUUID()), invitation, invite.role)))
-        journal.record(caller, "membership.invited", "스페이스 멤버 초대: @${saved.login} ${nameOf(invite.role)}")
+        journal.record(caller, "membership.invited", "스페이스 멤버 초대: @${saved.login} ${nameOf(invite.role)}", targetOf(saved.membership))
         return saved
     }
 
@@ -69,7 +70,7 @@ class SpaceMembershipService(
         val current = memberships.findByIdForUpdate(id)?.takeIf { it.isLive } ?: throw SpaceMembershipNotFoundException(id)
         val changed = current.changeRole(role) ?: return viewOf(current)
         val saved = viewOf(memberships.update(changed))
-        journal.record(caller, "membership.role_changed", "멤버 역할 변경: @${saved.login} ${nameOf(role)}")
+        journal.record(caller, "membership.role_changed", "멤버 역할 변경: @${saved.login} ${nameOf(role)}", targetOf(saved.membership))
         return saved
     }
 
@@ -82,8 +83,11 @@ class SpaceMembershipService(
         val current = memberships.findByIdForUpdate(id) ?: throw SpaceMembershipNotFoundException(id)
         val revoked = current.revoke(journal.now()) ?: return
         val saved = viewOf(memberships.update(revoked))
-        journal.record(caller, "membership.revoked", "멤버 회수: @${saved.login}")
+        journal.record(caller, "membership.revoked", "멤버 회수: @${saved.login}", targetOf(saved.membership))
     }
+
+    private fun targetOf(membership: SpaceMembership): ActivitySubject =
+        ActivitySubject(membership.spaceId, null, null, null, membership.id.value)
 
     private fun viewOf(membership: SpaceMembership): MembershipView {
         val current =

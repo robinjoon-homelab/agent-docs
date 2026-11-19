@@ -4,6 +4,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.EditStatisticsRecor
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.McpToolResult
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.RevisionMetadataJson
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.Wire
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.countConflict
 import xyz.robinjoon.agentdocs.workspace.application.model.BlockRestore
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
@@ -76,12 +77,11 @@ class RestoreBlockTool(
     ): McpToolResult {
         val request =
             BlockRestore(requiredInt(arguments, "revision"), BlockId(arguments.string("blockId")), requiredInt(arguments, "baseVersion"))
+        val document = DocumentId(arguments.uuid("document"))
         val written =
-            documents.restoreBlock(
-                RevisionMetadataJson.context(context, arguments.node),
-                DocumentId(arguments.uuid("document")),
-                request,
-            )
+            recorder.countConflict(context.access, document) {
+                documents.restoreBlock(RevisionMetadataJson.context(context, arguments.node), document, request)
+            }
         recorder.agent(context.access, written.document.id)
         return WriteResults.of(written, false)
     }

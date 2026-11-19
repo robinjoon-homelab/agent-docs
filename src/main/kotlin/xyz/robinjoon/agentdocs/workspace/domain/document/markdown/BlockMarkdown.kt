@@ -31,12 +31,16 @@ object BlockMarkdown {
     fun write(
         blocks: List<Block>,
         annotated: Boolean,
-    ): String =
-        blocks
-            .mapIndexed { index, block ->
-                val separator = if (index == 0) "" else separatorBefore(block, blocks[index - 1])
-                separator + (if (annotated) annotation(block) + "\n" else "") + of(block)
-            }.joinToString("")
+    ): String = parts(blocks, annotated).joinToString("")
+
+    internal fun parts(
+        blocks: List<Block>,
+        annotated: Boolean,
+    ): Sequence<String> =
+        blocks.asSequence().mapIndexed { index, block ->
+            val separator = if (index == 0) "" else separatorBefore(block, blocks[index - 1])
+            separator + (if (annotated) annotation(block) + "\n" else "") + of(block)
+        }
 
     private fun separatorBefore(
         block: Block,

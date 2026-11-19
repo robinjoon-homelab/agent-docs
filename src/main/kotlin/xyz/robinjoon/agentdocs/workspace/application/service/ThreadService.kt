@@ -80,7 +80,7 @@ class ThreadService(
             context,
             WorkspaceActivity(
                 "thread.opened",
-                subjectOf(thread),
+                subjectOf(thread, target.revision),
                 "${target.header.title}: ${comment.body.take(EXCERPT)}",
                 createdComment(thread, comment, target),
             ),
@@ -107,7 +107,7 @@ class ThreadService(
             context,
             WorkspaceActivity(
                 "comment.added",
-                subjectOf(saved),
+                subjectOf(saved, document.revision),
                 "${document.header.title}: ${comment.body.take(EXCERPT)}",
                 createdComment(saved, comment, document),
             ),
@@ -125,7 +125,7 @@ class ThreadService(
         val (current, document) = lockByComment(context.access, comment)
         if (current.collaboration.suggestions.any { it.comment == comment }) current.requireAvailable(context.access.actor, journal.now())
         val saved = threads.update(current.editComment(comment, context.access.actor, body, journal.now()))
-        journal.record(context, "comment.edited", subjectOf(saved), "${document.header.title}: 댓글 수정")
+        journal.record(context, "comment.edited", subjectOf(saved, document.revision), "${document.header.title}: 댓글 수정")
         return remembered(context, OperationRecord(EDIT_COMMENT, comment.value, null), viewOf(saved, document))
     }
 
@@ -140,7 +140,7 @@ class ThreadService(
         val saved = threads.update(current.deleteComment(comment, context.access.actor, journal.now()))
         inbox.redactCommentExcerpt(comment)
         journal.removeCommentCopies(comment)
-        journal.record(context, "comment.deleted", subjectOf(saved), "${document.header.title}: 댓글 삭제")
+        journal.record(context, "comment.deleted", subjectOf(saved, document.revision), "${document.header.title}: 댓글 삭제")
         return remembered(context, OperationRecord(DELETE_COMMENT, comment.value, null), viewOf(saved, document))
     }
 
@@ -168,7 +168,9 @@ class ThreadService(
                 Entry("thread.status", "스레드 ${statusWord(saved.status)}", null).takeIf { updated.status != moved.status },
                 Entry("thread.linked", "rev ${change.linkRevision} 연결", change.linkRevision).takeIf { linked != updated },
             )
-        entries.forEach { journal.record(context, it.kind, subjectOf(saved, it.revision), "${document.header.title}: ${it.summary}") }
+        entries.forEach {
+            journal.record(context, it.kind, subjectOf(saved, it.revision ?: document.revision), "${document.header.title}: ${it.summary}")
+        }
         return remembered(context, OperationRecord(CHANGE, thread.value, null), viewOf(saved, document))
     }
 
@@ -225,7 +227,7 @@ class ThreadService(
         val (current, document) = lockThread(context.access, thread)
         val next = current.collaborate(current.collaboration.react(context.access.actor, emoji, add), journal.now())
         val saved = threads.update(next)
-        journal.record(context, "thread.reaction", subjectOf(saved), "스레드 반응 변경")
+        journal.record(context, "thread.reaction", subjectOf(saved, document.revision), "스레드 반응 변경")
         return remembered(context, OperationRecord(REACT, thread.value, null), viewOf(saved, document))
     }
 
@@ -241,7 +243,7 @@ class ThreadService(
         val now = journal.now()
         val next = current.collaborate(current.collaboration.claim(context.access.actor, now, action), now)
         val saved = threads.update(next)
-        journal.record(context, "thread.claim", subjectOf(saved), "스레드 점유 변경")
+        journal.record(context, "thread.claim", subjectOf(saved, document.revision), "스레드 점유 변경")
         return remembered(context, OperationRecord(CLAIM, thread.value, null), viewOf(saved, document))
     }
 
@@ -443,7 +445,7 @@ class ThreadService(
 
     private fun subjectOf(
         thread: CommentThread,
-        revision: Int? = null,
+        revision: Int,
     ): ActivitySubject = ActivitySubject(thread.location.spaceId.value, thread.location.documentId.value, thread.id.value, revision)
 
     private companion object {

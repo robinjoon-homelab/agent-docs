@@ -61,10 +61,11 @@ class SuggestionService(
         val comment = Comment.write(CommentId(UUID.randomUUID()), context.access.actor, "수정 제안", at)
         val replied = current.reply(comment, at)
         val next = replied.collaborate(replied.collaboration.suggested(Suggestion(comment.id, basis)), at)
-        PendingEdits(documents, journal).confirm(document)
+        val confirmed = PendingEdits(documents, journal).confirm(document)
         val saved = threads.update(next)
         notify(saved, comment, document)
-        return remember(context, SUGGEST, view(saved, document).copy(written = comment.id), createdComment(saved, comment, document))
+        val event = activity(SUGGEST, saved, confirmed.revision, createdComment(saved, comment, document))
+        return remember(context, view(saved, document).copy(written = comment.id), event)
     }
 
     @Transactional
@@ -87,7 +88,7 @@ class SuggestionService(
         var next = current.collaborate(current.collaboration.decided(comment, decision), now)
         if (accept) next = next.linkRevision(changed.revision, now) ?: next
         val saved = threads.update(next)
-        return remember(context, DECIDE, view(saved, changed))
+        return remember(context, view(saved, changed), activity(DECIDE, saved, changed.revision))
     }
 
     private fun createdComment(
@@ -187,27 +188,26 @@ class SuggestionService(
 
     private fun remember(
         context: WriteContext,
-        kind: String,
         view: ThreadView,
-        createdComment: CreatedComment? = null,
+        event: WorkspaceActivity,
     ): ThreadView {
-        journal.remember(context, OperationRecord(kind, view.thread.id.value, null, threadView = view))
-        journal.record(
-            context,
-            WorkspaceActivity(
-                kind,
-                ActivitySubject(
-                    view.thread.location.spaceId.value,
-                    view.thread.location.documentId.value,
-                    view.thread.id.value,
-                    null,
-                ),
-                "수정 제안",
-                createdComment,
-            ),
-        )
+        journal.remember(context, OperationRecord(event.kind, view.thread.id.value, null, threadView = view))
+        journal.record(context, event)
         return view
     }
+
+    private fun activity(
+        kind: String,
+        thread: CommentThread,
+        revision: Int,
+        createdComment: CreatedComment? = null,
+    ): WorkspaceActivity =
+        WorkspaceActivity(
+            kind,
+            ActivitySubject(thread.location.spaceId.value, thread.location.documentId.value, thread.id.value, revision),
+            "수정 제안",
+            createdComment,
+        )
 
     private fun view(
         thread: CommentThread,

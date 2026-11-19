@@ -13,6 +13,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.Persistenc
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.PersistenceFixtures.revisionOf
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.PersistenceFixtures.space
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListPosition
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionFilter
 import xyz.robinjoon.agentdocs.workspace.domain.ActorKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
@@ -191,6 +192,21 @@ class ExposedDocumentRepositoryTest {
         assertThat(byTag.single().updatedBy).isEqualTo(agent)
         assertThat(byPartialTag).isEmpty()
         assertThat(database.inTransaction { documents.list(setOf(space.id), DocumentFilter(null, null, null, true), 10) }).isEmpty()
+    }
+
+    @Test
+    fun `continuation keeps the same folder and returns timestamp ties without duplicates`() {
+        val children = (1..4).map { document(space.id, "payments/$it", emptyList()) }
+        val sibling = document(space.id, "payments-other/child", emptyList())
+        database.inTransaction { (children + sibling).forEach { documents.add(it, revisionOf(it)) } }
+        val filter = DocumentFilter(null, null, "payments", false)
+        val first = database.inTransaction { documents.list(setOf(space.id), filter, 2) }
+        val last = first.last()
+        val after = DocumentListPosition(last.lifecycle.updatedAt, last.id.value)
+        val second = database.inTransaction { documents.list(setOf(space.id), filter.copy(after = after), 3) }
+
+        assertThat(first + second).hasSize(4)
+        assertThat((first + second).map { it.id }).containsExactlyInAnyOrderElementsOf(children.map { it.id })
     }
 
     @Test

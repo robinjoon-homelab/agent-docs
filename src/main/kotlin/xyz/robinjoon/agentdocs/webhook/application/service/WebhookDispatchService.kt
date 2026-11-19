@@ -37,7 +37,7 @@ class WebhookDispatchService(
                 messageId = delivery.id.messageId,
                 attemptAt = Instant.now(clock),
                 payload = delivery.event.payload,
-                secret = endpoint.secret,
+                signingSecret = { ledger.signingSecret(endpoint.id) },
             )
         val result = gateway.send(request)
         val recorded = ledger.complete(delivery, result, Instant.now(clock))

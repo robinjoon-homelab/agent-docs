@@ -9,6 +9,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.ActorKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
 import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadStatus
+import java.util.UUID
 
 // Small readers for request JSON where a missing field and a null field mean different things.
 internal object Wire {
@@ -37,7 +38,11 @@ internal object Wire {
         ThreadStatus.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
             ?: throw InvalidRequestException("status must be open, answered, or resolved")
 
-    fun strings(node: JsonNode?): List<String> = node?.values()?.mapNotNull { it.takeIf(JsonNode::isString)?.stringValue() }.orEmpty()
+    fun strings(node: JsonNode?): List<String> {
+        if (node == null || node.isNull) return emptyList()
+        if (!node.isArray || node.values().any { !it.isString }) throw InvalidRequestException("Expected an array of strings")
+        return node.values().map(JsonNode::stringValue)
+    }
 
     fun required(
         node: JsonNode,
@@ -47,7 +52,27 @@ internal object Wire {
     fun optional(
         node: JsonNode,
         field: String,
-    ): String? = node.get(field)?.takeIf(JsonNode::isString)?.stringValue()
+    ): String? {
+        val value = node.get(field) ?: return null
+        if (value.isNull) return null
+        return value.takeIf(JsonNode::isString)?.stringValue() ?: throw InvalidRequestException("$field must be a string")
+    }
+
+    fun identifier(
+        value: String,
+        field: String,
+    ): UUID =
+        try {
+            UUID.fromString(value).also {
+                if (!it.toString().equals(value, ignoreCase = true)) throw IllegalArgumentException("UUID must be canonical")
+            }
+        } catch (exception: IllegalArgumentException) {
+            throw InvalidRequestException("$field must be a UUID", cause = exception)
+        }
+
+    fun requireObject(body: JsonNode) {
+        if (!body.isObject) throw InvalidRequestException("Expected a JSON object")
+    }
 
     // An explicit "assignee": null clears the assignee; leaving it out keeps it.
     fun headerChange(body: JsonNode): HeaderChange =
