@@ -4,11 +4,11 @@ import { DocumentAssetScope } from '../document/DocumentAssetScope';
 import type { ComponentProps } from 'react';
 import { useMemo, useState } from 'react';
 import { HtmlMockup } from '../../editor/HtmlMockup';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import type { Comparison } from '../../../../../application/document/documentUseCases';
 import { isNotVisible } from '../../../../../application/shared/ports/errors';
 import type { AgentDocument, Revision } from '../../../../../domain/document/document';
-import { documentHref, threadHref } from '../../../../../domain/document/document';
+import { documentHref, historyHref, threadHref } from '../../../../../domain/document/document';
 import { buildDiffRows, DIFF_MARKER, diffCounts } from '../../../../../domain/document/diffView';
 import type { RevisionActorFilter } from '../../../../../domain/document/history';
 import {
@@ -32,7 +32,6 @@ import { RelativeTime } from '../../common/RelativeTime';
 import { ErrorBox, errorMessage, Loading, LoadError, NoAccessDocument } from '../../common/States';
 import { useLoad } from '../../hooks/useLoad';
 import { usePageTitle } from '../../hooks/usePageTitle';
-import { useSpace } from '../../hooks/useSpace';
 import './history.css';
 import { InlineDiff } from './InlineDiff';
 import { RevisionDetails, RevisionLinks } from './RevisionDetails';
@@ -158,16 +157,23 @@ function HistoryBlock(props: ComponentProps<typeof BlockView>) {
 function DiffBlocks({
   comparison,
   onlyChanged,
+  initialRevision,
   onRestore,
 }: {
   comparison: Comparison;
   onlyChanged: boolean;
+  initialRevision: boolean;
   onRestore?: (blockId: string) => void;
 }) {
   const rows = buildDiffRows(comparison.fromBlocks, comparison.toBlocks, comparison.diff);
   const ordinals = listOrdinals(rows.map((row) => row.block));
   const visible = onlyChanged ? rows.filter((row) => row.marker !== null) : rows;
-  if (visible.length === 0) return <p className="muted">두 버전의 본문이 같습니다.</p>;
+  if (visible.length === 0)
+    return (
+      <p className="muted">
+        {initialRevision ? '첫 리비전에 본문이 없습니다.' : '두 버전의 본문이 같습니다.'}
+      </p>
+    );
   return (
     <div className="history-diff">
       {visible.map((row) => (
@@ -261,8 +267,8 @@ function RestoreDialog({
         블록 {impact.revertedBlocks}개가 되돌아가고 스레드 {impact.detachedThreads}개가 분리됩니다.
       </p>
       <p className="muted small">
-        복원은 새 리비전으로 저장되므로 지금 버전도 기록에 남습니다. 분리 수는 추정치이며 복원 후 서버가
-        앵커를 다시 맞춥니다.
+        선택한 리비전의 본문, 제목, 상태, 태그, 담당자를 현재 스페이스와 경로에 새 리비전으로 저장합니다. 분리
+        수는 추정치이며 복원 후 서버가 앵커를 다시 맞춥니다.
       </p>
       {error === null ? null : <p className="field-error">{errorMessage(error)}</p>}
     </Dialog>
@@ -286,6 +292,8 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
   const [blockError, setBlockError] = useState<unknown>(null);
   const [blockBusy, setBlockBusy] = useState(false);
 
+  const replyRevision = Number(searchParams.get('replyRev'));
+  const linkedReply = Number.isSafeInteger(replyRevision) && replyRevision > 0;
   const requestedText = searchParams.get('rev');
   const requested =
     requestedText === null || Number.isNaN(Number(requestedText)) ? null : Number(requestedText);
@@ -300,9 +308,19 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
   });
   const currentRevision = revisions.state === 'ready' ? revisions.data.currentRevision : document.revision;
   const threads = useLoad(`history-threads:${document.id}`, () => services.threads.list(document.id));
-  const selected =
-    revisions.state === 'ready' ? defaultRevision(revisions.data.items, currentRevision, requested) : null;
-  const range = mode === 'pair' ? orderedPair(pair) : selected === null ? null : { from: selected, to: null };
+  const selected = linkedReply
+    ? replyRevision
+    : revisions.state === 'ready'
+      ? defaultRevision(revisions.data.items, currentRevision, requested)
+      : null;
+  const range =
+    mode === 'pair'
+      ? orderedPair(pair)
+      : linkedReply
+        ? { from: Math.max(1, replyRevision - 1), to: replyRevision }
+        : selected === null
+          ? null
+          : { from: selected, to: null };
   const comparisonKey =
     range === null ? 'none' : `${document.id}:${range.from}:${range.to ?? `current:${currentRevision}`}`;
   const comparison = useLoad<Comparison | null>(`compare:${comparisonKey}`, async () => {
@@ -318,6 +336,7 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
     return result;
   });
 
+  const initialRevision = linkedReply && mode === 'current' && range?.to === 1;
   const compared = comparison.state === 'ready' ? comparison.data?.diff : undefined;
   const displayedCurrentRevision =
     mode === 'current' && compared !== undefined ? Math.max(currentRevision, compared.to) : currentRevision;
@@ -345,7 +364,9 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
 
   const selectedRevision =
     revisions.state === 'ready'
-      ? revisions.data.items.find((revision) => revision.revision === range?.from)
+      ? revisions.data.items.find(
+          (revision) => revision.revision === (linkedReply && mode === 'current' ? range?.to : range?.from),
+        )
       : undefined;
   const threadList = threads.state === 'ready' ? threads.data : [];
   const counts =
@@ -468,20 +489,24 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
                 ? mode === 'pair'
                   ? '비교할 리비전 두 개를 고르세요'
                   : '리비전을 고르세요'
-                : `rev ${compared?.from ?? range.from} → ${range.to === null ? `현재 (rev ${compared?.to ?? currentRevision})` : `rev ${compared?.to ?? range.to}`}`}
+                : initialRevision
+                  ? 'rev 1 · 첫 리비전'
+                  : `rev ${compared?.from ?? range.from} → ${range.to === null ? `현재 (rev ${compared?.to ?? currentRevision})` : `rev ${compared?.to ?? range.to}`}`}
             </strong>
             {counts === null ? null : (
               <span className="history-counts small">
                 <span className="history-count-added">+{counts.added}</span>
                 <span className="history-count-modified">~{counts.modified}</span>
                 <span className="history-count-removed">−{counts.removed}</span>
+                {counts.moved === 0 ? null : <span aria-label="순서 변경">↕{counts.moved}</span>}
               </span>
             )}
             <span className="history-main-actions">
               <label className="checkbox-row small">
                 <input
                   type="checkbox"
-                  checked={onlyChanged}
+                  checked={onlyChanged && !initialRevision}
+                  disabled={initialRevision}
                   onChange={(event) => setOnlyChanged(event.target.checked)}
                 />
                 변경만
@@ -496,6 +521,7 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
               </div>
               {editable &&
               mode === 'current' &&
+              !linkedReply &&
               selected !== null &&
               selected !== displayedCurrentRevision ? (
                 <button
@@ -519,9 +545,10 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
             ) : (
               <DiffBlocks
                 comparison={comparison.data}
-                onlyChanged={onlyChanged}
+                onlyChanged={onlyChanged && !initialRevision}
+                initialRevision={initialRevision}
                 onRestore={
-                  mode === 'current' && editable && !blockBusy
+                  mode === 'current' && !linkedReply && editable && !blockBusy
                     ? (blockId) => void restoreBlock(blockId)
                     : undefined
                 }
@@ -549,11 +576,10 @@ function HistoryView({ spaceSlug, document }: { spaceSlug: string; document: Age
 export function HistoryPage() {
   const { space: slug = '', docId = '' } = useParams();
   const services = useServices();
-  const space = useSpace(slug);
+  const location = useLocation();
   const document = useLoad(`history-document:${docId}`, () => services.documents.get(docId));
   usePageTitle(document.state === 'ready' ? `${document.data.title} 기록` : '기록');
 
-  if (space.state === 'error') return <LoadError error={space.error} onRetry={space.reload} />;
   if (document.state === 'error') {
     return isNotVisible(document.error) ? (
       <NoAccessDocument />
@@ -561,11 +587,20 @@ export function HistoryPage() {
       <LoadError error={document.error} onRetry={document.reload} />
     );
   }
-  if (space.state === 'loading' || document.state === 'loading') return <Loading />;
+  if (document.state === 'loading') return <Loading />;
+  const currentSlug = document.data.space.slug;
+  if (currentSlug !== slug) {
+    return (
+      <Navigate
+        replace
+        to={`${historyHref(currentSlug, document.data.id)}${location.search}${location.hash}`}
+      />
+    );
+  }
   return (
     <DocumentAssetScope documentId={document.data.id}>
       <HistoryAccess document={document.data}>
-        <HistoryView spaceSlug={space.data.slug} document={document.data} />
+        <HistoryView spaceSlug={currentSlug} document={document.data} />
       </HistoryAccess>
     </DocumentAssetScope>
   );

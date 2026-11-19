@@ -42,7 +42,8 @@ object DocumentEditor {
             is EditOperation.Replace -> operation.target to operation.expectedHash
             is EditOperation.Delete -> operation.target to operation.expectedHash
             is EditOperation.Move -> operation.target to operation.expectedHash
-            is EditOperation.Insert, is EditOperation.ReplaceText -> null
+            is EditOperation.ReplaceText -> operation.target to operation.expectedHash
+            is EditOperation.Insert -> null
         }
 
     private fun conflictOf(
@@ -77,14 +78,7 @@ object DocumentEditor {
         if (operation.blocks.isEmpty()) {
             throw InvalidEditException("operation $index: a replacement needs at least one block; use delete to remove a block")
         }
-        // The first block takes the target's id, so a table turned into anything else takes its cell threads with it. A
-        // mistyped annotation line ahead of the table is the usual way this happens.
-        if (target is TableBlock && operation.blocks.first() !is TableBlock) {
-            throw InvalidEditException(
-                "operation $index: block ${target.id} is a table, so its replacement must start with a table; send the table " +
-                    "without an annotation line to keep its row and column ids, or delete it and insert the new blocks",
-            )
-        }
+        requireTableReplacement(target, operation.blocks.first(), index)
         val at = blocks.indexOf(target)
         val first = keptIds(target, operation.blocks.first().withId(target.id))
         return blocks.subList(0, at) + first + fresh(operation.blocks.drop(1), blocks) + blocks.subList(at + 1, blocks.size)
@@ -135,7 +129,23 @@ object DocumentEditor {
         }
         val parsed = MarkdownReader.readBlocks(markdown.replace(operation.find, operation.replacement))
         val replaced = parsed.singleOrNull()?.block ?: throw InvalidEditException("operation $index: the replaced text must stay one block")
+        requireTableReplacement(block, replaced, index)
         return blocks.map { if (it.id == block.id) keptIds(block, replaced.withId(block.id)) else it }
+    }
+
+    private fun requireTableReplacement(
+        target: Block,
+        replacement: Block,
+        index: Int,
+    ) {
+        // The first block takes the target's id, so a table turned into anything else takes its cell threads with it. A
+        // mistyped annotation line ahead of the table is the usual way this happens.
+        if (target is TableBlock && replacement !is TableBlock) {
+            throw InvalidEditException(
+                "operation $index: block ${target.id} is a table, so its replacement must start with a table; send the table " +
+                    "without an annotation line to keep its row and column ids, or delete it and insert the new blocks",
+            )
+        }
     }
 
     private fun keptIds(

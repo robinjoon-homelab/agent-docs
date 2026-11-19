@@ -1,7 +1,7 @@
 import { TrashSection } from './SpaceSettingsPage';
 import { useSession } from '../../app/SessionContext';
 import { canEdit, effectivePermission } from '../../../../../domain/space/permission';
-import { Link, useParams } from 'react-router';
+import { Link, Navigate, useLocation, useParams } from 'react-router';
 import { activityHref } from '../../../../../domain/activity/activity';
 import type { DocumentSummary } from '../../../../../domain/document/document';
 import { documentHref, threadHref } from '../../../../../domain/document/document';
@@ -275,8 +275,14 @@ function SpaceHome({ space }: { space: Space }) {
 /** S3: what is in a space and what needs attention. */
 export function SpaceHomePage() {
   const { space: slug = '' } = useParams();
+  const location = useLocation();
   const space = useSpace(slug);
   if (space.state === 'loading') return <Loading />;
   if (space.state === 'error') return <LoadError error={space.error} onRetry={space.reload} />;
+  if (space.data.slug !== slug) {
+    return (
+      <Navigate to={`/s/${encodeURIComponent(space.data.slug)}${location.search}${location.hash}`} replace />
+    );
+  }
   return <SpaceHome space={space.data} />;
 }

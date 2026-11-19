@@ -74,7 +74,7 @@ class ExposedDocumentRepository : DocumentRepository {
         revision: Revision,
         amended: Boolean,
     ): Document {
-        DocumentAssetWriteGuard.document(document)
+        DocumentAssetWriteGuard.document(document, revision.change.kind)
         try {
             val updated = DocumentsTable.update({ DocumentsTable.id eq document.id.value }) { DocumentRows.write(it, document) }
             check(updated == 1) { "Document to update does not exist: ${document.id}" }
@@ -99,7 +99,7 @@ class ExposedDocumentRepository : DocumentRepository {
         document: Document,
         revision: Revision,
     ): Document {
-        DocumentAssetWriteGuard.document(document)
+        DocumentAssetWriteGuard.document(document, revision.change.kind)
         DocumentsTable.update({ DocumentsTable.id eq document.id.value }) { DocumentRows.write(it, document) }
         if (pending(document.id) == null) RevisionRows.insert(revision, pending = true) else RevisionRows.replace(revision)
         writeMarks(document, revision)

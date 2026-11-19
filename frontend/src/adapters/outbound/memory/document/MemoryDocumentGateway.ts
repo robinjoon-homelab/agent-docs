@@ -58,6 +58,11 @@ function changedCells(before: Block, after: Block): CellRef[] {
 function computeDiff(from: readonly Block[], to: readonly Block[]): BlockDiff[] {
   const fromById = new Map(from.map((block) => [block.id, block]));
   const toIds = new Set(to.map((block) => block.id));
+  const oldOrder = from.filter((block) => toIds.has(block.id));
+  const newOrder = to.filter((block) => fromById.has(block.id));
+  const moved = new Set(
+    newOrder.filter((block, index) => oldOrder[index]?.id !== block.id).map((block) => block.id),
+  );
   const changes: BlockDiff[] = [];
   for (const block of to) {
     const before = fromById.get(block.id);
@@ -71,6 +76,8 @@ function computeDiff(from: readonly Block[], to: readonly Block[]): BlockDiff[] 
         after: block,
         changedCells: changedCells(before, block),
       });
+    } else if (moved.has(block.id)) {
+      changes.push({ blockId: block.id, change: 'moved', before, after: block, changedCells: [] });
     }
   }
   for (const block of from) {
@@ -355,12 +362,24 @@ export class MemoryDocumentGateway implements DocumentGateway {
       if (baseVersion !== document.version) {
         throw new StaleDocumentError(document.version, document);
       }
-      const confirmed = this.confirm(documentId);
       const snapshot = this.snapshot(documentId, revision);
+      const confirmed = this.confirm(documentId);
       const changes = computeDiff(document.blocks, snapshot.blocks);
+      if (
+        changes.length === 0 &&
+        snapshot.title === document.title &&
+        snapshot.status === document.status &&
+        snapshot.assignee === document.assignee &&
+        JSON.stringify(snapshot.tags) === JSON.stringify(document.tags)
+      )
+        return confirmed.revision;
       const updated = {
         ...document,
         blocks: snapshot.blocks,
+        title: snapshot.title,
+        status: snapshot.status,
+        tags: snapshot.tags,
+        assignee: snapshot.assignee,
         version: document.version + 1,
         revision: confirmed.revision + 1,
         updatedAt: this.store.now(),
@@ -464,7 +483,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
     return this.store.revisions.get(documentId) ?? [];
   }
 
-  private snapshot(documentId: string, revision: number): RevisionSnapshot {
+  private snapshot(documentId: string, revision: number): StoredRevision['snapshot'] {
     const entry = this.history(documentId).find((candidate) => candidate.meta.revision === revision);
     if (entry === undefined) throw new ApiError('not_found', 404, `rev ${revision}을 찾을 수 없습니다.`);
     return entry.snapshot;
@@ -487,6 +506,9 @@ export class MemoryDocumentGateway implements DocumentGateway {
         revision: document.revision,
         title: document.title,
         path: document.path,
+        status: document.status,
+        tags: document.tags,
+        assignee: document.assignee,
         blocks: document.blocks,
         actor: this.store.actor,
         createdAt,
@@ -545,6 +567,9 @@ export function simulateAgentEdit(
       revision,
       title: updated.title,
       path: updated.path,
+      status: updated.status,
+      tags: updated.tags,
+      assignee: updated.assignee,
       blocks,
       actor: FAKE_AGENT,
       createdAt: now,

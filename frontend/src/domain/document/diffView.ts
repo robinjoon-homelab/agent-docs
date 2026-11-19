@@ -9,7 +9,12 @@ export type DiffRow = {
   readonly changedCells: ReadonlySet<string>;
 };
 
-export const DIFF_MARKER: Record<ChangeKind, string> = { added: '+', modified: '~', removed: '−' };
+export const DIFF_MARKER: Record<ChangeKind, string> = {
+  added: '+',
+  modified: '~',
+  removed: '−',
+  moved: '↕',
+};
 
 export function cellKey(rowId: string, columnId: string): string {
   return `${rowId}:${columnId}`;
@@ -55,7 +60,7 @@ export function buildDiffRows(
 }
 
 export function diffCounts(diff: DocumentDiff): Record<ChangeKind, number> {
-  const counts: Record<ChangeKind, number> = { added: 0, modified: 0, removed: 0 };
+  const counts: Record<ChangeKind, number> = { added: 0, modified: 0, removed: 0, moved: 0 };
   for (const change of diff.changes) counts[change.change]++;
   return counts;
 }

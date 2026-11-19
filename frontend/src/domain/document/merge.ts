@@ -40,34 +40,98 @@ function byId(blocks: readonly Block[]): Map<string, Block> {
   return new Map(blocks.map((block) => [block.id, block]));
 }
 
-/**
- * Three-way block merge used after a save conflict. `base` is what my edits started from, `theirs` is
- * the current server content, and `choices` holds the user's pick for each conflicting block.
- * Non-conflicting blocks take whichever side changed them; my order wins, and their new blocks are
- * placed after the closest preceding block that survived.
- */
+function sameOrder(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+}
+
+function sharedOrders(base: readonly Block[], mine: readonly Block[], theirs: readonly Block[]) {
+  const local = new Set(mine.map((block) => block.id));
+  const remote = new Set(theirs.map((block) => block.id));
+  const shared = new Set(base.map((block) => block.id).filter((id) => local.has(id) && remote.has(id)));
+  const order = (blocks: readonly Block[]) => blocks.map((block) => block.id).filter((id) => shared.has(id));
+  return { base: order(base), mine: order(mine), theirs: order(theirs) };
+}
+
+function mergedOrder(orders: ReturnType<typeof sharedOrders>): readonly string[] | null {
+  const { base, mine, theirs } = orders;
+  if (sameOrder(base, mine)) return theirs;
+  if (sameOrder(base, theirs) || sameOrder(mine, theirs)) return mine;
+
+  // Each side may reverse a pair from the base. If the resulting precedence has a cycle, no ordering
+  // can honor both sides. A consistent order has exactly one block at each predecessor count.
+  const mineAt = new Map(mine.map((id, index) => [id, index]));
+  const theirsAt = new Map(theirs.map((id, index) => [id, index]));
+  const localPositions = base.map((id) => mineAt.get(id) as number);
+  const remotePositions = base.map((id) => theirsAt.get(id) as number);
+  const ranks = base.map(() => 0);
+  for (let left = 0; left < base.length; left++) {
+    for (let right = left + 1; right < base.length; right++) {
+      const reversed =
+        (localPositions[left] as number) > (localPositions[right] as number) ||
+        (remotePositions[left] as number) > (remotePositions[right] as number);
+      const rank = reversed ? left : right;
+      ranks[rank] = (ranks[rank] as number) + 1;
+    }
+  }
+  if (new Set(ranks).size !== base.length) return null;
+  const result: string[] = [];
+  base.forEach((id, index) => {
+    result[ranks[index] as number] = id;
+  });
+  return result;
+}
+
+export function hasOrderConflict(
+  base: readonly Block[],
+  mine: readonly Block[],
+  theirs: readonly Block[],
+): boolean {
+  return mergedOrder(sharedOrders(base, mine, theirs)) === null;
+}
+
+function insertUnplaced(result: Block[], side: readonly Block[], kept: ReadonlyMap<string, Block>): void {
+  const placed = new Set(result.map((block) => block.id));
+  let previous: string | null = null;
+  for (const { id } of side) {
+    const block = kept.get(id);
+    if (block === undefined) continue;
+    if (!placed.has(id)) {
+      const index = previous === null ? 0 : result.findIndex((candidate) => candidate.id === previous) + 1;
+      result.splice(index, 0, block);
+      placed.add(id);
+    }
+    previous = id;
+  }
+}
+
+/** Merges block contents and order independently. The caller checks for conflicts before automatically saving. */
 export function mergeAfterConflict(
   base: readonly Block[],
   mine: readonly Block[],
   theirs: readonly Block[],
   choices: ReadonlyMap<string, ConflictChoice>,
+  orderChoice?: ConflictChoice,
 ): Block[] {
   const sources: Sources = { base: byId(base), mine: byId(mine), theirs: byId(theirs), choices };
-  const result: Block[] = [];
+  const kept = new Map<string, Block>();
   for (const block of mine) {
     const other = sources.theirs.get(block.id);
-    if (other !== undefined) result.push(resolveBoth(block.id, block, other, sources));
-    else if (keepMineOnly(block.id, block, sources)) result.push(block);
+    if (other !== undefined) kept.set(block.id, resolveBoth(block.id, block, other, sources));
+    else if (keepMineOnly(block.id, block, sources)) kept.set(block.id, block);
   }
-  theirs.forEach((block, index) => {
-    if (sources.mine.has(block.id) || !keepTheirsOnly(block.id, block, sources)) return;
-    const previous = theirs
-      .slice(0, index)
-      .reverse()
-      .find((candidate) => result.some((kept) => kept.id === candidate.id));
-    const at = previous === undefined ? 0 : result.findIndex((kept) => kept.id === previous.id) + 1;
-    result.splice(at, 0, block);
-  });
+  for (const block of theirs) {
+    if (!sources.mine.has(block.id) && keepTheirsOnly(block.id, block, sources)) kept.set(block.id, block);
+  }
+  const orders = sharedOrders(base, mine, theirs);
+  const compatible = mergedOrder(orders);
+  const preferTheirs =
+    compatible === null
+      ? orderChoice === 'theirs'
+      : sameOrder(orders.base, orders.mine) && !sameOrder(orders.mine, orders.theirs);
+  const ordered = compatible ?? (preferTheirs ? orders.theirs : orders.mine);
+  const result = ordered.map((id) => kept.get(id) as Block);
+  insertUnplaced(result, preferTheirs ? theirs : mine, kept);
+  insertUnplaced(result, preferTheirs ? mine : theirs, kept);
   return result;
 }
 

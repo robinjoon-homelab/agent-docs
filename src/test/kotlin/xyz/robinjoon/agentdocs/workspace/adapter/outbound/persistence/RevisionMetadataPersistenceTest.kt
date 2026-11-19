@@ -61,8 +61,9 @@ class RevisionMetadataPersistenceTest {
         val operations = ExposedOperationStore()
         database.inTransaction { operations.save(key, record, PersistenceFixtures.at) }
         assertThat(database.inTransaction { operations.find(key) }).isEqualTo(record)
-        database.inTransaction { operations.removeDocumentResults(listOf(document.id)) }
+        database.inTransaction { operations.removeDocumentResults(mapOf(document.id to document.spaceId)) }
         val removed = database.inTransaction { operations.find(key) }
+        assertThat(removed?.purgedFrom).isEqualTo(document.spaceId)
         assertThat(removed?.state).isEqualTo(OperationResultState.REMOVED)
         assertThat(removed?.revisionLabel).isNull()
     }

@@ -1,0 +1,92 @@
+package xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence
+
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Test
+import xyz.robinjoon.agentdocs.adapter.outbound.persistence.ExposedActivityLog
+import xyz.robinjoon.agentdocs.application.model.ActivityQuery
+import xyz.robinjoon.agentdocs.support.persistence.MigratedH2Database
+import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.PersistenceFixtures.at
+import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.PersistenceFixtures.person
+import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItem
+import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItemId
+import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxKind
+import xyz.robinjoon.agentdocs.workspace.domain.inbox.Notice
+import xyz.robinjoon.agentdocs.workspace.domain.inbox.NoticeTarget
+import xyz.robinjoon.agentdocs.workspace.domain.thread.Comment
+import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
+import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentThread
+import java.util.UUID
+
+class CommentExcerptMigrationTest {
+    private val database = MigratedH2Database(target = "24")
+    private val inbox = ExposedInboxRepository()
+    private val log = ExposedActivityLog()
+    private val threads = ExposedThreadRepository()
+
+    @AfterEach
+    fun closeDatabase() = database.close()
+
+    @Test
+    fun `migration scrubs deleted inbox and activity excerpts including legacy links while keeping rows and metadata`() {
+        val fixture = TransferPersistenceFixtures(database)
+        val root = fixture.comment(fixture.document(fixture.source, "doc", "Body"), "Old private opening", null)
+        val opened = root.comments.single()
+        val deletedReply = Comment.write(CommentId(UUID.randomUUID()), person, "Old private reply", at.plusSeconds(10))
+        val liveReply = Comment.write(CommentId(UUID.randomUUID()), person, "Live reply", at.plusSeconds(20))
+        val withReplies = root.reply(deletedReply, deletedReply.history.createdAt).reply(liveReply, liveReply.history.createdAt)
+        val deleted =
+            withReplies
+                .deleteComment(
+                    opened.id,
+                    person,
+                    at.plusSeconds(30),
+                ).deleteComment(deletedReply.id, person, at.plusSeconds(30))
+        database.inTransaction { threads.update(deleted) }
+        insertActivity(root, opened, "thread.opened", linked = false)
+        insertActivity(root, deletedReply, "comment.added", linked = true)
+        insertActivity(root, liveReply, "comment.added", linked = true)
+        val items = withReplies.comments.map { item(root, it) }
+        database.inTransaction { inbox.addAll(items) }
+
+        database.migrate()
+
+        val entries = database.inTransaction { log.find(ActivityQuery(null, null, null, 20, oldestFirst = true)) }.map { it.record }
+        assertThat(entries.map { it.summary }).containsExactly("삭제된 댓글", "삭제된 댓글", "Live reply")
+        assertThat(entries.map { it.createdComment?.id }).containsExactly(null, deletedReply.id.value, liveReply.id.value)
+        assertThat(entries.map { it.subject.threadId }).containsOnly(root.id.value)
+        assertThat(
+            entries.map { it.at },
+        ).containsExactly(opened.history.createdAt, deletedReply.history.createdAt, liveReply.history.createdAt)
+        val notices = database.inTransaction { items.map { requireNotNull(inbox.findById(it.id)) } }
+        assertThat(notices.map { it.notice.excerpt }).containsExactly("", "", "Live reply")
+        assertThat(notices.map { it.notice.target }).containsExactlyElementsOf(items.map { it.notice.target })
+        assertThat(notices.map { it.delivery }).containsExactlyElementsOf(items.map { it.delivery })
+        assertThat(database.inTransaction { threads.findById(root.id) }).isEqualTo(deleted)
+    }
+
+    private fun item(
+        thread: CommentThread,
+        comment: Comment,
+    ): InboxItem {
+        val target = NoticeTarget(thread.location.spaceId, thread.location.documentId, thread.id, comment.id)
+        val notice = Notice.of(InboxKind.REPLY, target, person, comment.body)
+        return InboxItem.deliver(InboxItemId(UUID.randomUUID()), "reader", notice, comment.history.createdAt)
+    }
+
+    private fun insertActivity(
+        thread: CommentThread,
+        comment: Comment,
+        kind: String,
+        linked: Boolean,
+    ) {
+        val commentId = if (linked) "'${comment.id.value}'" else "NULL"
+        database.execute(
+            "INSERT INTO activities (kind, actor_kind, actor_user_id, actor_login, space_id, document_id, thread_id, " +
+                "summary, occurred_at, created_comment_id) " +
+                "VALUES ('$kind', 'HUMAN', '${person.userId}', '${person.login}', '${thread.location.spaceId.value}', " +
+                "'${thread.location.documentId.value}', '${thread.id.value}', '${comment.body}', " +
+                "TIMESTAMP WITH TIME ZONE '${comment.history.createdAt}', $commentId)",
+        )
+    }
+}

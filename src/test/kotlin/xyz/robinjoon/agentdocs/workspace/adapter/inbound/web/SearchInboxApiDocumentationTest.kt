@@ -123,7 +123,7 @@ class SearchInboxApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("[].threadId").description("스레드 ID"),
                         fieldWithPath("[].commentId").description("댓글 ID"),
                         *actorFields("[].actor"),
-                        fieldWithPath("[].excerpt").description("댓글 앞부분 200자"),
+                        fieldWithPath("[].excerpt").description("댓글 앞부분 최대 200자. 댓글이 삭제되면 빈 문자열"),
                         fieldWithPath("[].createdAt").description("받은 시각"),
                         fieldWithPath("[].readAt").type(JsonFieldType.STRING).optional().description("읽은 시각"),
                     ),

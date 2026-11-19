@@ -87,11 +87,10 @@ class DocsEditTool(
             name = "docs_edit",
             title = "Edit a document",
             description =
-                "Applies operations atomically. Each op: {op: replace|insert|delete|move|replaceText, ...}. replace/delete/move need " +
-                    "blockId and " +
-                    "ifHash from docs_read; replace and insert take markdown; insert and move take after or before a block id, or at " +
-                    "start|end; " +
-                    "replaceText takes blockId, find (must occur once), replace. If a block changed since you read it, nothing is " +
+                "Applies operations atomically. Each op: {op: replace|insert|delete|move|replaceText, ...}. " +
+                    "replace/delete/move/replaceText need blockId and ifHash from docs_read. Replace and insert take markdown. " +
+                    "Insert and move take after or before a block id, or at start|end. " +
+                    "replaceText also takes find (must occur once) and replace. If a block changed since you read it, nothing is " +
                     "applied and the " +
                     "error returns the current block: read it and retry. Pass answering with a thread id to link the new revision to " +
                     "that thread.",

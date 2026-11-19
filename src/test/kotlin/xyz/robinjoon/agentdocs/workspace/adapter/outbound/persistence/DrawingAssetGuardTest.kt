@@ -14,6 +14,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetOrigin
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.InvalidDocumentException
+import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
 import xyz.robinjoon.agentdocs.workspace.domain.space.Space
 import java.util.UUID
 
@@ -102,5 +103,44 @@ class DrawingAssetGuardTest {
         val updated = database.inTransaction { documents.update(edited, PersistenceFixtures.revisionOf(edited), amended = false) }
 
         assertThat(updated.blocks).containsExactlyElementsOf(edited.blocks)
+    }
+
+    @Test
+    fun `normal edits must replace SVG and scene together on the same block id while alt-only and restores remain valid`() {
+        val svg1 = uploaded(fixture.source, AssetMediaType.SVG)
+        val scene1 = uploaded(fixture.source, AssetMediaType.EXCALIDRAW)
+        val svg2 = uploaded(fixture.source, AssetMediaType.SVG)
+        val scene2 = uploaded(fixture.source, AssetMediaType.EXCALIDRAW)
+        val initial = DrawingBlock(BlockId("draw000001"), svg1.id, scene1.id, "초안")
+        val doc = PersistenceFixtures.document(fixture.source.id, "pair-edit", listOf(initial))
+        val created = database.inTransaction { documents.add(doc, PersistenceFixtures.revisionOf(doc)) }
+
+        val svgOnly = created.revise(created.header, listOf(initial.copy(svg = svg2.id)), PersistenceFixtures.at.plusSeconds(2))
+        val sceneOnly = created.revise(created.header, listOf(initial.copy(scene = scene2.id)), PersistenceFixtures.at.plusSeconds(3))
+        assertThatThrownBy {
+            database.inTransaction { documents.update(svgOnly, PersistenceFixtures.revisionOf(svgOnly), amended = false) }
+        }.isInstanceOf(InvalidDocumentException::class.java)
+        assertThatThrownBy {
+            database.inTransaction { documents.savePending(sceneOnly, PersistenceFixtures.revisionOf(sceneOnly)) }
+        }.isInstanceOf(InvalidDocumentException::class.java)
+
+        val altOnly = created.amend(created.header, listOf(initial.copy(alt = "설명 추가")), PersistenceFixtures.at.plusSeconds(4))
+        val afterAlt = database.inTransaction { documents.savePending(altOnly, PersistenceFixtures.revisionOf(altOnly).copy(number = 2)) }
+        assertThat(afterAlt.blocks).containsExactly(initial.copy(alt = "설명 추가"))
+
+        val confirmed = database.inTransaction { documents.confirmPending(afterAlt) }
+        val both =
+            confirmed.revise(
+                confirmed.header,
+                listOf(DrawingBlock(BlockId("draw000001"), svg2.id, scene2.id, "수정됨")),
+                PersistenceFixtures.at.plusSeconds(5),
+            )
+        val afterBoth = database.inTransaction { documents.update(both, PersistenceFixtures.revisionOf(both), amended = false) }
+        assertThat(afterBoth.blocks).containsExactly(DrawingBlock(BlockId("draw000001"), svg2.id, scene2.id, "수정됨"))
+
+        val restored = afterBoth.revise(afterBoth.header, listOf(initial.copy(svg = svg1.id)), PersistenceFixtures.at.plusSeconds(6))
+        val restoreRev = PersistenceFixtures.revisionOf(restored).let { it.copy(change = it.change.withKind(RevisionKind.RESTORE)) }
+        val afterRestore = database.inTransaction { documents.update(restored, restoreRev, amended = false) }
+        assertThat(afterRestore.blocks).containsExactly(initial.copy(svg = svg1.id))
     }
 }

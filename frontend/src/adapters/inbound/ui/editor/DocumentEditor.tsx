@@ -14,7 +14,7 @@ import type {
   SaveOutcome,
 } from '../../../../application/document/editorSession';
 import type { Asset } from '../../../../domain/asset/asset';
-import { isExternalImageUrl, isImageMediaType } from '../../../../domain/asset/asset';
+import { isExternalImageUrl, isImageMediaType, standaloneHttpUrl } from '../../../../domain/asset/asset';
 import { recentAgentChanges, AGENT_MARKER_VISIBLE_MS } from '../../../../domain/document/agentChanges';
 import type { Block } from '../../../../domain/document/block';
 import type { AgentDocument } from '../../../../domain/document/document';
@@ -125,6 +125,40 @@ export type DocumentEditorProps = {
   readonly onContentChange: () => void;
   readonly onMessage: (message: string) => void;
 };
+
+type PendingUrlImport = {
+  readonly url: string;
+  readonly documentId: string;
+  readonly blockId: string | null;
+};
+
+function isHtmlClipboardFile(file: File): boolean {
+  const mime = file.type.split(';')[0]?.trim().toLowerCase() ?? '';
+  return mime === 'text/html' || /\.html?$/i.test(file.name);
+}
+
+function replacePastedUrlParagraph(
+  editor: Editor,
+  blockId: string | null,
+  url: string,
+  asset: Asset,
+): boolean {
+  if (blockId === null || !isImageMediaType(asset.mediaType)) return false;
+  const found = findBlock(editor.state.doc, blockId);
+  if (found === null || found.node.type.name !== 'paragraph' || found.node.textContent.trim() !== url)
+    return false;
+  const node = editor.state.schema.nodes.image?.create({
+    id: randomBlockId(),
+    assetId: asset.id,
+    alt: '',
+    caption: '',
+  });
+  if (node === undefined) return false;
+  editor.view.dispatch(
+    editor.state.tr.replaceWith(found.pos, found.pos + found.node.nodeSize, node).scrollIntoView(),
+  );
+  return true;
+}
 
 function selectionFromDom(view: EditorView): void {
   const selection = window.getSelection();
@@ -311,6 +345,8 @@ export function DocumentEditor(props: DocumentEditorProps) {
   const [store] = useState(() => new SuggestionStore());
   const [bridge] = useState(() => new EditorBridge());
   const [drawing, setDrawing] = useState<DrawingTarget | null>(null);
+  const [pendingUrlImport, setPendingUrlImport] = useState<PendingUrlImport | null>(null);
+  const [importingUrl, setImportingUrl] = useState(false);
   const drawingDraft = useRef(false);
   // What this tab uploaded for drawings whose save the server has not confirmed yet, so no route is asked early.
   const previews = useRef(new Map<string, string>());
@@ -515,7 +551,7 @@ export function DocumentEditor(props: DocumentEditorProps) {
       try {
         const result = await services.assets.upload(document.space.slug, {
           name: file.name,
-          type: file.type,
+          type: file.type || (isHtmlClipboardFile(file) ? 'text/html' : ''),
           size: file.size,
           data: file,
         });
@@ -532,6 +568,42 @@ export function DocumentEditor(props: DocumentEditorProps) {
       insertAsset(await services.assets.importUrl(document.space.slug, url), null);
     } catch (error) {
       latest.current.onMessage(errorMessage(error));
+    }
+  };
+
+  const importPendingUrl = async (pending: PendingUrlImport): Promise<void> => {
+    const startEditor = editorRef.current;
+    if (
+      startEditor === null ||
+      startEditor.isDestroyed ||
+      !startEditor.isEditable ||
+      !session.isWritable() ||
+      latest.current.document.id !== pending.documentId
+    ) {
+      setPendingUrlImport(null);
+      return;
+    }
+    setImportingUrl(true);
+    try {
+      const asset = await services.assets.importUrl(document.space.slug, pending.url);
+      setPendingUrlImport(null);
+      const current = editorRef.current;
+      if (
+        current === null ||
+        current !== startEditor ||
+        current.isDestroyed ||
+        !current.isEditable ||
+        !session.isWritable() ||
+        latest.current.document.id !== pending.documentId
+      ) {
+        return;
+      }
+      if (!replacePastedUrlParagraph(current, pending.blockId, pending.url, asset)) insertAsset(asset, null);
+    } catch (error) {
+      setPendingUrlImport(null);
+      if (latest.current.document.id === pending.documentId) latest.current.onMessage(errorMessage(error));
+    } finally {
+      setImportingUrl(false);
     }
   };
 
@@ -611,22 +683,39 @@ export function DocumentEditor(props: DocumentEditorProps) {
         transformPasted: (slice, view) => clearDuplicateIds(unmergePastedTables(slice), view.state.doc),
         handlePaste: (view, event) => {
           if (!view.editable) return false;
-          const files = Array.from(event.clipboardData?.files ?? []).filter((file) =>
-            isImageMediaType(file.type),
+          const files = Array.from(event.clipboardData?.files ?? []).filter(
+            (file) => isImageMediaType(file.type) || isHtmlClipboardFile(file),
           );
           if (files.length > 0) {
+            setPendingUrlImport(null);
             void uploadFiles(files, null);
             return true;
           }
           const text = event.clipboardData?.getData('text/plain') ?? '';
           if (isExternalImageUrl(text)) {
+            setPendingUrlImport(null);
             void importImage(text.trim());
             return true;
           }
-          if (pasteStructuredText(view, event)) return true;
+          if (pasteStructuredText(view, event)) {
+            setPendingUrlImport(null);
+            return true;
+          }
           // The editor drops <img> from pasted web content; the server downloads each image after the text is in.
           const images = pastedImageUrls(event.clipboardData?.getData('text/html') ?? '');
-          if (images.length > 0) setTimeout(() => void importImages(images), 0);
+          if (images.length > 0) {
+            setPendingUrlImport(null);
+            setTimeout(() => void importImages(images), 0);
+            return false;
+          }
+          const url = standaloneHttpUrl(text);
+          if (url === null) {
+            setPendingUrlImport(null);
+          } else {
+            const topNode = view.state.selection.$from.depth >= 1 ? view.state.selection.$from.node(1) : null;
+            const blockId = typeof topNode?.attrs.id === 'string' ? topNode.attrs.id : null;
+            setPendingUrlImport({ url, documentId: latest.current.document.id, blockId });
+          }
           return false;
         },
         handleDrop: (view, event, _slice, moved) => {
@@ -662,6 +751,11 @@ export function DocumentEditor(props: DocumentEditorProps) {
   useEffect(() => {
     if (editor.isEditable !== editable) editor.setEditable(editable);
   }, [editor, editable]);
+
+  const activePendingUrl =
+    editable && pendingUrlImport !== null && pendingUrlImport.documentId === document.id
+      ? pendingUrlImport
+      : null;
 
   // The server kept another writer's blocks in our save: show them, keeping blocks the user changed since.
   useEffect(
@@ -733,6 +827,31 @@ export function DocumentEditor(props: DocumentEditorProps) {
 
   return (
     <div className="editor-shell" ref={containerRef}>
+      {activePendingUrl !== null ? (
+        <div className="editor-paste-import" role="status">
+          <span className="editor-paste-import-text">
+            붙여 넣은 주소를 이미지로 가져올 수 있습니다: <code>{activePendingUrl.url}</code>
+          </span>
+          <div className="editor-paste-import-actions">
+            <button
+              type="button"
+              className="btn btn-small btn-primary"
+              disabled={importingUrl}
+              onClick={() => void importPendingUrl(activePendingUrl)}
+            >
+              {importingUrl ? '가져오는 중…' : '이미지로 가져오기'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={importingUrl}
+              onClick={() => setPendingUrlImport(null)}
+            >
+              유지
+            </button>
+          </div>
+        </div>
+      ) : null}
       <EditorContent editor={editor} />
       <SelectionToolbar
         editor={editor}

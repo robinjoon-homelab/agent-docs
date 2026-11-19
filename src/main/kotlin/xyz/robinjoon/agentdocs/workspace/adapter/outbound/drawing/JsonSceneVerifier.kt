@@ -24,6 +24,9 @@ class JsonSceneVerifier(
             root.get("elements")?.takeIf(JsonNode::isArray)
                 ?: throw InvalidAssetException("a drawing scene needs an \"elements\" array")
         val visible = visibleElements(elements.values().toList())
+        if (root.path("appState").path("currentItemFontFamily").isLiberationSans()) {
+            throw InvalidAssetException("a drawing using Liberation Sans (fontFamily $LIBERATION_SANS) cannot be stored")
+        }
         return VerifiedScene(visible.size, checkedFileCount(root.get("files")), visible.mapNotNull(::textOf))
     }
 
@@ -50,6 +53,9 @@ class JsonSceneVerifier(
         if (visible.any { it.path("type").textOrNull() == AI_FRAME }) {
             throw InvalidAssetException("a drawing with AI-generated HTML frames (iframe elements) cannot be stored")
         }
+        if (visible.any { it.path("fontFamily").isLiberationSans() }) {
+            throw InvalidAssetException("a drawing using Liberation Sans (fontFamily $LIBERATION_SANS) cannot be stored")
+        }
         return visible
     }
 
@@ -74,10 +80,13 @@ class JsonSceneVerifier(
 
     private fun JsonNode.textOrNull(): String? = takeIf(JsonNode::isString)?.stringValue()
 
+    private fun JsonNode.isLiberationSans(): Boolean = isIntegralNumber && intValue() == LIBERATION_SANS
+
     private companion object {
         const val SCENE_TYPE = "excalidraw"
         const val AI_FRAME = "iframe"
         const val EMBEDDED = "data:"
+        const val LIBERATION_SANS = 9
 
         // Every element type of @excalidraw/excalidraw 0.18.1 (packages/excalidraw/element/types.ts).
         val elementTypes =

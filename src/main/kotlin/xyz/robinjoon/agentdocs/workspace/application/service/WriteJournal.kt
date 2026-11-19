@@ -13,6 +13,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.WorkspaceActivity
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.output.OperationStore
 import xyz.robinjoon.agentdocs.workspace.domain.Actor
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionChange
@@ -34,7 +35,7 @@ class WriteJournal(
         context: WriteContext,
         kind: String,
     ): OperationRecord? {
-        val record = keyOf(context)?.let(operations::find) ?: return null
+        val record = keyOf(context)?.let(operations::findForWrite) ?: return null
         if (record.kind != kind) {
             throw InvalidRequestException(
                 "opId ${context.operationId} was already used for a different operation",
@@ -59,9 +60,12 @@ class WriteJournal(
         keyOf(context)?.let { operations.save(it, remembered, now()) }
     }
 
-    fun removeCommentResults(comment: CommentId) = operations.removeCommentResults(comment)
+    fun removeCommentCopies(comment: CommentId) {
+        operations.removeCommentResults(comment)
+        activity.redactCommentExcerpt(comment.value)
+    }
 
-    fun removeDocumentResults(ids: List<DocumentId>) = operations.removeDocumentResults(ids)
+    fun removeDocumentResults(spaces: Map<DocumentId, SpaceId>) = operations.removeDocumentResults(spaces)
 
     fun record(
         context: WriteContext,

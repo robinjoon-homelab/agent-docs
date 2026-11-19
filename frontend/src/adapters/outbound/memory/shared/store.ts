@@ -3,7 +3,12 @@ import type { Membership } from '../../../../domain/membership/membership';
 import type { Activity } from '../../../../domain/activity/activity';
 import type { Asset } from '../../../../domain/asset/asset';
 import type { Connection, OAuthRequest } from '../../../../domain/connection/connection';
-import type { AgentDocument, Revision, RevisionSnapshot } from '../../../../domain/document/document';
+import type {
+  AgentDocument,
+  DocumentMeta,
+  Revision,
+  RevisionSnapshot,
+} from '../../../../domain/document/document';
 import type { InboxItem } from '../../../../domain/inbox/inbox';
 import type { Me } from '../../../../domain/session/me';
 import type { Actor } from '../../../../domain/shared/actor';
@@ -11,7 +16,7 @@ import type { Space } from '../../../../domain/space/space';
 import type { Thread } from '../../../../domain/thread/thread';
 import { ApiError } from '../../../../application/shared/ports/errors';
 
-export type StoredRevision = { readonly meta: Revision; readonly snapshot: RevisionSnapshot };
+export type StoredRevision = { readonly meta: Revision; readonly snapshot: RevisionSnapshot & DocumentMeta };
 
 /**
  * A map keyed by document id that reports every write, so the fake raises the same "this document changed"

@@ -90,7 +90,8 @@ class RevisionCommandsTest {
     fun `a repeated naming request replays its original label after later changes`() {
         val key = OperationKey(owner.userId.toString(), "name-once")
         val original = RevisionLabel(documentId, 1, "Original")
-        every { operations.find(key) } returns
+        every { documents.findById(documentId) } returns current
+        every { operations.findForWrite(key) } returns
             OperationRecord("revision.name", documentId.value, 1, state = OperationResultState.AVAILABLE, revisionLabel = original)
         assertThat(service.nameRevision(context(ownerAccess, operationId = "name-once"), documentId, 1, "Later")).isEqualTo(original)
     }

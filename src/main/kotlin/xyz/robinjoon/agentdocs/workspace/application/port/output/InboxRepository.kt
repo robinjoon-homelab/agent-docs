@@ -1,9 +1,11 @@
 package xyz.robinjoon.agentdocs.workspace.application.port.output
 
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
+import xyz.robinjoon.agentdocs.workspace.domain.SpaceScope
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItem
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItemId
+import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
 import java.time.Instant
 import java.util.UUID
 
@@ -14,11 +16,17 @@ interface InboxRepository {
         space: SpaceId,
     )
 
+    fun redactCommentExcerpt(comment: CommentId)
+
     fun addAll(items: List<InboxItem>)
 
     fun update(item: InboxItem): InboxItem
 
-    fun findById(id: InboxItemId): InboxItem?
+    fun findForRead(
+        id: InboxItemId,
+        userId: UUID,
+        scope: SpaceScope,
+    ): InboxItem?
 
     // Makes every item delivered to the login and not yet claimed the person's. Answers how many it claimed.
     fun claim(
@@ -31,12 +39,17 @@ interface InboxRepository {
         userId: UUID,
         unreadOnly: Boolean,
         limit: Int,
+        scope: SpaceScope,
     ): List<InboxItem>
 
-    fun countUnread(userId: UUID): Int
+    fun countUnread(
+        userId: UUID,
+        scope: SpaceScope,
+    ): Int
 
     fun markAllRead(
         userId: UUID,
         at: Instant,
+        scope: SpaceScope,
     ): Int
 }

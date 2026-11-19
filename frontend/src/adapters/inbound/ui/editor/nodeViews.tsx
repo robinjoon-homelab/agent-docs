@@ -238,8 +238,16 @@ function ImageView({ node, updateAttributes, editor, extension, selected }: Reac
             />
           )}
         </div>
-      ) : caption === '' ? null : (
-        <figcaption>{caption}</figcaption>
+      ) : (
+        <>
+          {caption === '' || caption === 'mockup' ? null : <figcaption>{caption}</figcaption>}
+          {alt.trim() === '' ? null : (
+            <p className="image-alt-readonly">
+              <span className="image-alt-label">대체 텍스트</span>
+              <span>{alt}</span>
+            </p>
+          )}
+        </>
       )}
     </NodeViewWrapper>
   );

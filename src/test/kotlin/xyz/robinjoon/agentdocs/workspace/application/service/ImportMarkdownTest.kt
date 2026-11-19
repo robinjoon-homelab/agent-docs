@@ -18,4 +18,13 @@ class ImportMarkdownTest {
         assertThatThrownBy { ImportMarkdown.rewrite("![diagram][picture]") { "id" } }
             .isInstanceOf(InvalidRequestException::class.java)
     }
+
+    @Test
+    fun `exported reading markdown with escaped brackets in alt text rewrites cleanly`() {
+        val source = """![배포 흐름 [초안\]](../assets/svg-1.svg "excalidraw ../assets/scene-1.excalidraw")"""
+        val actual = ImportMarkdown.rewrite(source) { "11111111-1111-4111-8111-111111111111" }
+        assertThat(actual).isEqualTo(
+            """![배포 흐름 [초안\]](asset:11111111-1111-4111-8111-111111111111 "excalidraw ../assets/scene-1.excalidraw")""",
+        )
+    }
 }

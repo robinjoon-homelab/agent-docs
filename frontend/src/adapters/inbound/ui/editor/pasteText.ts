@@ -91,7 +91,46 @@ function tableAt(lines: readonly string[], index: number): JSONContent | null {
   return gridNode(rows, aligns, true);
 }
 
-function lineNode(line: string): JSONContent | null {
+const UUID_PART = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+const ASSET_REF = new RegExp(`^asset:(${UUID_PART})$`, 'i');
+const ASSET_PATH = new RegExp(
+  `^\\/api\\/(?:documents\\/${UUID_PART}\\/)?assets\\/(${UUID_PART})\\/content$`,
+  'i',
+);
+const MOCKUP_IMAGE = /^!\[((?:\\.|[^\]\\])*)\]\((<[^>]+>|[^\s()]+)\s+"mockup"\)$/;
+
+function unescapeMarkdown(text: string): string {
+  return text.replace(/\\(.)/g, '$1');
+}
+
+function mockupAssetId(target: string, allowedOrigin?: string): string | null {
+  const clean = target.startsWith('<') && target.endsWith('>') ? target.slice(1, -1) : target;
+  const direct = ASSET_REF.exec(clean);
+  if (direct?.[1] !== undefined) return direct[1].toLowerCase();
+  const relative = ASSET_PATH.exec(clean);
+  if (relative?.[1] !== undefined) return relative[1].toLowerCase();
+  if (allowedOrigin === undefined) return null;
+  try {
+    const parsed = new URL(clean);
+    if (parsed.origin !== allowedOrigin) return null;
+    const match = ASSET_PATH.exec(parsed.pathname);
+    return match?.[1]?.toLowerCase() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function lineNode(line: string, allowedOrigin?: string): JSONContent | null {
+  const mockup = MOCKUP_IMAGE.exec(line.trim());
+  if (mockup) {
+    const assetId = mockupAssetId(mockup[2] ?? '', allowedOrigin);
+    if (assetId !== null) {
+      return {
+        type: 'image',
+        attrs: { assetId, alt: unescapeMarkdown(mockup[1] ?? ''), caption: 'mockup' },
+      };
+    }
+  }
   const heading = /^(#{1,6})\s+(.+)$/.exec(line);
   if (heading)
     return textNode('heading', heading[2] ?? '', { level: Math.min(3, (heading[1] ?? '').length) });
@@ -107,7 +146,7 @@ function lineNode(line: string): JSONContent | null {
   return null;
 }
 
-function markdownNodes(text: string): JSONContent[] | null {
+function markdownNodes(text: string, allowedOrigin?: string): JSONContent[] | null {
   const lines = text.split('\n');
   const nodes: JSONContent[] = [];
   let recognized = false;
@@ -143,7 +182,7 @@ function markdownNodes(text: string): JSONContent[] | null {
       i += table.content?.length ?? 0;
       recognized = true;
     } else if (line !== '') {
-      const block = lineNode(line);
+      const block = lineNode(line, allowedOrigin);
       const paragraph = textNode('paragraph', line);
       recognized ||=
         block !== null ||
@@ -155,7 +194,7 @@ function markdownNodes(text: string): JSONContent[] | null {
 }
 
 /** HTML keeps the browser's rich paste path; plain prose keeps native text insertion. */
-export function pastedTextNodes(text: string, csv = false): JSONContent[] | null {
+export function pastedTextNodes(text: string, csv = false, allowedOrigin?: string): JSONContent[] | null {
   const normalized = text.replace(/\r\n?/g, '\n');
   for (const delimiter of csv ? [','] : ['\t', ',']) {
     if (!normalized.includes(delimiter) && !(csv && delimiter === ',')) continue;
@@ -175,5 +214,5 @@ export function pastedTextNodes(text: string, csv = false): JSONContent[] | null
         ),
       ];
   }
-  return markdownNodes(normalized);
+  return markdownNodes(normalized, allowedOrigin);
 }

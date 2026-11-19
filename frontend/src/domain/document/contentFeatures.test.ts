@@ -34,6 +34,33 @@ describe('content expressions', () => {
       'src/main.kt#L4-L6',
     ]);
   });
+  it('recognizes repo root files such as README.md while keeping repo rules and normal prose safe', () => {
+    const context = { repositories: ['a/one'] };
+    const text = 'See README.md, README.md#L10-L20, build.gradle.kts, .gitignore, and Dockerfile.';
+    const spans = githubReferences(text, context);
+    expect(spans.map((span) => text.slice(span.from, span.to))).toEqual([
+      'README.md',
+      'README.md#L10-L20',
+      'build.gradle.kts',
+      '.gitignore',
+      'Dockerfile',
+    ]);
+    expect(spans.map((span) => span.href)).toEqual([
+      'https://github.com/a/one/blob/HEAD/README.md',
+      'https://github.com/a/one/blob/HEAD/README.md#L10-L20',
+      'https://github.com/a/one/blob/HEAD/build.gradle.kts',
+      'https://github.com/a/one/blob/HEAD/.gitignore',
+      'https://github.com/a/one/blob/HEAD/Dockerfile',
+    ]);
+    expect(githubReferences('README.md', { repositories: [] })).toEqual([]);
+    expect(githubReferences('README.md', { repositories: ['a/one', 'a/two'] })).toEqual([]);
+    expect(
+      githubReferences(
+        'Check e.g. v1.2.3, 0.18.1, example.com, under the license, or https://example.com/README.md',
+        context,
+      ),
+    ).toEqual([]);
+  });
   it('extracts reachable assets without treating code samples as attachments', () => {
     const id = '88888888-8888-4888-8888-888888888888';
     const other = '99999999-9999-4999-8999-999999999999';

@@ -28,10 +28,23 @@ internal class DocumentReplay(
                         .map { it.document.id }
             ).distinct()
         ids.forEach { id ->
-            val current = documents.findById(id)?.takeIf { access.sees(it.spaceId) } ?: throw DocumentNotFoundException(root)
-            Permissions.require(access, current.spaceId, Permission.EDIT, "editing a document")
+            requireEditable(access, record, id)
         }
-        if (record.state == OperationResultState.REMOVED) throw ResultRemovedException(record)
         return record.documentWrite ?: throw LegacyOperationException(record)
+    }
+
+    fun requireEditable(
+        access: Access,
+        record: OperationRecord,
+        id: DocumentId,
+    ) {
+        val root = DocumentId(record.target)
+        val current = documents.findById(id)
+        val removed = record.state == OperationResultState.REMOVED
+        if (current == null && removed && id == root && access.isOwner) throw ResultRemovedException(record)
+        val space = current?.spaceId ?: record.purgedFrom?.takeIf { removed && id == root }
+        if (space == null || !access.sees(space)) throw DocumentNotFoundException(root)
+        Permissions.require(access, space, Permission.EDIT, "editing a document")
+        if (removed) throw ResultRemovedException(record)
     }
 }

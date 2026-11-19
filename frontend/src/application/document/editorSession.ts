@@ -3,11 +3,13 @@ import type { Block } from '../../domain/document/block';
 import { blocksEqual, withoutHash } from '../../domain/document/block';
 import type { AgentDocument, DocumentMeta, SaveConflict } from '../../domain/document/document';
 import type { ConflictChoice } from '../../domain/document/merge';
-import { conflictingBlocks, mergeAfterConflict } from '../../domain/document/merge';
+import { conflictingBlocks, hasOrderConflict, mergeAfterConflict } from '../../domain/document/merge';
 import type { Clock } from '../shared/ports/Clock';
-import { isApiError } from '../shared/ports/errors';
+import { isApiError, isNotVisible } from '../shared/ports/errors';
 import { StaleDocumentError } from './ports/DocumentGateway';
 import type { CurrentDocument, DocumentGateway, MetaPatch } from './ports/DocumentGateway';
+import type { RevocationReason } from '../../domain/document/documentEvents';
+import { canEdit, type Permission } from '../../domain/space/permission';
 
 export type InputBatch = { readonly trace: InputTraceBatch; accepted(): void; unchanged(): void };
 export type InputKind = 'body' | keyof DocumentMeta;
@@ -54,6 +56,7 @@ export type EditorSessionState = {
   readonly meta: DocumentMeta;
   readonly status: SaveStatus;
   readonly conflicts: readonly SaveConflict[];
+  readonly orderConflict: readonly Block[] | null;
   readonly errorMessage: string | null;
   readonly lastSavedAt: Date | null;
   readonly revisionNameSuggestion: number | null;
@@ -63,6 +66,8 @@ export type EditorSessionState = {
  * A rebased body for the editor. Apply it only to blocks unchanged since `submitted`.
  */
 export type ServerMerge = { readonly submitted: readonly Block[]; readonly server: readonly Block[] };
+
+type WriteAccessChange = { revoked: RevocationReason } | { permission: Permission };
 
 function metaOf(document: CurrentDocument): DocumentMeta {
   return {
@@ -113,7 +118,7 @@ export class DocumentEditorSession {
   private readonly documentId: string;
   private lastInputAt: Date;
   private finalizableVersion: number | null = null;
-  private suggestNameOnConfirmation = false;
+  private pendingNameSuggestion: { version: number; revision: number } | null = null;
   private inputBatch:
     ((kinds: readonly InputKind[], reservations: readonly InputReservation[]) => InputBatch | null) | null =
     null;
@@ -137,6 +142,7 @@ export class DocumentEditorSession {
   private editedSinceSend = false;
   private chain: Promise<void> = Promise.resolve();
   private readonly listeners = new Set<() => void>();
+  private readonly accessListeners = new Set<(change: WriteAccessChange) => void>();
   private readonly mergeListeners = new Set<(merge: ServerMerge) => void>();
 
   constructor(gateway: DocumentGateway, clock: Clock, document: AgentDocument) {
@@ -153,6 +159,7 @@ export class DocumentEditorSession {
       meta: this.savedMeta,
       status: 'saved',
       conflicts: [],
+      orderConflict: null,
       errorMessage: null,
       lastSavedAt: null,
       revisionNameSuggestion: null,
@@ -172,6 +179,39 @@ export class DocumentEditorSession {
     return () => this.mergeListeners.delete(listener);
   };
 
+  readonly onWriteAccess = (listener: (change: WriteAccessChange) => void): (() => void) => {
+    this.accessListeners.add(listener);
+    return () => this.accessListeners.delete(listener);
+  };
+
+  private closeWrites(change: WriteAccessChange): void {
+    this.setWritable(false);
+    for (const listener of this.accessListeners) listener(change);
+  }
+
+  private async keepRejectedDraft(error: unknown): Promise<boolean> {
+    if (isApiError(error, 'unauthenticated')) {
+      this.closeWrites({ revoked: 'unauthenticated' });
+      return true;
+    }
+    if (!this.isWritable()) return true;
+    if (!isNotVisible(error)) return false;
+    // A write can fail for a missing related resource while the document still permits editing.
+    try {
+      const current = await this.gateway.get(this.documentId);
+      if (current.permission !== undefined && !canEdit(current.permission)) {
+        this.closeWrites({ permission: current.permission });
+        return true;
+      }
+      return !this.isWritable();
+    } catch (failure) {
+      if (isApiError(failure, 'unauthenticated')) this.closeWrites({ revoked: 'unauthenticated' });
+      else if (isNotVisible(failure)) this.closeWrites({ revoked: 'not_found' });
+      // If access cannot be verified, keep the input available for recovery or retry.
+      return true;
+    }
+  }
+
   /** `reservations` are drawing input to send with this batch; empty for metadata and bodies without a drawing. */
   setInputBatches(
     source: (kinds: readonly InputKind[], reservations: readonly InputReservation[]) => InputBatch | null,
@@ -184,7 +224,9 @@ export class DocumentEditorSession {
    * input; reopening sends nothing by itself, so the caller refreshes first and the next save goes out as usual.
    */
   setWritable(writable: boolean): void {
+    const closing = this.writable && !writable;
     this.writable = writable;
+    if (closing && this.metaBases.size > 0) this.update({ meta: { ...this.savedMeta, ...this.pendingMeta } });
   }
 
   isWritable(): boolean {
@@ -293,7 +335,6 @@ export class DocumentEditorSession {
     return this.enqueue(async () => {
       if (!this.writable) return;
       try {
-        const previousStatus = this.savedMeta.status;
         const document = await this.saveMeta(patch, baselines, batch);
         for (const key of Object.keys(patch) as (keyof DocumentMeta)[]) {
           if (JSON.stringify(this.pendingMeta[key]) === JSON.stringify(input[key])) {
@@ -309,9 +350,6 @@ export class DocumentEditorSession {
             }
           }
         }
-        if (previousStatus !== 'confirmed' && document.status === 'confirmed')
-          this.suggestNameOnConfirmation = true;
-        if (document.status !== 'confirmed') this.suggestNameOnConfirmation = false;
         this.acceptDocumentBody(document);
         this.savedMeta = metaOf(document);
         this.update({
@@ -325,11 +363,12 @@ export class DocumentEditorSession {
                 ? 'pending'
                 : 'saved',
           errorMessage: null,
+          revisionNameSuggestion:
+            this.confirmedName(document.version, document.revision) ?? this.state.revisionNameSuggestion,
         });
         saved = true;
       } catch (error) {
-        // Refused after writes closed (often for that very reason): keep the draft instead of rolling it back.
-        if (!this.isWritable()) {
+        if (await this.keepRejectedDraft(error)) {
           this.update({
             status: this.getState().status === 'conflict' ? 'conflict' : 'error',
             errorMessage: errorText(error, '문서 정보를 저장하지 못했습니다.'),
@@ -376,20 +415,15 @@ export class DocumentEditorSession {
       )
         return;
       const previousBase = this.base;
-      const mine = this.currentBlocks();
       const theirs = document.blocks.map(withoutHash);
-      const conflicts = conflictingBlocks(previousBase, mine, theirs);
-      if (document.version > this.state.version) this.finalizableVersion = null;
-      if (conflicts.length > 0) {
-        this.update({
-          status: 'conflict',
-          conflicts: conflicts.map((blockId) => ({
-            blockId,
-            currentHash: null,
-            current: theirs.find((block) => block.id === blockId) ?? null,
-            currentMarkdown: null,
-          })),
-        });
+      const name = this.confirmedName(document.version, document.revision);
+      if (
+        document.version > this.state.version ||
+        (document.version === this.finalizableVersion && document.revision > this.state.revision)
+      )
+        this.finalizableVersion = null;
+      if (this.recordConflicts(previousBase, document, theirs)) {
+        if (name !== null) this.update({ revisionNameSuggestion: name });
         return;
       }
       this.adopt(previousBase, theirs);
@@ -399,6 +433,7 @@ export class DocumentEditorSession {
         version: document.version,
         revision: document.revision,
         meta: { ...this.savedMeta, ...this.pendingMeta },
+        revisionNameSuggestion: name ?? this.state.revisionNameSuggestion,
       });
     });
   }
@@ -406,9 +441,13 @@ export class DocumentEditorSession {
   /** Applies the user's choice per conflicting block and saves the merged result. */
   async resolveConflicts(
     choices: ReadonlyMap<string, ConflictChoice>,
+    orderChoice?: ConflictChoice,
   ): Promise<{ readonly blocks: readonly Block[]; readonly outcome: SaveOutcome }> {
     if (!this.writable) return { blocks: this.currentBlocks(), outcome: 'error' };
-    const resolution: { merged: readonly Block[] | null } = { merged: null };
+    const resolution: { merged: readonly Block[] | null; needsChoice: boolean } = {
+      merged: null,
+      needsChoice: false,
+    };
     await this.enqueue(async () => {
       // Writes can close after the call but before the queue gets here, or while the stored body is read: then
       // nothing is read or replaced, and the conflict, its blocks and the base stay as they were.
@@ -417,7 +456,20 @@ export class DocumentEditorSession {
       if (!this.isWritable()) return;
       const theirs = current.blocks.map(withoutHash);
       const submitted = this.currentBlocks();
-      const merged = mergeAfterConflict(this.base, submitted, theirs, choices);
+      const previousOrder = this.state.orderConflict;
+      const orderChanged =
+        previousOrder === null ||
+        previousOrder.length !== theirs.length ||
+        previousOrder.some((block, index) => block.id !== theirs[index]?.id);
+      const newOrderConflict =
+        hasOrderConflict(this.base, submitted, theirs) && (orderChoice === undefined || orderChanged);
+      const newBlockConflict = conflictingBlocks(this.base, submitted, theirs).some((id) => !choices.has(id));
+      if (newOrderConflict || newBlockConflict) {
+        this.recordConflicts(this.base, current, theirs);
+        resolution.needsChoice = true;
+        return;
+      }
+      const merged = mergeAfterConflict(this.base, submitted, theirs, choices, orderChoice);
       resolution.merged = merged;
       for (const listener of this.mergeListeners) listener({ submitted, server: merged });
       this.base = theirs;
@@ -429,29 +481,20 @@ export class DocumentEditorSession {
         meta: { ...this.savedMeta, ...this.pendingMeta },
         status: 'pending',
         conflicts: [],
+        orderConflict: null,
+        revisionNameSuggestion:
+          this.confirmedName(current.version, current.revision) ?? this.state.revisionNameSuggestion,
       });
     });
     const merged = resolution.merged;
-    if (merged === null) return { blocks: this.currentBlocks(), outcome: 'error' };
+    if (merged === null)
+      return { blocks: this.currentBlocks(), outcome: resolution.needsChoice ? 'conflict' : 'error' };
     const outcome = await this.saveContent(merged);
     return { blocks: merged, outcome };
   }
 
   /** Takes the stored body as the new base and rebases edits that were not sent yet onto it. */
   private adopt(submitted: readonly Block[], server: readonly Block[]): void {
-    const ids = conflictingBlocks(submitted, this.currentBlocks(), server);
-    if (ids.length > 0) {
-      this.update({
-        status: 'conflict',
-        conflicts: ids.map((blockId) => ({
-          blockId,
-          currentHash: null,
-          current: server.find((block) => block.id === blockId) ?? null,
-          currentMarkdown: null,
-        })),
-      });
-      return;
-    }
     this.base = server;
     const latest = this.latest;
     this.latest =
@@ -459,6 +502,32 @@ export class DocumentEditorSession {
         ? server
         : mergeAfterConflict(submitted, latest, server, new Map());
     for (const listener of this.mergeListeners) listener({ submitted, server });
+  }
+
+  private recordConflicts(
+    base: readonly Block[],
+    document: CurrentDocument,
+    theirs: readonly Block[],
+  ): boolean {
+    const mine = this.currentBlocks();
+    const ids = conflictingBlocks(base, mine, theirs);
+    const orderConflict = hasOrderConflict(base, mine, theirs) ? theirs : null;
+    if (ids.length === 0 && orderConflict === null) return false;
+    const byId = new Map(document.blocks.map((block) => [block.id, block]));
+    this.update({
+      status: 'conflict',
+      orderConflict,
+      conflicts: ids.map((blockId) => {
+        const current = byId.get(blockId);
+        return {
+          blockId,
+          currentHash: current?.hash ?? null,
+          current: current === undefined ? null : withoutHash(current),
+          currentMarkdown: null,
+        };
+      }),
+    });
+    return true;
   }
 
   private async flushContent(attempt = 0): Promise<void> {
@@ -519,8 +588,11 @@ export class DocumentEditorSession {
         status: this.hasUnsentEdits() || this.metaBases.size > 0 ? 'pending' : 'saved',
         errorMessage: null,
         lastSavedAt: this.clock.now(),
+        revisionNameSuggestion:
+          this.confirmedName(result.version, result.revision) ?? this.state.revisionNameSuggestion,
       });
     } catch (error) {
+      await this.keepRejectedDraft(error);
       this.update({ status: 'error', errorMessage: errorText(error, '저장하지 못했습니다.') });
     }
   }
@@ -593,6 +665,19 @@ export class DocumentEditorSession {
     const document = await this.gateway.patch(this.documentId, version, patch, batch?.trace);
     if (document.version > version) {
       this.finalizableVersion = document.version;
+      if (
+        patch.status === 'confirmed' &&
+        this.savedMeta.status !== 'confirmed' &&
+        document.status === 'confirmed'
+      )
+        this.pendingNameSuggestion = { version: document.version, revision: document.revision + 1 };
+      if (
+        patch.status !== undefined &&
+        document.status !== 'confirmed' &&
+        this.pendingNameSuggestion !== null &&
+        this.pendingNameSuggestion.revision > document.revision
+      )
+        this.pendingNameSuggestion = null;
       batch?.accepted();
     } else batch?.unchanged();
     return document;
@@ -600,25 +685,17 @@ export class DocumentEditorSession {
 
   private async rebaseContent(current: CurrentDocument, version: number, attempt: number): Promise<void> {
     const theirs = current.blocks.map(withoutHash);
-    const mine = this.currentBlocks();
-    const ids = conflictingBlocks(this.base, mine, theirs);
-    if (ids.length > 0) {
-      const conflicts = ids.map((blockId) => {
-        const block = current.blocks.find((candidate) => candidate.id === blockId);
-        return {
-          blockId,
-          currentHash: block?.hash ?? null,
-          current: block === undefined ? null : withoutHash(block),
-          currentMarkdown: null,
-        };
-      });
-      this.update({ status: 'conflict', conflicts });
-      return;
-    }
+    if (this.recordConflicts(this.base, current, theirs)) return;
     this.adopt(this.base, theirs);
     this.savedMeta = metaOf(current);
     this.contentBaseVersion = version;
-    this.update({ version, revision: current.revision, meta: { ...this.savedMeta, ...this.pendingMeta } });
+    this.update({
+      version,
+      revision: current.revision,
+      meta: { ...this.savedMeta, ...this.pendingMeta },
+      revisionNameSuggestion:
+        this.confirmedName(version, current.revision) ?? this.state.revisionNameSuggestion,
+    });
     await this.flushContent(attempt);
   }
 
@@ -643,22 +720,23 @@ export class DocumentEditorSession {
       try {
         const current = await this.gateway.finalize(this.documentId, version);
         if (this.finalizableVersion === version) this.finalizableVersion = null;
-        const suggestion =
-          this.suggestNameOnConfirmation &&
-          this.savedMeta.status === 'confirmed' &&
-          current.version === version &&
-          current.revision > this.state.revision
-            ? current.revision
-            : null;
-        if (suggestion !== null) this.suggestNameOnConfirmation = false;
+        const suggestion = this.confirmedName(current.version, current.revision);
         this.update({
           revision: current.revision,
           revisionNameSuggestion: suggestion ?? this.state.revisionNameSuggestion,
         });
       } catch (error) {
+        await this.keepRejectedDraft(error);
         this.update({ errorMessage: errorText(error, '변경 기록을 확정하지 못했습니다.') });
       }
     });
+  }
+
+  private confirmedName(version: number, revision: number): number | null {
+    const pending = this.pendingNameSuggestion;
+    if (pending === null || version < pending.version || revision < pending.revision) return null;
+    this.pendingNameSuggestion = null;
+    return pending.revision;
   }
 
   /** Edits arrived while the request was in flight (read after an await, so not narrowed away). */

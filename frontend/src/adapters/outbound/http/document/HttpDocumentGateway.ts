@@ -149,7 +149,7 @@ function toBlockDiff(value: unknown): BlockDiff {
   const source = obj(value, 'change');
   return {
     blockId: str(source, 'blockId'),
-    change: oneOf(source, 'change', ['added', 'modified', 'removed'] as const),
+    change: oneOf(source, 'change', ['added', 'modified', 'removed', 'moved'] as const),
     before: toOptionalBlock(source.before),
     after: toOptionalBlock(source.after),
     changedCells:

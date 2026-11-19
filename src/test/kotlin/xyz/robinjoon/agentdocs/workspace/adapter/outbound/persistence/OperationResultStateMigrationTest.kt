@@ -26,7 +26,7 @@ class OperationResultStateMigrationTest {
         insertOldRecord("legacy", legacy)
         insertOldRecord("available", available)
 
-        database.migrate(target = "12")
+        database.migrate()
 
         assertThat(database.inTransaction { store.find(OperationKey("old", "legacy")) }).isEqualTo(legacy)
         assertThat(database.inTransaction { store.find(OperationKey("old", "available")) })

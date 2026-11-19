@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { ServicesProvider, type Services } from '../../../../../config/ServicesContext';
 import type { DocumentUseCases, Comparison } from '../../../../../application/document/documentUseCases';
 import type { RevisionFilter } from '../../../../../application/document/ports/DocumentGateway';
@@ -38,7 +38,17 @@ class HistorySource {
       toBlocks: [],
     });
 }
-function show(source: HistorySource) {
+function LocationPath() {
+  const { pathname, search, hash } = useLocation();
+  return (
+    <output aria-label="주소">
+      {pathname}
+      {search}
+      {hash}
+    </output>
+  );
+}
+function show(source: HistorySource, entry = '/s/team/d/doc-1/history') {
   const documents: Pick<DocumentUseCases, 'get' | 'revisions' | 'compare'> = source;
   const services = {
     documents,
@@ -55,9 +65,10 @@ function show(source: HistorySource) {
     refreshInbox: () => {},
   };
   return render(
-    <MemoryRouter initialEntries={['/s/team/d/doc-1/history']}>
+    <MemoryRouter initialEntries={[entry]}>
       <ServicesProvider services={services}>
         <SessionProvider session={session}>
+          <LocationPath />
           <Routes>
             <Route path="/s/:space/d/:docId/history" element={<HistoryPage />} />
           </Routes>
@@ -119,4 +130,19 @@ it('uses the actual server comparison target when it is newer than the document 
   await waitFor(() =>
     expect(screen.getByRole('button', { name: /revision-6/ }).textContent).not.toContain('현재'),
   );
+});
+
+it('redirects a reply history URL using current document access and compares to the linked revision', async () => {
+  const source = new HistorySource();
+  source.current = { ...source.current, space: { ...source.current.space, slug: 'team' } };
+  show(source, '/s/former-space/d/doc-1/history?replyRev=4#reply');
+
+  await screen.findByText('rev 3 → rev 4');
+  expect(screen.getByLabelText('주소').textContent).toBe('/s/team/d/doc-1/history?replyRev=4#reply');
+});
+it('can open a reply linked to the first revision', async () => {
+  const source = new HistorySource();
+  show(source, '/s/team/d/doc-1/history?replyRev=1');
+  await screen.findByText('rev 1 · 첫 리비전');
+  await screen.findByText('첫 리비전에 본문이 없습니다.');
 });

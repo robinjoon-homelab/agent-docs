@@ -83,6 +83,22 @@ class ExposedActivityLogTest {
     }
 
     @Test
+    fun `redacting an excerpt keeps the activity subject actor time and mentions`() {
+        val deleted = comment(0, setOf("alice"))
+        val live = comment(1, setOf("bob"))
+        val id = requireNotNull(deleted.createdComment).id
+        database.inTransaction {
+            log.record(deleted)
+            log.record(live)
+            log.redactCommentExcerpt(id)
+        }
+
+        val read = database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = true)) }
+
+        assertThat(read.map { it.record }).containsExactly(deleted.copy(summary = "삭제된 댓글"), live)
+    }
+
+    @Test
     fun `a scan rereads listed kinds and created comments from a moment on in id order`() {
         val confirmed = record(space, 0).copy(kind = "document.revision_confirmed")
         val before = record(space, -10).copy(kind = "document.revision_confirmed")

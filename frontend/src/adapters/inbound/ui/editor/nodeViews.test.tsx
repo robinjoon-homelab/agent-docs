@@ -90,20 +90,25 @@ describe('mermaid code block views', () => {
 
 function Picture({
   caption,
+  alt = '',
+  editable = true,
   assetId = 'asset',
   options,
 }: {
   caption: string;
+  alt?: string;
+  editable?: boolean;
   assetId?: string;
   options?: Partial<ImageOptions>;
 }) {
-  const blocks: Block[] = [{ id: 'i000000001', type: 'image', assetId, alt: '', caption }];
+  const blocks: Block[] = [{ id: 'i000000001', type: 'image', assetId, alt, caption }];
   const editor = useEditor({
     extensions: [
       ...schemaExtensions.filter((extension) => extension !== ImageNode),
       ImageWithView.configure(options ?? {}),
     ],
     content: blocksToDoc(blocks, () => 'n000000001'),
+    editable,
     onCreate: ({ editor: created }) => {
       current = created;
     },
@@ -256,5 +261,21 @@ describe('saved image references', () => {
     });
     expect(previewImage()).toBeNull();
     expect(screen.queryByText('문서 저장 후 이미지를 불러옵니다.')).toBeNull();
+  });
+
+  it('renders existing alt read-only for readers and keeps missing-alt warnings editor-only', async () => {
+    render(<Picture caption="설명" alt="흐름도" editable={false} />);
+    await screen.findByText('흐름도');
+    expect(screen.queryByRole('textbox', { name: '대체 텍스트' })).toBeNull();
+    expect(screen.queryByText('대체 텍스트 없음')).toBeNull();
+    cleanup();
+
+    render(<Picture caption="설명" alt="" editable={false} />);
+    await screen.findByText('설명');
+    expect(screen.queryByText('대체 텍스트 없음')).toBeNull();
+    cleanup();
+
+    render(<Picture caption="" alt="" editable />);
+    await screen.findByText('대체 텍스트 없음');
   });
 });

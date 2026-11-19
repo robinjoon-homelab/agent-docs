@@ -78,4 +78,19 @@ describe('paste in the editor', () => {
     expect(saved(paragraph)[0]).toMatchObject({ id: 'para000001', text: '한글' });
     current.destroy();
   });
+
+  it('pastes valid HTML mockup markdown as a mockup block without interpreting raw HTML text', () => {
+    const assetId = '11111111-1111-4111-8111-111111111111';
+    const current = open([{ id: 'para000001', type: 'paragraph', text: '' }]);
+    expect(paste(current, `![화면](asset:${assetId} "mockup")`)).toBe(true);
+    expect(saved(current)[0]).toMatchObject({
+      type: 'image',
+      assetId,
+      alt: '화면',
+      caption: 'mockup',
+    });
+
+    const plain = open([{ id: 'para000002', type: 'paragraph', text: '' }]);
+    expect(paste(plain, '<script>alert(1)</script>')).toBe(false);
+  });
 });

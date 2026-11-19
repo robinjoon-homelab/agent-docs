@@ -10,7 +10,8 @@ object ChangeSummary {
         changes: List<BlockChange>,
         reordered: Boolean = false,
     ): String {
-        val parts = headerParts(before, after) + blockParts(changes) + listOfNotNull("블록 순서 변경".takeIf { reordered })
+        val orderChanged = reordered || changes.any { it.kind == BlockChangeKind.MOVED }
+        val parts = headerParts(before, after) + blockParts(changes) + listOfNotNull("블록 순서 변경".takeIf { orderChanged })
         return parts.joinToString(", ").ifEmpty { "변경 없음" }
     }
 
@@ -29,7 +30,7 @@ object ChangeSummary {
     private fun blockParts(changes: List<BlockChange>): List<String> {
         val counts = changes.groupingBy { it.kind }.eachCount()
         val words = mapOf(BlockChangeKind.ADDED to "추가", BlockChangeKind.MODIFIED to "수정", BlockChangeKind.REMOVED to "삭제")
-        val parts = BlockChangeKind.entries.mapNotNull { kind -> counts[kind]?.let { "${it}개 ${words.getValue(kind)}" } }
+        val parts = words.mapNotNull { (kind, word) -> counts[kind]?.let { "${it}개 $word" } }
         return if (parts.isEmpty()) emptyList() else listOf("블록 " + parts.joinToString(", "))
     }
 }

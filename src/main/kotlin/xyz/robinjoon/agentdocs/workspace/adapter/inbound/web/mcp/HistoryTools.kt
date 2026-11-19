@@ -36,7 +36,8 @@ class DocsHistoryTool(
             description =
                 "action list: revisions newest first. action diff: changes from revision from to revision to (default current), with a " +
                     "unified " +
-                    "diff whose hunks name block ids. action restore: writes revision's content as a new revision.",
+                    "diff whose hunks name block ids, including moved blocks. action restore: writes the historical body, title, " +
+                    "status, tags and assignee as a new revision at the document's current path and space.",
             properties =
                 mapOf(
                     "document" to Schemas.string("Document id"),

@@ -165,7 +165,7 @@ export function DocumentHeader({
           <span className={`save-state save-${state.status}`} title={state.errorMessage ?? undefined}>
             rev {state.revision} · {SAVE_LABEL[state.status]}
           </span>
-          {state.status === 'error' ? (
+          {state.status === 'error' && editable ? (
             <button type="button" className="btn btn-small" onClick={onRetrySave}>
               다시 저장
             </button>
@@ -272,7 +272,7 @@ export function DocumentHeader({
           }
         />
       </div>
-      {pathOpen ? (
+      {pathOpen && editable ? (
         <PathDialog
           path={meta.path}
           onClose={() => setPathOpen(false)}

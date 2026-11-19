@@ -290,6 +290,57 @@ describe('DocumentEditorSession', () => {
     expect(session.getState()).toMatchObject({ version: 11, revision: 3, status: 'pending' });
     expect(server.doc.blocks.map(withoutHash)).toEqual([paragraph(A, 'saved body')]);
   });
+  it('offers the confirmed revision when a stream refresh beats manual finalization', async () => {
+    const server = new FakeDocumentServer(document({ version: 3, revision: 2, status: 'draft' }));
+    const session = open(server);
+    expect(await session.patchMeta({ status: 'confirmed' })).toBe(true);
+    await server.finalize(server.doc.id, server.doc.version);
+    await session.refreshRemote();
+
+    expect(session.getState().revisionNameSuggestion).toBe(3);
+    expect(session.hasPendingRevision()).toBe(false);
+    session.dismissRevisionNameSuggestion();
+    await session.finalize();
+    expect(session.getState().revisionNameSuggestion).toBeNull();
+  });
+
+  it.each(['unauthenticated', 'not_found'] as const)(
+    'retains optimistic metadata and body on %s before a stream signal',
+    async (code) => {
+      const server = new FakeDocumentServer(document({ title: 'Saved', version: 1 }));
+      const session = open(server);
+      const failure = new ApiError(code, code === 'unauthenticated' ? 401 : 404, 'Unavailable');
+      server.patch = () => Promise.reject(failure);
+      server.get = () => Promise.reject(failure);
+      const mine = [paragraph(A, 'unsaved body')];
+      session.markEdited(mine);
+
+      expect(await session.patchMeta({ title: 'Unsaved title' })).toBe(false);
+
+      expect(session.getState()).toMatchObject({
+        version: 1,
+        status: 'error',
+        meta: { title: 'Unsaved title' },
+      });
+      expect(session.isWritable()).toBe(false);
+      expect(session.currentBlocks()).toEqual(mine);
+    },
+  );
+
+  it('keeps ordinary missing-resource errors retryable when the open document still permits writes', async () => {
+    const server = new FakeDocumentServer(document({ title: 'Saved', permission: 'edit' }));
+    const session = open(server);
+    const patch = server.patch;
+    server.patch = () => Promise.reject(new ApiError('not_found', 404, 'Related resource missing'));
+
+    expect(await session.patchMeta({ title: 'Retryable' })).toBe(false);
+    expect(session.getState().meta.title).toBe('Saved');
+    expect(session.isWritable()).toBe(true);
+    server.patch = patch;
+    expect(await session.flushMeta()).toBe(true);
+    expect(server.doc.title).toBe('Retryable');
+  });
+
   it('suggests a revision name only after a confirmed status change has a confirmed revision', async () => {
     const server = new FakeDocumentServer(document({ version: 3, revision: 2, status: 'draft' }));
     const session = open(server);
@@ -316,6 +367,26 @@ describe('remote refresh preserves debounce input', () => {
     expect(server.doc.blocks.map(withoutHash)).toEqual([paragraph(A, 'A0'), paragraph(B, 'remote')]);
     expect(await session.saveContent(session.currentBlocks())).toBe('saved');
     expect(server.doc.blocks.map(withoutHash)).toEqual([paragraph(A, 'mine'), paragraph(B, 'remote')]);
+  });
+
+  it('does not retry an incompatible move until the author chooses an order', async () => {
+    const a = paragraph(A, 'A');
+    const b = paragraph(B, 'B');
+    const c = paragraph('cccccccccc', 'C');
+    const server = new FakeDocumentServer(document({ blocks: [stored(a), stored(b), stored(c)] }));
+    const session = open(server);
+    const mine = [b, a, c];
+    const theirs = [a, c, b];
+    server.agentWrites({ blocks: theirs });
+
+    expect(await session.saveContent(mine)).toBe('conflict');
+    expect(session.getState().orderConflict).toEqual(theirs);
+    expect((await session.resolveConflicts(new Map())).outcome).toBe('conflict');
+    expect(session.currentBlocks()).toEqual(mine);
+    expect(server.doc.blocks.map(withoutHash)).toEqual(theirs);
+
+    expect((await session.resolveConflicts(new Map(), 'mine')).outcome).toBe('saved');
+    expect(server.doc.blocks.map(withoutHash)).toEqual(mine);
   });
 
   it('keeps a same-block conflict and its original choices across later signals', async () => {
