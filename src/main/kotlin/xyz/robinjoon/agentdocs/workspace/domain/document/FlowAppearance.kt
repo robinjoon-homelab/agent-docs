@@ -70,6 +70,19 @@ data class FlowAppearance private constructor(
                 "area" to setOf("normal", "inactive"),
             )
 
+        private val defaultLooks =
+            mapOf(
+                "box" to "white",
+                "title" to "large",
+                "button" to "primary",
+                "notice" to "info",
+                "field" to "normal",
+                "select" to "normal",
+                "area" to "normal",
+            )
+
+        fun defaultLook(kind: String): String? = defaultLooks[kind]
+
         fun of(
             kind: String,
             look: String?,

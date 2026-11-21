@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.workspace.domain.document.markdown
 
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDefaults
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDescription
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowFields
@@ -11,23 +12,32 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.InvalidDocumentExceptio
 
 // Attribute values use backslash escapes, including physical newlines, so user text cannot become block syntax.
 object FlowMarkdown {
-    fun recognizes(
-        line: String,
-        next: String?,
-    ): Boolean =
-        (line == "## flowSettings" && next?.startsWith("- frame:") == true) ||
-            (screen.matches(line) && next?.startsWith("- entry:") == true) ||
-            (element.matches(line) && next?.startsWith("- value:") == true)
+    // Only called for flow documents, so a heading alone marks a block and every attribute after it may be omitted.
+    fun recognizes(line: String): Boolean = line == "## flowSettings" || screen.matches(line) || element.matches(line)
 
     fun defaults(
         lines: List<String>,
         block: Block,
-    ): xyz.robinjoon.agentdocs.workspace.domain.document.FlowDefaults =
-        xyz.robinjoon.agentdocs.workspace.domain.document.FlowDefaults(
+    ): FlowDefaults {
+        val keys =
+            lines
+                .drop(1)
+                .takeWhile { it.startsWith("- ") }
+                .map { it.substring(2).substringBefore(":") }
+                .toSet()
+        val optional =
+            when (block) {
+                is FlowScreen -> FlowDefaults.screenFields
+                is FlowElement -> FlowDefaults.elementFields
+                else -> emptySet()
+            }
+        return FlowDefaults(
             block is FlowScreen && lines.first().startsWith("##  "),
-            block is FlowElement && lines.none { it.startsWith("- x: ") },
-            block is FlowElement && lines.none { it.startsWith("- y: ") },
+            block is FlowElement && "x" !in keys,
+            block is FlowElement && "y" !in keys,
+            optional - keys,
         )
+    }
 
     fun write(block: Block): String {
         val head =
@@ -63,6 +73,16 @@ object FlowMarkdown {
     fun read(
         id: BlockId,
         lines: List<String>,
+    ): Block =
+        try {
+            parse(id, lines)
+        } catch (error: InvalidDocumentException) {
+            throw InvalidDocumentException("${error.message} in block \"${lines.first().take(120)}\"", error)
+        }
+
+    private fun parse(
+        id: BlockId,
+        lines: List<String>,
     ): Block {
         val head = lines.first()
         val attributes = lines.drop(1).takeWhile { it.startsWith("- ") }
@@ -76,7 +96,7 @@ object FlowMarkdown {
                 id,
                 screenMatch.groupValues[1].ifEmpty { "S-00" },
                 unescape(screenMatch.groupValues[2]),
-                values.text("entry"),
+                values.optionalText("entry"),
                 values.frame(),
                 values.text("desc"),
             )
@@ -86,7 +106,7 @@ object FlowMarkdown {
             id,
             values.appearance(match.groupValues[2]),
             values.placement(),
-            FlowDescription(unescape(match.groupValues[1]), values.text("value"), values.text("desc")),
+            FlowDescription(unescape(match.groupValues[1]), values.optionalText("value"), values.text("desc")),
             values.behavior(match.groupValues[3].isEmpty()),
         )
     }
