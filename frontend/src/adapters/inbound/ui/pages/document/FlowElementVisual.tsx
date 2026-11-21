@@ -1,7 +1,5 @@
 import type { FlowElementBlock } from '../../../../../domain/document/block';
 import { FlowIcon } from './FlowIcon';
-// The source artboard selects the first row only in its m2-list example (mapped to this block ID).
-const SPACE_PICKER_EXAMPLE = 'fl00000023';
 export function FlowElementVisual({ element: e }: { element: FlowElementBlock }) {
   switch (e.kind) {
     case 'title':
@@ -41,24 +39,7 @@ export function FlowElementVisual({ element: e }: { element: FlowElementBlock })
       return (
         <div className="flow-drawn-list">
           {e.items?.map((item, i) => (
-            <span key={i} className={e.id === SPACE_PICKER_EXAMPLE && i === 0 ? 'selected' : undefined}>
-              {item}
-              {e.id === SPACE_PICKER_EXAMPLE && i === 0 && (
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="var(--focus)"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M3.5 8.5l3 3 6-7" />
-                </svg>
-              )}
-            </span>
+            <span key={i}>{item}</span>
           ))}
         </div>
       );
