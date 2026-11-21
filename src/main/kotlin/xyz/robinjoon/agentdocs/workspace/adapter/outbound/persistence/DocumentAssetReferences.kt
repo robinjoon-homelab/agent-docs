@@ -8,30 +8,44 @@ import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.select
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
+import xyz.robinjoon.agentdocs.workspace.domain.document.AssetReferences
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.MarkdownAssetReferences
 
 internal object DocumentAssetReferences {
     fun read(ids: Set<DocumentId>?): Map<DocumentId, Set<AssetId>> {
-        val sources = documentSources(ids) + commentSources(ids) + editSources(ids) + suggestionSources(ids)
-        return sources.groupBy({ it.first }, { MarkdownAssetReferences.of(it.second) }).mapValues { (_, sets) -> sets.flatten().toSet() }
+        val markdown =
+            (commentSources(ids) + editSources(ids) + suggestionSources(ids)).map { (document, body) ->
+                document to MarkdownAssetReferences.of(body)
+            }
+        return (documentSources(ids) + markdown).groupBy({ it.first }, { it.second }).mapValues { (_, sets) -> sets.flatten().toSet() }
     }
 
-    private fun documentSources(ids: Set<DocumentId>?): List<Pair<DocumentId, String>> {
-        val current = DocumentsTable.select(DocumentsTable.id, DocumentsTable.body).where { DocumentsTable.type eq "doc" }
+    // Bodies are read with their own document type, so flow image elements count like ordinary image blocks.
+    private fun documentSources(ids: Set<DocumentId>?): List<Pair<DocumentId, Set<AssetId>>> {
+        val current = DocumentsTable.select(DocumentsTable.id, DocumentsTable.body, DocumentsTable.type)
         val history =
             DocumentRevisionsTable
                 .select(
                     DocumentRevisionsTable.documentId,
                     DocumentRevisionsTable.body,
-                ).where { (DocumentRevisionsTable.pending eq false) and (DocumentRevisionsTable.type eq "doc") }
+                    DocumentRevisionsTable.type,
+                ).where { DocumentRevisionsTable.pending eq false }
         if (ids != null) {
             current.andWhere { DocumentsTable.id inList ids.map { it.value } }
             history.andWhere { DocumentRevisionsTable.documentId inList ids.map { it.value } }
         }
-        return current.map { DocumentId(it[DocumentsTable.id]) to it[DocumentsTable.body] } +
-            history.map { DocumentId(it[DocumentRevisionsTable.documentId]) to it[DocumentRevisionsTable.body] }
+        return current.map { DocumentId(it[DocumentsTable.id]) to references(it[DocumentsTable.body], it[DocumentsTable.type]) } +
+            history.map {
+                DocumentId(it[DocumentRevisionsTable.documentId]) to
+                    references(it[DocumentRevisionsTable.body], it[DocumentRevisionsTable.type])
+            }
     }
+
+    private fun references(
+        body: String,
+        type: String,
+    ): Set<AssetId> = AssetReferences.of(DocumentRows.blocksOf(body, type))
 
     private fun commentSources(ids: Set<DocumentId>?): List<Pair<DocumentId, String>> {
         val query =
