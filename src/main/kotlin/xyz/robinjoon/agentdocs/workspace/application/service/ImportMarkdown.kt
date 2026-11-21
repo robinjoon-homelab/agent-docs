@@ -7,6 +7,7 @@ internal object ImportMarkdown {
         markdown: String,
         upload: (String) -> String,
     ): String {
+        if (isFlow(markdown)) return markdown
         var fence: String? = null
         return markdown.splitToSequence('\n').joinToString("\n") { line ->
             val marker = fenceMarker.find(line)?.groupValues?.get(1)
@@ -19,6 +20,20 @@ internal object ImportMarkdown {
                 rewriteLine(line, upload)
             }
         }
+    }
+
+    private fun isFlow(markdown: String): Boolean {
+        val lines = markdown.replace("\r\n", "\n").lines()
+        if (lines.firstOrNull() != "---") return false
+        val entries =
+            lines
+                .drop(1)
+                .takeWhile { it != "---" }
+                .filter { it.contains(':') }
+                .map { it.substringBefore(':').trim() to it.substringAfter(':').trim() }
+        return xyz.robinjoon.agentdocs.workspace.domain.document.markdown
+            .FrontMatter(entries)
+            .text("type") == "flow"
     }
 
     private fun nextFence(

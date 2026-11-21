@@ -25,6 +25,7 @@ internal object DocumentRows {
         statement[DocumentsTable.path] = header.path.value
         statement[DocumentsTable.activePath] = header.path.value.takeUnless { document.isTrashed }
         statement[DocumentsTable.title] = header.title
+        statement[DocumentsTable.type] = header.type
         statement[DocumentsTable.status] = header.properties.status
         statement[DocumentsTable.tags] = tagsOf(header.properties.tags)
         statement[DocumentsTable.assignee] = header.properties.assignee
@@ -38,7 +39,12 @@ internal object DocumentRows {
     }
 
     fun document(row: ResultRow): Document =
-        Document.restore(DocumentId(row[DocumentsTable.id]), header(row), blocksOf(row[DocumentsTable.body]), lifecycle(row))
+        Document.restore(
+            DocumentId(row[DocumentsTable.id]),
+            header(row),
+            blocksOf(row[DocumentsTable.body], row[DocumentsTable.type]),
+            lifecycle(row),
+        )
 
     fun header(row: ResultRow): DocumentHeader =
         DocumentHeader(
@@ -46,6 +52,7 @@ internal object DocumentRows {
             DocumentPath(row[DocumentsTable.path]),
             row[DocumentsTable.title],
             DocumentProperties.of(tagsFrom(row[DocumentsTable.tags]), row[DocumentsTable.status], row[DocumentsTable.assignee]),
+            row[DocumentsTable.type],
         )
 
     fun lifecycle(row: ResultRow): DocumentLifecycle =
@@ -59,7 +66,10 @@ internal object DocumentRows {
 
     fun bodyOf(blocks: List<Block>): String = BlockMarkdown.write(blocks, annotated = true)
 
-    fun blocksOf(body: String): List<Block> = MarkdownReader.readBlocks(body).map { it.block }
+    fun blocksOf(
+        body: String,
+        type: String = "doc",
+    ): List<Block> = MarkdownReader.readBlocks(body, type).map { it.block }
 
     // " a b " so that a tag filter is a substring match on " a ".
     fun tagsOf(tags: List<String>): String = tags.joinToString(" ", " ", " ")

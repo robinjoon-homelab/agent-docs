@@ -23,6 +23,7 @@ import java.util.UUID
 // also gets a new id, so the result always has unique ids.
 class MarkdownReader private constructor(
     private val lines: List<String>,
+    private var flow: Boolean = false,
 ) {
     private var index = 0
     private var annotation: Annotation? = null
@@ -31,6 +32,7 @@ class MarkdownReader private constructor(
 
     private fun read(withFrontMatter: Boolean): ParsedMarkdown {
         val frontMatter = if (withFrontMatter) readFrontMatter() else FrontMatter.empty
+        flow = flow || frontMatter.text("type") == "flow"
         while (index < lines.size) {
             readNext()
         }
@@ -52,7 +54,9 @@ class MarkdownReader private constructor(
         }
         val note = annotation
         annotation = null
-        blocks += ParsedBlock(readBlock(line, note), note?.hash)
+        val start = index
+        val block = readBlock(line, note)
+        blocks += ParsedBlock(block, note?.hash, FlowMarkdown.defaults(lines.subList(start, index), block))
     }
 
     private fun readBlock(
@@ -62,6 +66,7 @@ class MarkdownReader private constructor(
         val id = claimId(note?.id)
         val trimmed = line.trim()
         return when {
+            flow && FlowMarkdown.recognizes(line, lines.getOrNull(index + 1)) -> readFlow(id)
             trimmed == "$$" -> readMath(id)
             fencePattern.matches(trimmed) -> readCode(id)
             startsTable(index) -> TableReader.read(lines, index, id, note?.columns.orEmpty()).also { index = it.next }.table
@@ -73,6 +78,22 @@ class MarkdownReader private constructor(
             listItemPattern.matches(line) -> readListItem(id)
             else -> Paragraph(id, InlineText(BlockMarkdown.paragraphText(paragraphLines().joinToString(" "))))
         }
+    }
+
+    private fun readFlow(id: BlockId): Block {
+        val content = arrayListOf(lines[index++])
+        while (index < lines.size && lines[index].startsWith("- ")) {
+            content += lines[index++]
+        }
+        if (lines.getOrNull(index)?.isBlank() == true && lines.getOrNull(index + 1)?.isNotBlank() == true) {
+            val next = lines[index + 1]
+            if (Annotation.parse(next) == null && !FlowMarkdown.recognizes(next, lines.getOrNull(index + 2))) {
+                content += ""
+                content += next
+                index += 2
+            }
+        }
+        return FlowMarkdown.read(id, content)
     }
 
     private fun claimId(declared: BlockId?): BlockId {
@@ -223,7 +244,10 @@ class MarkdownReader private constructor(
         fun read(markdown: String): ParsedMarkdown = MarkdownReader(lines(markdown)).read(withFrontMatter = true)
 
         // A fragment such as the blocks of one edit operation. A leading "---" is a divider here, not front matter.
-        fun readBlocks(markdown: String): List<ParsedBlock> = MarkdownReader(lines(markdown)).read(withFrontMatter = false).blocks
+        fun readBlocks(
+            markdown: String,
+            type: String = "doc",
+        ): List<ParsedBlock> = MarkdownReader(lines(markdown), type == "flow").read(withFrontMatter = false).blocks
 
         private fun lines(markdown: String): List<String> = markdown.replace("\r\n", "\n").split('\n')
     }

@@ -19,7 +19,13 @@ object DocumentEditor {
             throw InvalidEditException("an edit has 1 to $MAX_OPERATIONS operations")
         }
         requireUnchanged(blocks, operations)
-        return operations.foldIndexed(blocks) { index, current, operation -> applyOne(current, operation, index) }
+        return operations.foldIndexed(blocks) { index, current, operation ->
+            if (current.firstOrNull() is xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings) {
+                FlowEditor.apply(current, operation, index)
+            } else {
+                applyOrdinary(current, operation, index)
+            }
+        }
     }
 
     private fun requireUnchanged(
@@ -56,7 +62,7 @@ object DocumentEditor {
         return if (hash == expected) null else BlockConflict(id, hash, BlockMarkdown.of(block))
     }
 
-    private fun applyOne(
+    internal fun applyOrdinary(
         blocks: List<Block>,
         operation: EditOperation,
         index: Int,

@@ -151,6 +151,7 @@ internal object OperationSnapshotCodec {
             "space" to header.spaceId.value.toString(),
             "path" to header.path.value,
             "title" to header.title,
+            "type" to header.type,
             "tags" to header.properties.tags,
             "status" to header.properties.status.name,
             "assignee" to header.properties.assignee,
@@ -172,7 +173,14 @@ internal object OperationSnapshotCodec {
                 DocumentStatus.valueOf(node.text("status")),
                 node.optionalText("assignee"),
             )
-        val header = DocumentHeader(SpaceId(node.uuid("space")), DocumentPath(node.text("path")), node.text("title"), properties)
+        val header =
+            DocumentHeader(
+                SpaceId(node.uuid("space")),
+                DocumentPath(node.text("path")),
+                node.text("title"),
+                properties,
+                node.optionalText("type") ?: "doc",
+            )
         val lifecycle =
             DocumentLifecycle(
                 node.path("revision").intValue(),
@@ -181,7 +189,7 @@ internal object OperationSnapshotCodec {
                 node.optionalText("trashedAt")?.let(Instant::parse),
                 node.path("version").intValue(),
             )
-        return Document.restore(DocumentId(node.uuid("id")), header, DocumentRows.blocksOf(node.text("body")), lifecycle)
+        return Document.restore(DocumentId(node.uuid("id")), header, DocumentRows.blocksOf(node.text("body"), header.type), lifecycle)
     }
 }
 

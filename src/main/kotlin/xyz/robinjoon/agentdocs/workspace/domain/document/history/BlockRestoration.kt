@@ -16,7 +16,12 @@ object BlockRestoration {
         val original = earlier.singleOrNull { it.id == id } ?: throw InvalidDocumentException("the revision does not contain block $id")
         val existing = current.indexOfFirst { it.id == id }
         if (existing >= 0) return current.map { if (it.id == id) original else it }
-        val at = insertionPoint(current, earlier, id)
+        val at =
+            if (earlier.firstOrNull() is xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings) {
+                FlowRestoration.insertion(current, earlier, original)
+            } else {
+                insertionPoint(current, earlier, id)
+            }
         return current.take(at) + original + current.drop(at)
     }
 

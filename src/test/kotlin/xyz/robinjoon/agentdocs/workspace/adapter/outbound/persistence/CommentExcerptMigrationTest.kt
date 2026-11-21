@@ -30,7 +30,7 @@ class CommentExcerptMigrationTest {
     @Test
     fun `migration scrubs deleted inbox and activity excerpts including legacy links while keeping rows and metadata`() {
         val fixture = TransferPersistenceFixtures(database)
-        val root = fixture.comment(fixture.document(fixture.source, "doc", "Body"), "Old private opening", null)
+        val root = fixture.comment(legacyDocument(fixture), "Old private opening", null)
         val opened = root.comments.single()
         val deletedReply = Comment.write(CommentId(UUID.randomUUID()), person, "Old private reply", at.plusSeconds(10))
         val liveReply = Comment.write(CommentId(UUID.randomUUID()), person, "Live reply", at.plusSeconds(20))
@@ -84,6 +84,18 @@ class CommentExcerptMigrationTest {
         val entries = database.inTransaction { log.find(ActivityQuery(null, null, null, 20, oldestFirst = true)) }.map { it.record }
         assertThat(entries.map { it.summary }).containsExactly("삭제된 댓글", "Other")
         assertThat(entries.map { it.createdComment?.id }).containsExactly(deleted, other)
+    }
+
+    // Seed the V24 schema directly; current document adapters require later columns.
+    private fun legacyDocument(fixture: TransferPersistenceFixtures): xyz.robinjoon.agentdocs.workspace.domain.document.Document {
+        val document = PersistenceFixtures.document(fixture.source.id, "doc", emptyList())
+        database.execute(
+            "INSERT INTO documents (id, space_id, doc_path, active_path, title, status, tags, body, search_text, " +
+                "revision, content_version, created_at, updated_at) VALUES " +
+                "('${document.id}', '${document.spaceId}', 'doc', 'doc', 'Doc', 'DRAFT', '', '', '', 1, 1, " +
+                "TIMESTAMP WITH TIME ZONE '$at', TIMESTAMP WITH TIME ZONE '$at')",
+        )
+        return document
     }
 
     private fun item(

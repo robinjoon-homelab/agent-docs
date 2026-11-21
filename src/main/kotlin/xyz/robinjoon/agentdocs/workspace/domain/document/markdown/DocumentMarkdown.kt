@@ -26,6 +26,15 @@ object DocumentMarkdown {
                 "space" to space.value,
                 "path" to header.path.value,
                 "title" to FrontMatter.quote(header.title),
+                ("type" to header.type).takeIf { header.type == "flow" },
+                (document.blocks.firstOrNull() as? xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings)?.let {
+                    "frame" to
+                        it.frame
+                },
+                (document.blocks.firstOrNull() as? xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings)?.let {
+                    "idPrefix" to
+                        FrontMatter.quote(it.idPrefix)
+                },
                 "status" to
                     header.properties.status.name
                         .lowercase(),

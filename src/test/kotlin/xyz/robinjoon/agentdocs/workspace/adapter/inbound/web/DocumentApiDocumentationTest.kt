@@ -106,7 +106,10 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
         mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase> {
             every { agentGuide(any(), any()) } returns null
         }
-    private val queries = mockk<DocumentQueryUseCase>()
+    private val queries =
+        mockk<DocumentQueryUseCase> {
+            every { open(any(), any()) } returns DocumentView(document(), space, emptyList())
+        }
     private val mockMvc =
         restDocsMockMvc(
             DocumentController(documents, queries, spaces, EditStatisticsRecorder(editSessions)),
@@ -775,6 +778,7 @@ class DocumentApiDocumentationTest : RestDocsWebTest() {
 
     private fun writeFields(): Array<FieldDescriptor> =
         arrayOf(
+            fieldWithPath("type").description("문서 유형: doc 또는 flow"),
             fieldWithPath("id").description("문서 ID"),
             fieldWithPath("revision").description("마지막 확정 리비전. pending 저장은 확정할 때만 증가한다"),
             fieldWithPath("version").description("현재 내용 버전. 실제 변경마다 증가한다"),

@@ -94,7 +94,14 @@ class DocumentController(
                 Wire.optional(body, "status")?.let(Wire::status) ?: DocumentStatus.DRAFT,
                 Wire.optional(body, "assignee"),
             )
-        val draft = DocumentDraft(DocumentPath(Wire.required(body, "path")), Wire.required(body, "title"), properties, blocksOf(body))
+        val draft =
+            DocumentDraft(
+                DocumentPath(Wire.required(body, "path")),
+                Wire.required(body, "title"),
+                properties,
+                creationBlocks(body),
+                Wire.optional(body, "type") ?: "doc",
+            )
         val written =
             documents.create(
                 RevisionMetadataJson.context(
@@ -108,6 +115,22 @@ class DocumentController(
         val access = CallerAccess.of(principal)
         val created = responseView(written, queries.open(access, written.document.id).space, access)
         return ResponseEntity.created(URI.create("/api/documents/${written.document.id}")).body(created)
+    }
+
+    private fun creationBlocks(body: JsonNode): List<Block> {
+        if ((Wire.optional(body, "type") ?: "doc") != "flow") return blocksOf(body)
+        val frame = Wire.optional(body, "frame") ?: "phone"
+        val prefix = Wire.optional(body, "idPrefix") ?: "M"
+        val markdown = Wire.optional(body, "markdown")
+        if (markdown != null) {
+            return xyz.robinjoon.agentdocs.workspace.application.model.FlowDraftContent.markdown(
+                MarkdownReader.readBlocks(markdown, "flow"),
+                frame,
+                prefix,
+            )
+        }
+        return body.get("blocks")?.let(::readBlocks) ?: xyz.robinjoon.agentdocs.workspace.domain.document.FlowRules
+            .initial(frame, prefix)
     }
 
     @GetMapping("/api/documents/{id}")
@@ -199,7 +222,17 @@ class DocumentController(
             )
         val written =
             recorder.countConflict(context.access, DocumentId(id)) {
-                documents.edit(context, DocumentId(id), EditJson.operations(body.get("operations")), answering)
+                documents.edit(
+                    context,
+                    DocumentId(id),
+                    EditJson.operations(
+                        body.get("operations"),
+                        queries
+                            .open(context.access, DocumentId(id))
+                            .document.header.type,
+                    ),
+                    answering,
+                )
             }
         record(principal, written, body)
         return writeResult(written)
@@ -294,6 +327,7 @@ class DocumentController(
     private fun writeResult(written: DocumentWrite): Map<String, Any?> =
         mapOf(
             "id" to written.document.id.value,
+            "type" to written.document.header.type,
             "revision" to written.revision,
             "version" to written.document.version,
             "amended" to written.amended,

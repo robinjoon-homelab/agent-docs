@@ -66,6 +66,7 @@ object WorkspaceJson {
         mapOf(
             "path" to header.path.value,
             "title" to header.title,
+            "type" to header.type,
             "status" to
                 header.properties.status.name
                     .lowercase(),

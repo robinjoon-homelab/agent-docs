@@ -11,11 +11,15 @@ sealed interface EditOperation {
         val target: BlockId,
         val expectedHash: String,
         val blocks: List<Block>,
+        val flowDefaults: xyz.robinjoon.agentdocs.workspace.domain.document.FlowDefaults =
+            xyz.robinjoon.agentdocs.workspace.domain.document
+                .FlowDefaults(),
     ) : EditOperation
 
     data class Insert(
         val position: BlockPosition,
         val blocks: List<Block>,
+        val flowDefaults: Map<BlockId, xyz.robinjoon.agentdocs.workspace.domain.document.FlowDefaults> = emptyMap(),
     ) : EditOperation
 
     data class Delete(

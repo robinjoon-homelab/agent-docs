@@ -1,6 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web
 
 import tools.jackson.databind.JsonNode
+import xyz.robinjoon.agentdocs.workspace.application.model.FlowBlockData
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
@@ -11,6 +12,9 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.ColumnAlignment
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
 import xyz.robinjoon.agentdocs.workspace.domain.document.Heading
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
@@ -66,10 +70,17 @@ object BlockJson {
                 DrawingBlock(id, asset(node, "svgAssetId"), asset(node, "sceneAssetId"), node.path("alt").asString(""))
             },
             "divider" to { id, _ -> Divider(id) },
+            "flowSettings" to FlowBlockJson::settings,
+            "flowScreen" to FlowBlockJson::screen,
+            "flowElement" to FlowBlockJson::element,
         )
 
     private fun fieldsOf(block: Block): Map<String, Any?> =
         when (block) {
+            is FlowSettings, is FlowScreen, is FlowElement -> {
+                FlowBlockData.fields(block)
+            }
+
             is Heading -> {
                 mapOf("level" to block.level, "text" to block.text.markdown)
             }
@@ -159,6 +170,7 @@ object BlockJson {
             is ImageBlock -> "image"
             is DrawingBlock -> "drawing"
             is Divider -> "divider"
+            is FlowSettings, is FlowScreen, is FlowElement -> FlowBlockData.type(block)
         }
 
     private fun asset(

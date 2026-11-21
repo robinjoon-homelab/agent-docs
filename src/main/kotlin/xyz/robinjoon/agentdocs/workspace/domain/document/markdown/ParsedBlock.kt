@@ -7,4 +7,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 data class ParsedBlock(
     val block: Block,
     val declaredHash: String?,
+    val flowDefaults: xyz.robinjoon.agentdocs.workspace.domain.document.FlowDefaults =
+        xyz.robinjoon.agentdocs.workspace.domain.document
+            .FlowDefaults(),
 )

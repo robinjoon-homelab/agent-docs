@@ -8,8 +8,10 @@ data class DocumentHeader(
     val path: DocumentPath,
     val title: String,
     val properties: DocumentProperties,
+    val type: String = "doc",
 ) {
     init {
+        if (type !in setOf("doc", "flow")) throw InvalidDocumentException("unknown document type")
         if (title.isBlank() || title.length > MAX_TITLE_LENGTH || title != title.trim() || title.contains('\n')) {
             throw InvalidDocumentException("title must be one trimmed line of 1 to $MAX_TITLE_LENGTH characters")
         }

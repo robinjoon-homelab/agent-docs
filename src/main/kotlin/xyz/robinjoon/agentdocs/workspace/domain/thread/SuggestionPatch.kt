@@ -2,6 +2,8 @@ package xyz.robinjoon.agentdocs.workspace.domain.thread
 
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineMarkdown
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
 import xyz.robinjoon.agentdocs.workspace.domain.document.TableBlock
@@ -41,6 +43,7 @@ object SuggestionPatch {
         block: Block,
         basis: SuggestionBasis,
     ): Block {
+        flowDescription(block, basis)?.let { return it }
         if (BlockMarkdown.of(block) != basis.before) conflict(block, block.id)
         val parsed =
             MarkdownReader.readBlocks(basis.after).singleOrNull()?.block
@@ -53,6 +56,21 @@ object SuggestionPatch {
         } else {
             parsed.withId(block.id)
         }
+    }
+
+    private fun flowDescription(
+        block: Block,
+        basis: SuggestionBasis,
+    ): Block? {
+        if (block is FlowScreen) {
+            if (block.desc != basis.before) conflict(block, block.id)
+            return block.copy(desc = basis.after)
+        }
+        if (block is FlowElement) {
+            if (block.text.desc != basis.before) conflict(block, block.id)
+            return block.copy(text = block.text.copy(desc = basis.after))
+        }
+        return null
     }
 
     private fun cell(

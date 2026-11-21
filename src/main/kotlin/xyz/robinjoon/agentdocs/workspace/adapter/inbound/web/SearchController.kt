@@ -26,6 +26,7 @@ class SearchController(
                 "documentId" to hit.document.id.value,
                 "path" to hit.document.path.value,
                 "title" to hit.document.title,
+                "type" to hit.document.type,
                 "blockId" to hit.blockId?.value,
                 "threadId" to hit.threadId?.value,
                 "snippet" to hit.snippet,
@@ -43,6 +44,7 @@ class SearchController(
                 "documentId" to document.id.value,
                 "path" to document.path.value,
                 "title" to document.title,
+                "type" to document.type,
             )
         }
 }

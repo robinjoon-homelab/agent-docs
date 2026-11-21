@@ -149,7 +149,8 @@ class McpConfig {
     fun docsEditTool(
         documents: DocumentUseCase,
         recorder: EditStatisticsRecorder,
-    ): McpTool = DocsEditTool(documents, recorder)
+        queries: DocumentQueryUseCase,
+    ): McpTool = DocsEditTool(documents, recorder, queries)
 
     @Bean
     fun docsMoveTool(

@@ -15,6 +15,7 @@ data class Document private constructor(
     val lifecycle: DocumentLifecycle,
 ) {
     init {
+        FlowRules.validate(header.type, blocks)
         if (blocks.size > MAX_BLOCKS) {
             throw InvalidDocumentException("a document has at most $MAX_BLOCKS blocks")
         }
@@ -78,7 +79,8 @@ data class Document private constructor(
         if (header.spaceId != spaceId) {
             throw InvalidDocumentException("a revision cannot move the document to another space")
         }
-        return copy(header = header, blocks = snapshot(blocks), lifecycle = lifecycle)
+        if (header.type != this.header.type) throw InvalidDocumentException("document type cannot change")
+        return copy(header = header, blocks = snapshot(FlowRules.normalize(blocks, this.blocks)), lifecycle = lifecycle)
     }
 
     companion object {
@@ -89,7 +91,7 @@ data class Document private constructor(
             header: DocumentHeader,
             blocks: List<Block>,
             at: Instant,
-        ): Document = Document(id, header, snapshot(blocks), DocumentLifecycle.started(at))
+        ): Document = Document(id, header, snapshot(FlowRules.normalize(blocks)), DocumentLifecycle.started(at))
 
         fun restore(
             id: DocumentId,

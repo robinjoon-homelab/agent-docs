@@ -9,4 +9,5 @@ data class DocumentDraft(
     val title: String,
     val properties: DocumentProperties,
     val blocks: List<Block>,
+    val type: String = "doc",
 )

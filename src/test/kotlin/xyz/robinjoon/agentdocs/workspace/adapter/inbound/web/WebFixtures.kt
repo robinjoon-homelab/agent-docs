@@ -160,6 +160,7 @@ object WebFixtures {
     fun headerFields(prefix: String): Array<FieldDescriptor> =
         arrayOf(
             fieldWithPath("${prefix}path").description("스페이스 안 경로. 앞부분이 폴더다"),
+            fieldWithPath("${prefix}type").description("문서 유형: doc 또는 flow"),
             fieldWithPath("${prefix}title").description("제목"),
             fieldWithPath("${prefix}status").description("draft, in_review, confirmed, archived"),
             fieldWithPath("${prefix}tags").description("태그"),

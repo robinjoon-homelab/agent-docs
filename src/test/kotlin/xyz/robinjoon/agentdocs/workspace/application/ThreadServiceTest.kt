@@ -448,6 +448,46 @@ class ThreadServiceTest {
         ).isEqualTo("human")
     }
 
+    @Test
+    fun `flow target comparison is opt in and REST thread lists omit it`() {
+        val blocks =
+            xyz.robinjoon.agentdocs.workspace.domain.document.FlowRules
+                .initial("phone", "M")
+        val first = blocks[1] as xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
+        val original =
+            xyz.robinjoon.agentdocs.workspace.domain.document.Document.create(
+                documentId,
+                current.header.copy(type = "flow"),
+                blocks,
+                now,
+            )
+        val changed = original.revise(original.header, listOf(blocks[0], first.copy(name = "Changed")), now.plusSeconds(1))
+        val opened =
+            CommentThread.open(
+                threadId,
+                ThreadLocation(spaceId, documentId, Anchor.Whole(first.id, first.plainText()), 1),
+                Comment.write(CommentId(UUID.randomUUID()), owner, "Review screen", now),
+                now,
+            )
+        every { threads.find(any()) } returns listOf(opened)
+        every { threads.findByDocument(documentId) } returns listOf(opened)
+        every { documents.findByIds(listOf(documentId)) } returns listOf(changed)
+        every { documents.findById(documentId) } returns changed
+        every { spaces.findByIds(setOf(spaceId)) } returns listOf(space)
+        assertThat(service.query(ownerAccess, query()).single().target).isNull()
+        assertThat(service.forDocument(ownerAccess, documentId).single().target).isNull()
+        val revision =
+            WorkspaceFixtures.revision(
+                1,
+                blocks,
+                xyz.robinjoon.agentdocs.workspace.domain.document.history
+                    .ChangeOrigin(owner, ChangeSource.WEB),
+                now,
+            )
+        every { revisions.find(documentId, 1) } returns revision
+        assertThat(service.query(ownerAccess, query().copy(flowTargets = true)).single().target).isEqualTo("changed")
+    }
+
     private fun query(spaces: Set<SpaceId>? = setOf(spaceId)): ThreadQuery =
         ThreadQuery(spaces, null, setOf(ThreadStatus.OPEN), null, null, null)
 

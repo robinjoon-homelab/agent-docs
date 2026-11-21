@@ -14,7 +14,6 @@ import xyz.robinjoon.agentdocs.workspace.application.model.RevisionEntry
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionFilter
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
-import xyz.robinjoon.agentdocs.workspace.domain.ActorKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.BlockChange
@@ -52,6 +51,7 @@ class HistoryController(
             "revision" to revision.number,
             "version" to revision.version,
             "title" to revision.content.header.title,
+            "type" to revision.content.header.type,
             "path" to revision.content.header.path.value,
             "blocks" to revision.content.blocks.map(BlockJson::write),
             "actor" to WorkspaceJson.actor(revision.change.origin.actor),

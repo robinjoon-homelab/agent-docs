@@ -24,7 +24,7 @@ internal class MarkdownPages(
         val selected = select(document, request)
         val parts =
             if (request.format == MarkdownFormat.OUTLINE) {
-                outlineParts(selected)
+                if (document.header.type == "flow") FlowOutline.parts(document, selected) else outlineParts(selected)
             } else {
                 DocumentMarkdown.parts(document, space, request.format == MarkdownFormat.ANNOTATED, selected)
             }
@@ -96,7 +96,12 @@ internal class MarkdownPages(
         headingId: String,
     ): List<Block> {
         val start = document.blocks.indexOfFirst { it.id.value == headingId }
-        val heading = document.blocks.getOrNull(start) as? Heading ?: missing(headingId)
+        val selected = document.blocks.getOrNull(start)
+        if (selected is xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen) {
+            return listOf(selected) +
+                document.blocks.drop(start + 1).takeWhile { it is xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement }
+        }
+        val heading = selected as? Heading ?: missing(headingId)
         val rest = document.blocks.drop(start + 1)
         val end = rest.indexOfFirst { it is Heading && it.level <= heading.level }.let { if (it < 0) rest.size else it }
         return listOf(heading) + rest.take(end)

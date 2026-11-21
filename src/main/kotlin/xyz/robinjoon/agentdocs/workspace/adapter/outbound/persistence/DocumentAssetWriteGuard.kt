@@ -37,7 +37,13 @@ internal object DocumentAssetWriteGuard {
                 .singleOrNull()
                 ?.get(DocumentsTable.body)
                 ?: return
-        val previousDrawings = DocumentRows.blocksOf(previousBody).filterIsInstance<DrawingBlock>().associateBy { it.id }
+        val previousDrawings =
+            DocumentRows
+                .blocksOf(
+                    previousBody,
+                    document.header.type,
+                ).filterIsInstance<DrawingBlock>()
+                .associateBy { it.id }
         currentDrawings.forEach { drawing ->
             val prior = previousDrawings[drawing.id] ?: return@forEach
             if ((drawing.svg != prior.svg) != (drawing.scene != prior.scene)) {

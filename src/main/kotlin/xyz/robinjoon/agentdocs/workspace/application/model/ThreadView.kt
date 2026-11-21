@@ -11,4 +11,5 @@ data class ThreadView(
     val resolution: AnchorResolution,
     val context: ThreadContext?,
     val written: CommentId? = null,
+    val target: String? = null,
 )

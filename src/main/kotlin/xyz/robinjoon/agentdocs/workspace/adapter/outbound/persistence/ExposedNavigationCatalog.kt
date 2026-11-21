@@ -19,7 +19,9 @@ class ExposedNavigationCatalog(
         target: DocumentId,
         spaces: Set<SpaceId>,
     ): List<NavigationDocument> =
-        entries(spaces).filter { target in BacklinkParser.targets(DocumentRows.blocksOf(it.second), appBaseUrl) }.map { it.first }
+        entries(
+            spaces,
+        ).filter { target in BacklinkParser.targets(DocumentRows.blocksOf(it.second, it.first.type), appBaseUrl) }.map { it.first }
 
     private fun entries(spaces: Set<SpaceId>): List<Pair<NavigationDocument, String>> {
         if (spaces.isEmpty()) return emptyList()
@@ -38,6 +40,7 @@ class ExposedNavigationCatalog(
                     space[SpacesTable.name],
                     row[DocumentsTable.path],
                     row[DocumentsTable.title],
+                    row[DocumentsTable.type],
                 ) to row[DocumentsTable.body]
             }
     }

@@ -75,7 +75,7 @@ class DocumentService(
         requirePathFree(target.id, draft.path, null)
         val parents = tree.fillParents(context, target.id, draft.path)
         val now = journal.now()
-        val header = DocumentHeader(target.id, draft.path, draft.title.trim(), draft.properties)
+        val header = DocumentHeader(target.id, draft.path, draft.title.trim(), draft.properties, draft.type)
         val document = Document.create(DocumentId(UUID.randomUUID()), header, draft.blocks, now)
         val change = RevisionChange.of(originOf(context, target.id), context.summary ?: "문서 생성", document.blocks.map { it.id }, now)
         val saved = documents.add(document, Revision.of(document, change))
@@ -412,7 +412,7 @@ class DocumentService(
         val properties = header.properties
         val assignee = if (change.assignee == null) properties.assignee else change.assignee.login?.ifBlank { null }
         val next = DocumentProperties.of(change.tags ?: properties.tags, change.status ?: properties.status, assignee)
-        return DocumentHeader(header.spaceId, change.path ?: header.path, change.title?.trim() ?: header.title, next)
+        return DocumentHeader(header.spaceId, change.path ?: header.path, change.title?.trim() ?: header.title, next, header.type)
     }
 
     private fun lockForEdit(

@@ -71,6 +71,23 @@ private class FolderImportBatch(
         return create(file, assets, documents)
     }
 
+    private fun importedDraft(
+        path: DocumentPath,
+        markdown: String,
+    ): DocumentDraft {
+        val parsed = MarkdownReader.read(markdown)
+        if (parsed.frontMatter.text("type") != "flow") {
+            return DocumentDraft(path, path.name, DocumentProperties.initial, MarkdownReader.readBlocks(markdown).map { it.block })
+        }
+        val blocks =
+            xyz.robinjoon.agentdocs.workspace.application.model.FlowDraftContent.markdown(
+                parsed.blocks,
+                parsed.frontMatter.text("frame") ?: "phone",
+                parsed.frontMatter.text("idPrefix") ?: "M",
+            )
+        return DocumentDraft(path, path.name, DocumentProperties.initial, blocks, "flow")
+    }
+
     private fun create(
         file: FolderFile,
         assets: AssetUseCase,
@@ -82,7 +99,7 @@ private class FolderImportBatch(
             val markdown = decoder.decode(ByteBuffer.wrap(file.bytes)).toString()
             val rewritten = ImportMarkdown.rewrite(markdown) { upload(file, it, assets) }
             val origin = context.copy(operationId = null, importProvenance = ImportProvenance(tool, file.path))
-            val draft = DocumentDraft(path, path.name, DocumentProperties.initial, MarkdownReader.readBlocks(rewritten).map { it.block })
+            val draft = importedDraft(path, rewritten)
             val written = documents.create(origin, space, draft)
             ImportedFile(
                 file.path,

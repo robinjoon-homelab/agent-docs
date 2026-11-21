@@ -6,6 +6,9 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Callout
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
 import xyz.robinjoon.agentdocs.workspace.domain.document.Heading
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineMarkdown
@@ -74,6 +77,7 @@ object BlockMarkdown {
         pathOf: ((AssetId) -> String?)?,
     ): String =
         when (block) {
+            is FlowSettings, is FlowScreen, is FlowElement -> FlowMarkdown.write(block)
             is Heading -> "#".repeat(block.level) + " " + block.text.render(pathOf)
             is Paragraph -> escapeLeading(block.text.render(pathOf))
             is ListItem -> listItem(block, block.text.render(pathOf))

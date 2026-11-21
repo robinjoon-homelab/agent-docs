@@ -117,7 +117,8 @@ class SearchService(
         return (if (start > 0) "…" else "") + flat.substring(start, end) + (if (end < flat.length) "…" else "")
     }
 
-    private fun refOf(document: Document): DocumentRef = DocumentRef(document.id, document.header.path, document.header.title)
+    private fun refOf(document: Document): DocumentRef =
+        DocumentRef(document.id, document.header.path, document.header.title, document.header.type)
 
     private companion object {
         const val LIMIT = 50

@@ -1,10 +1,14 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence
 
+import xyz.robinjoon.agentdocs.workspace.application.model.FlowBlockData
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.Callout
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
 import xyz.robinjoon.agentdocs.workspace.domain.document.Heading
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.ListItem
@@ -19,6 +23,10 @@ internal object PortableBlocks {
 
     private fun fieldsOf(block: Block): Map<String, Any?> =
         when (block) {
+            is FlowSettings, is FlowScreen, is FlowElement -> {
+                FlowBlockData.fields(block)
+            }
+
             is Heading -> {
                 mapOf("level" to block.level, "text" to block.text.markdown)
             }
@@ -96,6 +104,7 @@ internal object PortableBlocks {
             is ImageBlock -> "image"
             is DrawingBlock -> "drawing"
             is Divider -> "divider"
+            is FlowSettings, is FlowScreen, is FlowElement -> FlowBlockData.type(block)
         }
 
     private fun Enum<*>.wire(): String = name.lowercase()

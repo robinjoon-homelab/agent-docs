@@ -11,6 +11,7 @@ internal object DocumentsTable : Table("documents") {
     val path = varchar("doc_path", 300)
     val activePath = varchar("active_path", 300).nullable()
     val title = varchar("title", 200)
+    val type = varchar("document_type", 4)
     val status = enumerationByName("status", 20, DocumentStatus::class)
     val tags = varchar("tags", 1000)
     val assignee = varchar("assignee", 39).nullable()

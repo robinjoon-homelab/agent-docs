@@ -116,6 +116,7 @@ class HistoryApiDocumentationTest : RestDocsWebTest() {
                         fieldWithPath("name").type(JsonFieldType.STRING).optional().description("내용과 별도로 붙인 이름, 없으면 null"),
                         fieldWithPath("version").description("이 리비전이 확정한 내용 버전"),
                         fieldWithPath("title").description("제목"),
+                        fieldWithPath("type").description("doc 또는 flow"),
                         fieldWithPath("path").description("경로"),
                         blocksSubsection("blocks"),
                         *actorFields("actor"),

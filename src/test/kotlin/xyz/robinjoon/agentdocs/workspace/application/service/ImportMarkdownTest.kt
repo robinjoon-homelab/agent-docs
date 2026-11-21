@@ -27,4 +27,10 @@ class ImportMarkdownTest {
             """![배포 흐름 [초안\]](asset:11111111-1111-4111-8111-111111111111 "excalidraw ../assets/scene-1.excalidraw")""",
         )
     }
+
+    @Test
+    fun `flow text is preserved instead of rewriting image shaped labels`() {
+        val source = "---\ntype: flow\n---\n\n## flowSettings\n- frame: phone\n\n### label · text\n- value: ![literal](asset:id)"
+        assertThat(ImportMarkdown.rewrite(source) { "rewritten" }).isEqualTo(source)
+    }
 }
