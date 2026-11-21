@@ -45,6 +45,7 @@ function entry(store: MemoryStore, document: AgentDocument): NavigationDocument 
     spaceSlug: space.slug,
     spaceName: space.name,
     path: document.path,
+    type: document.type ?? 'doc',
     title: document.title,
   };
 }

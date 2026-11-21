@@ -1,3 +1,4 @@
+import { toFlowBlock } from './flowMapper';
 export { permissionOf as toPermission } from '../../../../domain/space/permission';
 import type {
   Block,
@@ -47,6 +48,7 @@ export function toStatus(source: Json): DocumentStatus {
 export function toDocumentSummary(value: unknown): DocumentSummary {
   const source = obj(value, 'document');
   return {
+    type: source.type === 'flow' ? 'flow' : 'doc',
     id: str(source, 'id'),
     path: str(source, 'path'),
     title: str(source, 'title'),
@@ -92,6 +94,10 @@ export function toBlock(value: unknown): Block {
   const id = str(source, 'id');
   const type = str(source, 'type');
   switch (type) {
+    case 'flowSettings':
+    case 'flowScreen':
+    case 'flowElement':
+      return toFlowBlock(source);
     case 'heading':
       return { id, type, level: toHeadingLevel(source), text: str(source, 'text') };
     case 'paragraph':

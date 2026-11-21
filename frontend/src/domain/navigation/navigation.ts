@@ -1,5 +1,6 @@
 import type { InputTraceBatch } from '../statistics/statistics';
 export type NavigationDocument = {
+  readonly type?: 'doc' | 'flow';
   readonly id: string;
   readonly spaceId: string;
   readonly spaceSlug: string;

@@ -51,6 +51,7 @@ function toBlockChange(value: unknown): BlockChange {
 function toCurrentDocument(value: unknown): CurrentDocument {
   const source = obj(value, 'document');
   return {
+    type: source.type === 'flow' ? 'flow' : 'doc',
     id: str(source, 'id'),
     path: str(source, 'path'),
     title: str(source, 'title'),
@@ -226,6 +227,9 @@ export class HttpDocumentGateway implements DocumentGateway {
           tags,
           assignee,
           blocks,
+          type: document.type,
+          frame: document.frame,
+          idPrefix: document.idPrefix,
         }),
       ),
     );

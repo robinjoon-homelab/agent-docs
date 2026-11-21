@@ -1,3 +1,4 @@
+import { seedFlow } from './flowSeed';
 import type { Block, StoredBlock } from '../../../../domain/document/block';
 import type { AgentDocument, BlockChange } from '../../../../domain/document/document';
 import type { Actor } from '../../../../domain/shared/actor';
@@ -515,5 +516,6 @@ export function seededStore(): MemoryStore {
     requestedScope: 'edit',
     expiresAt: inDays(1 / 144),
   });
+  seedFlow(store, architecture);
   return store;
 }

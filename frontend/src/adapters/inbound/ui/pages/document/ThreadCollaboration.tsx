@@ -1,3 +1,4 @@
+import { flowPreview } from './flowPreview';
 import './threadCollaboration.css';
 import { useEffect, useState } from 'react';
 import type { Thread } from '../../../../../domain/thread/thread';
@@ -21,7 +22,7 @@ export function ThreadCollaboration({
   actions: ThreadCollaborationActions;
 }) {
   const permission = useDocumentPermission();
-  const [form, setForm] = useState(false);
+  const [form, setForm] = useState(() => thread.id === `flow-${flowPreview().suggest}`);
   const [before, setBefore] = useState(thread.anchor.kind === 'document' ? '' : (thread.anchor.quote ?? ''));
   const [after, setAfter] = useState('');
   const [busy, setBusy] = useState(false);
@@ -37,7 +38,14 @@ export function ThreadCollaboration({
       {claim == null ? null : (
         <p className="small muted">
           {active ? '처리 중' : '점유 만료'} · {actorShortName(claim.actor)} ·{' '}
-          <time dateTime={claim.expiresAt}>{new Date(claim.expiresAt).toLocaleTimeString()}까지</time>
+          <time dateTime={claim.expiresAt}>
+            {new Date(claim.expiresAt).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            })}
+            까지
+          </time>
         </p>
       )}
       <div className="thread-reactions">
@@ -101,7 +109,14 @@ export function ThreadCollaboration({
       {!canComment(permission) ||
       thread.anchor.kind === 'document' ||
       actions.suggest === undefined ? null : (
-        <button type="button" className="link-btn" onClick={() => setForm(!form)}>
+        <button
+          type="button"
+          className="link-btn"
+          onClick={() => {
+            if (!form) setBefore(thread.anchor.kind === 'document' ? '' : (thread.anchor.quote ?? ''));
+            setForm(!form);
+          }}
+        >
           수정 제안
         </button>
       )}

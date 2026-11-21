@@ -1,3 +1,6 @@
+import { flowPreview } from './flowPreview';
+import type { ReactNode } from 'react';
+import { FlowIcon } from './FlowIcon';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { EditorSessionState } from '../../../../../application/document/editorSession';
@@ -20,6 +23,7 @@ const SAVE_LABEL: Record<EditorSessionState['status'], string> = {
 };
 
 function MetaInput({
+  displayTags = false,
   label,
   value,
   placeholder,
@@ -27,6 +31,7 @@ function MetaInput({
   onCommit,
   onInput,
 }: {
+  displayTags?: boolean;
   label: string;
   value: string;
   placeholder: string;
@@ -34,6 +39,7 @@ function MetaInput({
   onCommit: (value: string) => void;
   onInput: (value: string) => void;
 }) {
+  const [editingTags, setEditingTags] = useState(false);
   const dirty = useRef(false);
   const [draft, setDraft] = useState(value);
   const [source, setSource] = useState(value);
@@ -41,11 +47,25 @@ function MetaInput({
     setSource(value);
     setDraft(value);
   }
+  if (displayTags && !editingTags)
+    return (
+      <div className="meta-field">
+        <span className="meta-label">{label}</span>
+        <button className="flow-header-tags" disabled={disabled} onClick={() => setEditingTags(true)}>
+          {parseTags(value).length ? (
+            parseTags(value).map((tag) => <span key={tag}>{tag}</span>)
+          ) : (
+            <span>쉼표로 구분</span>
+          )}
+        </button>
+      </div>
+    );
   return (
     <label className="meta-field">
       <span className="meta-label">{label}</span>
       <input
         className="meta-input"
+        autoFocus={displayTags}
         value={draft}
         placeholder={placeholder}
         disabled={disabled}
@@ -55,6 +75,7 @@ function MetaInput({
           onInput(event.target.value);
         }}
         onBlur={() => {
+          if (displayTags) setEditingTags(false);
           if (dirty.current) {
             dirty.current = false;
             onCommit(draft);
@@ -70,6 +91,8 @@ function MetaInput({
 
 /** `crumbs` are the documents above this one, top first, as the breadcrumb shows them. */
 export function DocumentHeader({
+  flowModeSlot,
+  flowStatsSlot,
   document,
   crumbs,
   state,
@@ -81,6 +104,8 @@ export function DocumentHeader({
   onTrash,
   onRetrySave,
 }: {
+  flowModeSlot?: ReactNode;
+  flowStatsSlot?: ReactNode;
   document: AgentDocument;
   crumbs: readonly Crumb[];
   state: EditorSessionState;
@@ -154,6 +179,7 @@ export function DocumentHeader({
           )}
         </nav>
         <div className="doc-topbar-actions">
+          {flowModeSlot}
           <StatusSelect
             value={meta.status}
             disabled={!editable}
@@ -163,7 +189,8 @@ export function DocumentHeader({
             }}
           />
           <span className={`save-state save-${state.status}`} title={state.errorMessage ?? undefined}>
-            rev {state.revision} · {SAVE_LABEL[state.status]}
+            rev {state.revision} ·{' '}
+            {document.type === 'flow' && flowPreview().saving ? '저장 중…' : SAVE_LABEL[state.status]}
           </span>
           {state.status === 'error' && editable ? (
             <button type="button" className="btn btn-small" onClick={onRetrySave}>
@@ -251,8 +278,15 @@ export function DocumentHeader({
         onBlur={() => saveTitle.flush()}
       />
       <div className="doc-meta">
+        {document.type === 'flow' && (
+          <span className="flow-type-chip">
+            <FlowIcon name="flow" size={14} />
+            화면 흐름 문서
+          </span>
+        )}
         <MetaInput
           label="태그"
+          displayTags={document.type === 'flow'}
           value={meta.tags.join(', ')}
           placeholder="쉼표로 구분"
           disabled={!editable}
@@ -271,6 +305,7 @@ export function DocumentHeader({
             })
           }
         />
+        {flowStatsSlot}
       </div>
       {pathOpen && editable ? (
         <PathDialog

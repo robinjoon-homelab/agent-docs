@@ -1,3 +1,6 @@
+import type { Block } from '../../../../../domain/document/block';
+import { useFlowCommentTargets } from './useFlowCommentTargets';
+import type { ReactNode, ComponentProps } from 'react';
 import { useDocumentPermission } from './DocumentPermissionContext';
 import { canComment } from '../../../../../domain/space/permission';
 import { useLayoutEffect, useRef } from 'react';
@@ -23,7 +26,11 @@ export type RailMeasure = {
  * Right-hand comment rail. On wide screens cards sit next to their anchors (pushed down when they
  * would overlap); in the drawer used on narrower screens they simply stack.
  */
-export function CommentRail({
+function CommentRailContent({
+  flowTargets,
+  flowBlocks,
+  flowScope,
+  threadHeading,
   threads,
   filter,
   onFilter,
@@ -43,6 +50,10 @@ export function CommentRail({
   onClose,
   onCollapse,
 }: {
+  flowTargets?: Map<string, string>;
+  flowBlocks?: readonly Block[];
+  flowScope?: string;
+  threadHeading?: (thread: Thread) => ReactNode;
   threads: readonly Thread[];
   filter: ThreadFilter;
   onFilter: (filter: ThreadFilter) => void;
@@ -64,7 +75,19 @@ export function CommentRail({
   onCollapse?: () => void;
 }) {
   const commentable = canComment(useDocumentPermission());
-  const visible = filterThreads(threads, filter);
+  const targets = flowTargets ?? new Map<string, string>();
+  const available = flowBlocks
+    ? threads
+        .filter((t) =>
+          filter === 'detached'
+            ? targets.get(t.id) === 'screenDeleted'
+            : targets.get(t.id) !== 'screenDeleted',
+        )
+        .filter(
+          (t) => flowScope === undefined || (t.anchor.kind !== 'document' && t.anchor.blockId === flowScope),
+        )
+    : threads;
+  const visible = flowBlocks && filter === 'detached' ? available : filterThreads(available, filter);
   const listRef = useRef<HTMLDivElement>(null);
   const latestMeasure = useRef(measure);
 
@@ -117,13 +140,20 @@ export function CommentRail({
   }, [threads, filter, pending, aligned, layoutVersion, activeThreadId]);
 
   const counts: Record<ThreadFilter, number> = {
-    open: filterThreads(threads, 'open').length,
-    all: threads.length,
-    detached: filterThreads(threads, 'detached').length,
+    open: flowBlocks
+      ? threads.filter((t) => t.status !== 'resolved' && targets.get(t.id) !== 'screenDeleted').length
+      : filterThreads(threads, 'open').length,
+    all: flowBlocks ? threads.filter((t) => targets.get(t.id) !== 'screenDeleted').length : threads.length,
+    detached: flowBlocks
+      ? threads.filter((t) => targets.get(t.id) === 'screenDeleted').length
+      : filterThreads(threads, 'detached').length,
   };
 
   return (
-    <aside className={`comment-rail${aligned ? ' is-aligned' : ''}`} aria-label="댓글">
+    <aside
+      className={`comment-rail${aligned ? ' is-aligned' : ''}${flowScope !== undefined ? ' is-flow-scoped' : ''}`}
+      aria-label="댓글"
+    >
       {/* The empty-state message is pinned with the header: the rail is as tall as the document, so in the list it
           would scroll away with the first screen. */}
       <div className="rail-top">
@@ -136,7 +166,8 @@ export function CommentRail({
                 aria-pressed={filter === option}
                 onClick={() => onFilter(option)}
               >
-                {THREAD_FILTER_LABEL[option]} {counts[option]}
+                {flowBlocks && option === 'detached' ? '삭제된 화면' : THREAD_FILTER_LABEL[option]}{' '}
+                {counts[option]}
               </button>
             ))}
           </div>
@@ -167,6 +198,13 @@ export function CommentRail({
             </button>
           )}
         </div>
+        {flowBlocks && flowScope === undefined && (
+          <p className="flow-comments-hint">
+            {filter === 'detached'
+              ? '삭제된 화면에 달렸던 댓글입니다. 누르면 댓글이 달린 때의 화면을 보여 줍니다.'
+              : '노란 앵커를 누르면 그 화면과 요소로 이동합니다. 삭제된 요소의 댓글은 여기에서만 보입니다.'}
+          </p>
+        )}
         {visible.length === 0 && pending === null ? (
           <p className="rail-empty faint small">
             {threads.length === 0
@@ -206,13 +244,51 @@ export function CommentRail({
         )}
         {visible.map((thread) => (
           <div className="rail-item" key={thread.id} data-rail-id={thread.id}>
+            {threadHeading?.(thread)}
             <ThreadCard
-              thread={thread}
+              compact={false}
+              anchorText={
+                flowBlocks
+                  ? thread.anchor.kind === 'document'
+                    ? '문서 전체'
+                    : (flowBlocks.flatMap((b) =>
+                        thread.anchor.kind !== 'document' && b.id === thread.anchor.blockId
+                          ? b.type === 'flowScreen'
+                            ? [`${b.screenId} ${b.name} · 화면 전체`]
+                            : b.type === 'flowElement'
+                              ? [b.label]
+                              : []
+                          : [],
+                      )[0] ?? '삭제된 대상')
+                  : undefined
+              }
+              thread={
+                flowBlocks && thread.anchor.kind === 'block'
+                  ? {
+                      ...thread,
+                      resolution: { state: 'attached' },
+                      anchor: {
+                        ...thread.anchor,
+                        quote:
+                          (
+                            flowBlocks.find(
+                              (b) => thread.anchor.kind === 'block' && b.id === thread.anchor.blockId,
+                            ) as { desc?: string } | undefined
+                          )?.desc ?? '',
+                      },
+                    }
+                  : thread
+              }
               active={thread.id === activeThreadId}
               login={login}
               mentionLogins={mentionLogins}
               spaceSlug={spaceSlug}
-              actions={actions}
+              actions={
+                flowBlocks &&
+                (targets.get(thread.id) === 'elementDeleted' || targets.get(thread.id) === 'screenDeleted')
+                  ? { ...actions, suggest: undefined }
+                  : actions
+              }
               onActivate={() => onActivate(thread)}
             />
           </div>
@@ -220,4 +296,12 @@ export function CommentRail({
       </div>
     </aside>
   );
+}
+
+function FlowCommentRail(props: ComponentProps<typeof CommentRailContent>) {
+  const targets = useFlowCommentTargets(props.threads, props.flowBlocks);
+  return <CommentRailContent {...props} flowTargets={targets} />;
+}
+export function CommentRail(props: ComponentProps<typeof CommentRailContent>) {
+  return props.flowBlocks ? <FlowCommentRail {...props} /> : <CommentRailContent {...props} />;
 }

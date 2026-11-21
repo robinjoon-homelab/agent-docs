@@ -1,3 +1,4 @@
+import { newFlow, normalizeFlow } from '../../../../domain/flow/flow';
 import type {
   DocumentFilter,
   DocumentGateway,
@@ -132,8 +133,17 @@ export class MemoryDocumentGateway implements DocumentGateway {
       if (this.documentsOf(space.id).some((doc) => doc.path === input.path && doc.trashedAt === null)) {
         throw new ApiError('conflict', 409, '같은 경로의 문서가 이미 있습니다.');
       }
+      const initial =
+        input.blocks ??
+        (input.type === 'flow'
+          ? newFlow(this.store.nextId('flow'), this.store.nextId('screen'), input.frame, input.idPrefix)
+          : []);
+      const content = input.type === 'flow' ? normalizeFlow(initial) : initial;
+      if (input.type !== 'flow' && content.some((block) => block.type.startsWith('flow')))
+        throw new ApiError('invalid', 400, '일반 문서에 화면 흐름 블록을 넣을 수 없습니다.');
       const now = this.store.now();
       const document: AgentDocument = {
+        type: input.type ?? 'doc',
         id: this.store.nextId('doc'),
         permission: this.store.permissionIn(space.id) ?? 'read',
         space: { id: space.id, slug: space.slug, name: space.name },
@@ -147,7 +157,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
         createdAt: now,
         updatedAt: now,
         trashedAt: null,
-        blocks: withHashes(input.blocks ?? []),
+        blocks: withHashes(content),
         blockChanges: [],
       };
       this.store.documents.set(document.id, document);
@@ -177,6 +187,9 @@ export class MemoryDocumentGateway implements DocumentGateway {
       if (baseVersion !== document.version) {
         return { kind: 'conflict', currentVersion: document.version, currentDocument: document };
       }
+      if (document.type === 'flow') blocks = normalizeFlow(blocks, document.blocks);
+      else if (blocks.some((block) => block.type.startsWith('flow')))
+        throw new ApiError('invalid', 400, '일반 문서에 화면 흐름 블록을 넣을 수 없습니다.');
       const changes = computeDiff(document.blocks, blocks);
       if (JSON.stringify(document.blocks.map(withoutHash)) === JSON.stringify(blocks.map(withoutHash))) {
         return {
@@ -465,6 +478,7 @@ export class MemoryDocumentGateway implements DocumentGateway {
   private summary(document: AgentDocument): DocumentSummary {
     const last = this.history(document.id).at(-1);
     return {
+      type: document.type ?? 'doc',
       id: document.id,
       path: document.path,
       title: document.title,

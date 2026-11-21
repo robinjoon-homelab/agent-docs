@@ -16,6 +16,7 @@ export const STATUS_LABEL: Record<DocumentStatus, string> = {
 export type SpaceRef = { readonly id: string; readonly slug: string; readonly name: string };
 
 export type DocumentSummary = {
+  readonly type?: 'doc' | 'flow';
   readonly id: string;
   readonly path: string;
   readonly title: string;
@@ -46,6 +47,7 @@ export type DocumentMeta = {
 };
 
 export type AgentDocument = DocumentMeta & {
+  readonly type?: 'doc' | 'flow';
   readonly permission?: Permission;
   readonly id: string;
   readonly space: SpaceRef;

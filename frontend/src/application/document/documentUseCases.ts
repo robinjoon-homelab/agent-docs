@@ -11,6 +11,7 @@ import { PATH_RULE_TEXT, isValidPath, movedPath, normalizePath } from '../../dom
 import type { Result } from '../shared/result';
 import { failure, ok } from '../shared/result';
 import type {
+  NewDocument,
   DocumentFilter,
   DocumentGateway,
   RevisionFilter,
@@ -42,7 +43,12 @@ export interface DocumentUseCases {
     limit: number,
   ): Promise<RecentDocument<S>[]>;
   listTrash(spaceSlug: string): Promise<TrashedDocument[]>;
-  create(spaceSlug: string, path: string, title: string): Promise<Result<AgentDocument, NewDocumentError[]>>;
+  create(
+    spaceSlug: string,
+    path: string,
+    title: string,
+    options?: Pick<NewDocument, 'type' | 'frame' | 'idPrefix'>,
+  ): Promise<Result<AgentDocument, NewDocumentError[]>>;
   transfer(documentId: string, baseVersion: number, space: string, path: string): Promise<TransferResult>;
   get(documentId: string): Promise<AgentDocument>;
   trash(documentId: string): Promise<void>;
@@ -74,14 +80,14 @@ export function createDocumentUseCases(gateway: DocumentGateway): DocumentUseCas
         .slice(0, limit);
     },
     listTrash: (spaceSlug) => gateway.listTrash(spaceSlug),
-    async create(spaceSlug, rawPath, rawTitle) {
+    async create(spaceSlug, rawPath, rawTitle, options = {}) {
       const path = normalizePath(rawPath);
       const title = rawTitle.trim();
       const errors: NewDocumentError[] = [];
       if (!isValidPath(path)) errors.push('path_invalid');
       if (title === '') errors.push('title_required');
       if (errors.length > 0) return failure(errors);
-      return ok(await gateway.create(spaceSlug, { path, title }));
+      return ok(await gateway.create(spaceSlug, { path, title, ...options }));
     },
     transfer: (id, version, space, path) => gateway.transfer(id, version, space, path),
     get: (documentId) => gateway.get(documentId),

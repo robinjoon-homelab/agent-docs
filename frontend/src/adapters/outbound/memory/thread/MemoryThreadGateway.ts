@@ -173,6 +173,7 @@ export class MemoryThreadGateway implements ThreadGateway {
       const now = this.store.now();
       const firstComment = this.comment(body);
       const thread: Thread = {
+        anchoredRevision: this.store.document(documentId).revision,
         id: this.store.nextId('th'),
         documentId,
         anchor,
@@ -347,6 +348,10 @@ function previewReplacement(block: StoredBlock, input: SuggestionInput): StoredB
           : r,
       ),
     };
+  }
+  if (block.type === 'flowScreen' || block.type === 'flowElement') {
+    if (!block.desc.includes(input.before)) throw new ApiError('conflict', 409, '설명이 변경되었습니다.');
+    return { ...block, desc: block.desc.replace(input.before, input.after), hash };
   }
   const source = 'text' in block ? block.text : block.type === 'code' ? block.code : null;
   if (source === null)

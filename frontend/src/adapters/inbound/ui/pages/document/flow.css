@@ -1,0 +1,2534 @@
+/* Geometry and component structure follow Main.dc.html; colors use the shared theme. */
+.doc-layout.is-flow {
+  display: block;
+  min-height: 100%;
+}
+.is-flow .doc-main {
+  padding: 0;
+}
+.is-flow .doc-body {
+  max-width: none;
+  margin: 0;
+}
+.is-flow .doc-header {
+  padding: 10px 28px 12px;
+  border-bottom: 1px solid var(--border);
+  margin: 0;
+}
+.is-flow .doc-topbar {
+  min-height: 32px;
+  margin: 0;
+  gap: 12px;
+}
+.is-flow .doc-title {
+  font-size: 28px;
+  line-height: 1.3;
+  margin: 8px 0;
+}
+.is-flow .doc-meta {
+  gap: 14px;
+  font-size: 13px;
+}
+.is-flow .doc-meta > span:last-child {
+  color: var(--text-muted);
+}
+.is-flow .meta-input {
+  max-width: 150px;
+}
+.is-flow .doc-meta .meta-field {
+  gap: 6px;
+}
+.is-flow .doc-body > .doc-navigation,
+.is-flow .doc-body > .edit-time-details,
+.is-flow .doc-body > .doc-children {
+  display: none;
+}
+.flow-type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--flow-blue-bg);
+  color: var(--flow-blue-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.flow-document {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.flow-document button,
+.flow-segmented button {
+  font: inherit;
+  cursor: pointer;
+  color: var(--text);
+}
+.flow-document button:disabled,
+.flow-segmented button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.flow-document button {
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 0 10px;
+  min-height: 28px;
+  font-size: 12.5px;
+}
+.flow-document p {
+  white-space: pre-line;
+}
+.flow-segmented {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--bg-hover);
+  flex: none;
+}
+.flow-segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  min-height: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.flow-segmented button[aria-pressed='true'] {
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--flow-shadow-small);
+}
+.flow-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.flow-strip .flow-strip-arrow {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  border-color: var(--border);
+  border-radius: 8px;
+}
+.flow-screen-buttons {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px;
+}
+.flow-screen-buttons > button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.flow-screen-buttons > button > span:first-child {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.flow-screen-buttons > button[aria-pressed='true'] {
+  background: var(--flow-solid);
+  border-color: var(--flow-solid);
+  color: var(--flow-on-solid);
+}
+.flow-screen-buttons > .flow-add-screen {
+  border: 1.5px dashed var(--focus);
+  background: var(--flow-blue-bg);
+  color: var(--flow-blue-text);
+}
+.flow-comment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--comment-mark-active);
+  color: var(--flow-comment-text);
+  font-size: 11px !important;
+  font-family: var(--font-body) !important;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.flow-layout {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+}
+.flow-preview {
+  flex: 999 1 480px;
+  min-width: 0;
+  height: 800px;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--flow-stage);
+  background-image: radial-gradient(var(--flow-dot) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+.flow-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+}
+.flow-toolbar > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  font-size: 12px;
+}
+.flow-trail {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.flow-stage-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.flow-editing-chip {
+  background: var(--flow-blue-bg);
+  color: var(--flow-blue-text);
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 0 8px;
+  line-height: 20px;
+}
+.flow-markers-toggle[aria-pressed='true'] {
+  background: var(--flow-solid);
+  color: var(--flow-on-solid);
+  border-color: var(--flow-solid);
+}
+.flow-toolbar .flow-segmented {
+  background: var(--bg-active);
+}
+.flow-toolbar .flow-segmented button {
+  height: 24px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+.flow-stage-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  justify-content: safe center;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 6px 24px 24px;
+}
+.flow-stage {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.flow-frame-box {
+  position: relative;
+  flex: none;
+}
+.flow-device {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--bg);
+}
+.chrome-phone {
+  border: 8px solid var(--flow-bezel);
+  border-radius: 44px;
+  box-shadow: var(--flow-shadow-device);
+}
+.chrome-tablet {
+  border: 12px solid var(--flow-bezel);
+  border-radius: 30px;
+  box-shadow: var(--flow-shadow-device);
+}
+.chrome-window {
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--flow-shadow-window);
+}
+.chrome-modal {
+  border-radius: 14px;
+  box-shadow: var(--flow-shadow-modal);
+}
+.chrome-plain {
+  border: 1px dashed var(--text-faint);
+  border-radius: 4px;
+}
+.flow-screen-viewport {
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.chrome-phone .flow-screen-viewport {
+  border-radius: 36px;
+}
+.chrome-tablet .flow-screen-viewport {
+  border-radius: 18px;
+}
+.chrome-modal .flow-screen-viewport {
+  border-radius: 14px;
+}
+.flow-window-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-hover);
+}
+.flow-window-bar i {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.flow-window-bar i:nth-child(2) {
+  background: var(--warning);
+}
+.flow-window-bar i:nth-child(3) {
+  background: var(--status-confirmed);
+}
+.flow-window-bar > span {
+  flex: 1;
+  max-width: 520px;
+  height: 18px;
+  margin-left: 14px;
+  padding: 0 8px;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.flow-frame-caption {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.flow-canvas {
+  position: relative;
+  background: var(--bg);
+  color: var(--text);
+}
+.flow-canvas.editing {
+  background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+.flow-canvas > .flow-empty {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 40%;
+  padding: 24px 14px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+.flow-element {
+  position: absolute;
+  border-radius: 4px;
+  touch-action: none;
+  outline: none;
+}
+.flow-element > div:first-child,
+.flow-element > p:first-child,
+.flow-element > span:first-child {
+  overflow: hidden;
+}
+.flow-element.selected,
+.flow-element:focus-within,
+.flow-element:has(.flow-markers):hover {
+  outline: 2px solid var(--focus);
+}
+.flow-markers {
+  pointer-events: none;
+}
+.flow-markers > b {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--focus);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 700;
+}
+.editing .flow-markers > b {
+  left: 10px;
+}
+.flow-markers > button {
+  pointer-events: auto;
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  z-index: 3;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--focus);
+  color: var(--bg);
+  box-shadow: var(--flow-shadow-info);
+  font-size: 12px;
+}
+.flow-markers > small {
+  position: absolute;
+  bottom: -18px;
+  left: 0;
+  font-size: 10px;
+  line-height: 16px;
+  background: var(--flow-blue-bg);
+  color: var(--flow-blue-text);
+  display: none;
+  white-space: nowrap;
+}
+.flow-element:hover .flow-markers > *,
+.flow-element:focus-within .flow-markers > *,
+.flow-element.selected .flow-markers > *,
+.flow-markers.always > b,
+.editing .flow-markers > small {
+  display: inline-flex;
+}
+.editing .flow-markers > button {
+  display: none;
+}
+.flow-comment-count {
+  position: absolute;
+  right: 14px;
+  top: -8px;
+  bottom: auto;
+  background: var(--comment-mark-active);
+  color: var(--flow-comment-text);
+  border-radius: 999px;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 16px;
+}
+.flow-warning {
+  position: absolute;
+  bottom: -18px;
+  left: 0;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 10px;
+  line-height: 16px;
+}
+.flow-boundary {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--focus);
+  font-size: 11px;
+  color: var(--flow-blue-text);
+  pointer-events: none;
+}
+.flow-selection {
+  position: absolute;
+  border: 1px dashed var(--focus);
+  pointer-events: none;
+  z-index: 98;
+  color: var(--focus);
+  font-size: 11px;
+}
+.flow-guide {
+  position: absolute;
+  background: var(--flow-guide);
+  z-index: 100;
+  pointer-events: none;
+}
+.flow-guide.x {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.flow-guide.y {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+.flow-floating {
+  position: absolute;
+  left: 0;
+  display: flex;
+  gap: 2px;
+  white-space: nowrap;
+  z-index: 101;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.flow-floating button {
+  min-height: 24px;
+  font-size: 10px;
+  padding: 0 5px;
+  border: 0;
+}
+.flow-coordinates {
+  position: absolute;
+  left: 0;
+  bottom: -24px;
+  background: var(--flow-solid);
+  color: var(--flow-on-solid);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.flow-resize {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--focus) !important;
+  border-radius: 0 !important;
+  background: var(--bg) !important;
+  z-index: 99;
+}
+.handle-nw {
+  left: -4px;
+  top: -4px;
+}
+.handle-n {
+  left: 50%;
+  top: -4px;
+}
+.handle-ne {
+  right: -4px;
+  top: -4px;
+}
+.handle-e {
+  right: -4px;
+  top: 50%;
+}
+.handle-se {
+  right: -4px;
+  bottom: -4px;
+}
+.handle-s {
+  left: 50%;
+  bottom: -4px;
+}
+.handle-sw {
+  left: -4px;
+  bottom: -4px;
+}
+.handle-w {
+  left: -4px;
+  top: 50%;
+}
+.flow-palette {
+  flex: 0 0 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--flow-shadow-palette);
+}
+.flow-palette strong {
+  padding: 2px 6px 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.flow-palette button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 0;
+  font-size: 13px;
+  text-align: left;
+}
+.flow-palette button svg {
+  color: var(--focus);
+  flex: none;
+}
+.flow-palette p {
+  margin: 6px 6px 2px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.flow-properties {
+  flex: 0 0 380px;
+  min-width: 0;
+  height: 800px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+.flow-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.flow-panel-header .flow-segmented button {
+  height: 28px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+.flow-panel-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  color: var(--text-muted) !important;
+  background: transparent !important;
+}
+.flow-panel-icon:nth-child(2) {
+  margin-left: auto;
+}
+.flow-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px 20px;
+}
+.flow-panel-body > [hidden] {
+  display: none;
+}
+.flow-panel-body > div > label,
+.flow-panel-body fieldset > label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 14px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.flow-panel-body input:not([type='checkbox']),
+.flow-panel-body select,
+.flow-panel-body textarea {
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  width: 100%;
+  padding: 0 10px;
+  height: 32px;
+}
+.flow-panel-body textarea {
+  height: auto;
+  min-height: 80px;
+  padding: 8px 10px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.flow-panel-body input[type='checkbox'] {
+  width: auto;
+}
+.flow-panel-body fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.flow-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 14px;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  flex: none;
+}
+.flow-composer textarea {
+  height: 60px;
+  min-height: 60px;
+  width: 100%;
+  resize: none;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+.flow-composer .comment-editor-actions {
+  justify-content: flex-end;
+}
+.flow-composer button[type='submit'] {
+  height: 28px;
+  padding: 0 14px;
+  border: 0;
+  background: var(--flow-solid);
+  color: var(--flow-on-solid);
+  font-size: 13px;
+  font-weight: 600;
+}
+.flow-reopen {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  box-shadow: var(--shadow);
+}
+.flow-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.flow-section-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.flow-screen-id {
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--flow-solid);
+  color: var(--flow-on-solid);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.flow-overview h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.35;
+}
+.flow-description {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+.flow-entry {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 6px 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  font-size: 13px;
+}
+.flow-entry > span {
+  color: var(--text-muted);
+}
+.flow-nexts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.flow-nexts button {
+  padding: 0 8px;
+  min-height: 0;
+  line-height: 20px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.flow-section-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 6px;
+}
+.flow-section-title h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.flow-section-title > span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.flow-hot-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.flow-hot-items > li {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+}
+.flow-hot-items > li:hover {
+  background: var(--flow-blue-bg);
+}
+.flow-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  flex: 0 0 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--focus);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+}
+.flow-hot-items > li > div {
+  flex: 1;
+  min-width: 0;
+}
+.flow-hot-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.flow-hot-title > button {
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+}
+.flow-kind-chip {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.flow-target {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--flow-blue-text);
+}
+.flow-hot-items p {
+  margin: 3px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.flow-hot-items p > button {
+  border: 0;
+  background: transparent;
+  min-height: 0;
+  padding: 0 0 0 2px;
+  color: var(--link);
+  font-size: 13px;
+  font-weight: 600;
+}
+.flow-back-detail {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 2px 0 !important;
+  color: var(--link) !important;
+  font-size: 12.5px !important;
+}
+.flow-delete-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--danger-bg);
+  font-size: 13px;
+  line-height: 1.55;
+  margin-top: 12px;
+}
+.flow-delete-confirm > div {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.flow-delete-confirm button:last-child {
+  border: 0;
+  background: var(--danger);
+  color: var(--bg);
+  font-weight: 600;
+}
+.flow-properties .comment-rail {
+  width: auto;
+  border: 0;
+  padding: 0;
+  position: static;
+  min-height: 0;
+}
+.flow-properties .rail-top {
+  position: static;
+}
+.flow-properties .rail-header > .icon-btn {
+  display: none;
+}
+.flow-thread-target {
+  padding: 8px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 12px;
+}
+.flow-state-chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 1px 8px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  font-size: 12px;
+  margin: 3px;
+}
+.flow-state-chip button {
+  border: 0;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+.flow-deleted-screen {
+  border: 1.5px dashed var(--danger);
+  background: var(--danger-bg);
+  padding: 5px 10px;
+  border-radius: 8px;
+}
+.flow-drawn-title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.flow-drawn-title.small {
+  font-size: 15px;
+}
+.flow-drawn-text {
+  margin: 0;
+  padding: 2px 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.flow-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+}
+.flow-control > span:first-child {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+.flow-control > span:last-child {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+}
+.flow-control.area > span:last-child {
+  display: block;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+.flow-control.inactive > span:last-child {
+  background: var(--bg-sunken);
+  color: var(--text-muted);
+}
+.flow-drawn-path {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.flow-drawn-path strong {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  word-break: break-all;
+}
+.flow-drawn-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--flow-solid);
+  color: var(--flow-on-solid);
+}
+.flow-drawn-button.secondary {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+.flow-drawn-button.disabled {
+  background: var(--bg-active);
+  color: var(--text-muted);
+}
+.flow-drawn-option {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.flow-drawn-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.flow-drawn-list > span {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-top: 1px solid var(--bg-hover);
+  font-size: 14px;
+}
+.flow-drawn-list > span:first-child {
+  border-top: 0;
+}
+.flow-drawn-notice {
+  margin: 0;
+  height: 100%;
+  padding: 9px 11px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+  background: var(--bg-sunken);
+  color: var(--text);
+}
+.flow-drawn-notice.error {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.flow-drawn-notice.ok {
+  background: var(--status-confirmed-bg);
+  color: var(--status-confirmed);
+}
+.flow-drawn-link {
+  display: inline-block;
+  padding: 2px 0;
+  font-size: 14px;
+  color: var(--link);
+  text-decoration: underline;
+}
+.flow-drawn-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+.flow-drawn-crumb {
+  display: block;
+  padding: 1px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.flow-drawn-block {
+  margin: 0;
+  padding: 4px 2px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.flow-drawn-box {
+  height: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.flow-drawn-box.sheet {
+  border-radius: 16px 16px 0 0;
+}
+.flow-drawn-box.gray {
+  background: var(--bg-hover);
+  border: 0;
+}
+.flow-drawn-box.dim {
+  border: 0;
+  border-radius: 0;
+}
+.flow-drawn-box.outline {
+  background: transparent;
+  border: 1.5px dashed var(--border-strong);
+}
+.flow-drawn-box.handle {
+  background: var(--border-strong);
+  border: 0;
+  border-radius: 999px;
+}
+.flow-drawn-image {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.flow-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.flow-detail-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.flow-detail-title > .flow-number {
+  width: 24px;
+  height: 24px;
+  flex-basis: 24px;
+  font-size: 12px;
+}
+.flow-detail h2 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.35;
+}
+.flow-detail h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.flow-detail ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.flow-detail li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.flow-detail li > span {
+  flex: 1;
+  min-width: 100px;
+  font-size: 13px;
+}
+.flow-detail li button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 10px;
+  border: 0;
+  background: var(--flow-blue-bg);
+  color: var(--flow-blue-text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.flow-detail li button span {
+  font-weight: 400;
+}
+.flow-detail-states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.flow-detail-states > span {
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  font-size: 12px;
+}
+.flow-composer > label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.is-flow .doc-meta {
+  margin-top: 0;
+  align-items: center;
+}
+.is-flow .meta-input {
+  min-width: 0;
+  width: 90px;
+  max-width: 110px;
+  padding: 0;
+  border: 0;
+  line-height: 20px;
+}
+.flow-board-tall .flow-properties,
+.flow-board-tall .flow-preview {
+  height: auto;
+  min-height: 800px;
+}
+.flow-board-tall .flow-panel-body {
+  overflow: visible;
+}
+.flow-board-tall .flow-stage-content {
+  overflow: visible;
+}
+.is-flow .doc-body > div:has(.document-navigation) {
+  display: none;
+}
+.flow-properties .flow-panel-body > div > button:not(.flow-back-detail) {
+  margin: 3px;
+}
+.flow-panel-body .comment-rail .rail-top {
+  display: none;
+}
+.is-flow .doc-body > section:not(.flow-document),
+.is-flow .doc-body > details {
+  display: none;
+}
+.flow-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.flow-inspector h2 {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 0;
+  color: var(--text);
+}
+.flow-inspector-hint {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.flow-inspector label,
+.flow-inspector-box label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0;
+}
+.flow-inspector small {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.flow-inspector-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.flow-inspector input:not([type='checkbox']),
+.flow-inspector select,
+.flow-inspector textarea {
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  width: 100%;
+}
+.flow-inspector textarea {
+  height: auto;
+  padding: 8px 10px;
+  line-height: 1.6;
+}
+.flow-inspector .flow-prefix {
+  width: 96px;
+  font-family: var(--font-mono);
+}
+.flow-size-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.flow-size-inputs input {
+  width: 88px !important;
+  height: 30px !important;
+}
+.flow-stat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.flow-stat-chips span {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+}
+.flow-stat-chips span:nth-child(2) {
+  background: var(--flow-blue-bg);
+  color: var(--flow-blue-text);
+}
+.flow-stat-chips span:nth-child(3) {
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-weight: 600;
+}
+.flow-inspector-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.flow-inspector-buttons button {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.flow-danger-outline {
+  margin-left: auto;
+  border-color: var(--danger) !important;
+  color: var(--danger) !important;
+}
+.flow-inspector h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.flow-inspector-box > p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.flow-geometry {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.flow-check {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  color: var(--text) !important;
+}
+.flow-check input {
+  width: auto !important;
+  height: auto !important;
+}
+.flow-action-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.flow-action-editor button {
+  align-self: flex-end;
+}
+.flow-inspector-hint > p {
+  margin: 4px 0 0;
+}
+.flow-warn {
+  color: var(--warning) !important;
+  background: var(--warning-bg);
+}
+.flow-snapshot-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--warning);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 13px;
+}
+.flow-snapshot-banner button {
+  margin-left: auto;
+  background: var(--bg);
+  color: var(--warning);
+  border-color: var(--warning);
+}
+.flow-snapshot-heading {
+  font-size: 12px;
+  color: var(--warning);
+  font-weight: 700;
+}
+.flow-snapshot-tag {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  white-space: nowrap;
+  font-size: 11px;
+}
+.flow-comparison {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+.flow-comparison > div {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 8px;
+}
+.flow-comparison > div > span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.flow-comparison p {
+  margin: 0;
+  line-height: 1.6;
+}
+.flow-comparison > div:nth-child(2) > p {
+  background: var(--danger-bg);
+}
+.flow-comparison > div:nth-child(3) > p {
+  background: var(--diff-added-bg);
+}
+.flow-properties .rail-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-top: 10px;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+.flow-properties .thread-card {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 10px 12px;
+}
+.flow-properties .thread-head {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+}
+.flow-properties .thread-quote {
+  display: none;
+}
+.flow-properties .flow-thread-target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 76px 0 12px;
+  background: transparent;
+  font-size: 12px;
+}
+.flow-thread-target > button:first-child {
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  min-height: 0;
+  background: var(--comment-mark);
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.flow-thread-target > span {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.flow-thread-target > p {
+  margin: 0;
+  flex: 0 0 calc(100% + 64px);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.flow-thread-target > button:not(:first-child) {
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  padding: 0;
+  font-size: 12px;
+  min-height: 0;
+  white-space: nowrap;
+}
+.flow-properties .thread-reactions button {
+  padding: 0 5px;
+  font-size: 12px;
+  min-height: 24px;
+}
+.flow-properties .comment-head {
+  font-size: 12px;
+}
+.flow-properties .comment-body {
+  font-size: 13px;
+  line-height: 1.65;
+}
+.flow-properties .thread-collaboration {
+  border: 0;
+}
+.flow-properties .comment-rail .rail-top {
+  display: block;
+}
+.flow-panel-body > div:not([hidden]) > .comment-rail .rail-top {
+  display: none;
+}
+.flow-properties .rail-header .segmented button {
+  padding: 3px 9px;
+  font-size: 12px;
+}
+.flow-properties .comment-rail .rail-header {
+  padding: 0;
+  margin: 0 0 12px;
+}
+.flow-properties .rail-list {
+  margin: 0;
+  padding: 0;
+}
+.flow-two-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.editing .flow-element .flow-markers > button {
+  display: none;
+}
+.flow-comment-count {
+  padding: 0;
+  background: transparent;
+}
+.flow-comment-count .flow-comment-badge {
+  font-size: 10px !important;
+  line-height: 16px;
+  padding: 0 5px;
+}
+.flow-drawn-notice.info {
+  background: var(--flow-blue-bg);
+  color: var(--flow-blue-text);
+  border: 1px solid var(--focus);
+}
+.flow-drawn-notice.error {
+  border: 1px solid var(--danger);
+}
+.flow-drawn-notice.ok {
+  border: 1px solid var(--status-confirmed);
+}
+.flow-drawn-box.white {
+  border-radius: 10px;
+}
+.flow-drawn-box.sheet {
+  border: 0;
+  border-radius: 18px 18px 0 0;
+  box-shadow: none;
+}
+.flow-drawn-box.gray {
+  border-radius: 6px;
+}
+.flow-drawn-box.outline {
+  border-radius: 8px;
+}
+.flow-drawn-box.handle {
+  border-radius: 2px;
+}
+.flow-header-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.flow-header-tags > span {
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  font-size: 12px;
+}
+.flow-frame-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.flow-frame-select select {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  max-width: 210px;
+}
+.flow-drawn-notice.info {
+  color: var(--flow-info-text);
+  border-color: var(--flow-info-border);
+}
+.flow-drawn-notice.error {
+  border-color: var(--flow-error-border);
+}
+.flow-drawn-notice.ok {
+  border-color: var(--flow-ok-border);
+}
+.is-flow .doc-body > .doc-banner {
+  margin: 14px 28px 0;
+  padding: 10px 14px;
+}
+.flow-properties .thread-status-open {
+  background: var(--status-review-bg);
+  color: var(--status-review);
+}
+.flow-properties .thread-status-answered {
+  background: var(--status-confirmed-bg);
+  color: var(--status-confirmed);
+}
+.flow-properties .thread-status-resolved {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+.flow-properties .flow-thread-target > span:empty {
+  display: none;
+}
+.flow-properties .flow-thread-target > button:first-child {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.flow-properties .flow-thread-target > button:not(:first-child) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--flow-error-border);
+  border-radius: 6px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 600;
+}
+.flow-properties .thread-collaboration > .link-btn {
+  justify-self: start;
+  align-self: start;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.flow-properties .thread-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.flow-properties .thread-suggestion p {
+  margin: 0;
+}
+.flow-properties .thread-suggestion del {
+  background: transparent;
+  color: var(--danger);
+}
+.flow-properties .thread-suggestion ins {
+  background: transparent;
+  color: var(--diff-added);
+  text-decoration: none;
+}
+.flow-properties .thread-suggestion > br {
+  display: none;
+}
+.flow-properties .comment-editor textarea {
+  min-height: 54px;
+  height: 54px;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  resize: none;
+}
+.flow-properties .comment {
+  padding: 0;
+  border: 0;
+  margin-top: 8px;
+}
+.flow-properties .comment-body p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.flow-properties .comment-actions button {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.flow-properties .comment-revisions .btn {
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 20px;
+  min-height: 0;
+  color: var(--link);
+}
+.flow-properties .is-flow-scoped .rail-top {
+  display: none;
+}
+.flow-properties h4 {
+  font-size: 13px;
+  margin: 14px 0 8px;
+}
+.flow-properties .rail-header .segmented {
+  display: flex;
+  flex: 0 1 auto;
+  gap: 4px;
+  background: transparent;
+  padding: 0;
+}
+.flow-properties .rail-header .segmented button {
+  flex: 0 1 auto;
+  min-height: 24px;
+  line-height: 20px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+}
+.flow-properties .rail-header .segmented button[aria-pressed='true'] {
+  background: var(--flow-solid);
+  color: var(--flow-on-solid);
+  border-color: var(--flow-solid);
+}
+.flow-align-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.flow-align-grid button {
+  height: 28px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+.flow-multi-names {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.flow-snapshot-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 400;
+}
+.flow-snapshot-heading > span {
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--danger);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.flow-snapshot-heading + h2 {
+  margin: 12px 0;
+  font-size: 19px;
+  line-height: 1.35;
+}
+.flow-snapshot-heading ~ .flow-description {
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+.flow-comparison {
+  gap: 5px;
+  padding: 8px 10px;
+}
+.flow-comparison > div {
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 4px 8px;
+  line-height: 1.55;
+}
+.flow-comparison p {
+  padding: 1px 6px;
+  border-radius: 4px;
+  line-height: 1.55;
+}
+.flow-floating {
+  left: auto;
+  right: 0;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--flow-solid);
+  box-shadow: var(--flow-shadow-tools);
+}
+.flow-floating button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--flow-on-solid);
+}
+.flow-floating button:last-child {
+  color: var(--danger);
+}
+.flow-coordinates {
+  bottom: -26px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--focus);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 17px;
+}
+.flow-boundary {
+  border-color: var(--warning);
+}
+.flow-boundary > span {
+  position: absolute;
+  left: 16px;
+  top: -18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 10.5px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.flow-selection > span {
+  position: absolute;
+  left: 0;
+  top: -22px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: var(--focus);
+  color: var(--bg);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 17px;
+  white-space: nowrap;
+}
+.flow-drawn-box.dim {
+  background: var(--flow-dim);
+}
+.flow-markers > small {
+  left: auto;
+  right: 10px;
+  bottom: -9px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--focus);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 16px;
+  z-index: 2;
+}
+.flow-warning {
+  left: 10px;
+  bottom: -9px;
+  padding: 0 6px;
+  border: 1px solid var(--warning);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  z-index: 2;
+}
+.flow-comment-count {
+  top: -9px;
+  right: 18px;
+  z-index: 2;
+}
+.flow-resize {
+  width: 9px;
+  height: 9px;
+  border-width: 1.5px !important;
+  border-radius: 2px !important;
+}
+.flow-multi-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.flow-comments-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.flow-properties .rail-header .segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--bg-hover);
+  gap: 0;
+}
+.flow-properties .rail-header .segmented button {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.flow-properties .rail-header .segmented button[aria-pressed='true'] {
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--flow-shadow-small);
+}
+.flow-snapshot-heading {
+  margin-top: 12px;
+}
+.flow-canvas.editing {
+  background-image: radial-gradient(var(--flow-edit-dot) 1px, transparent 1px);
+}
+.is-flow .doc-meta > label.meta-field .meta-input {
+  width: 50px;
+}
+.is-flow .doc-meta > label.meta-field:focus-within .meta-input {
+  width: 140px;
+}
+.flow-snapshot-banner {
+  border-bottom-color: var(--flow-history-border);
+  background: var(--flow-history-bg);
+  color: var(--flow-history-text);
+}
+.flow-snapshot-banner button {
+  border-color: var(--flow-history-border);
+  color: var(--flow-history-text);
+}
+.flow-snapshot-heading {
+  color: var(--flow-history-text);
+}
+.flow-snapshot-heading > span {
+  background: var(--flow-history-solid);
+  color: var(--bg);
+}
+.flow-snapshot-tag {
+  top: -9px;
+  right: 8px;
+  left: auto;
+  z-index: 2;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--flow-solid);
+  color: var(--flow-on-solid);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+}
+.flow-snapshot-tag.anchored {
+  background: var(--flow-history-solid);
+  color: var(--bg);
+}
+.flow-boundary {
+  border-top: 1px dashed var(--flow-history-solid);
+}
+.flow-boundary > span {
+  background: var(--flow-history-bg);
+  color: var(--flow-history-text);
+}
+.flow-properties .rail-item:has(.thread-card.is-resolved) {
+  opacity: 0.65;
+}
+.flow-properties .thread-card.is-resolved {
+  opacity: 1;
+}
+.flow-properties .comment-deleted {
+  font-size: 13px;
+  font-style: italic;
+}
+.flow-placement-hint {
+  font-size: 11.5px !important;
+  line-height: 1.55 !important;
+  color: var(--text-muted);
+}
+.flow-annotate {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 8px !important;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  cursor: pointer;
+}
+.flow-annotate > input {
+  width: 16px !important;
+  height: 16px !important;
+  margin: 2px 0 0;
+  accent-color: var(--focus);
+}
+.flow-annotate > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.flow-annotate strong {
+  font-weight: 600;
+  color: var(--text);
+}
+.flow-annotate small {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.flow-description-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.flow-description-editor > small {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.flow-description-preview {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.flow-description-preview > strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+}
+.flow-description-preview > span {
+  color: var(--link);
+  font-weight: 600;
+}
+.flow-empty-description {
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 12.5px;
+}
+.flow-behavior-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.flow-behavior-editor > p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.flow-behavior-editor > small {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.flow-action-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.flow-action-editor > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.flow-action-editor input,
+.flow-action-editor select {
+  height: 30px !important;
+  min-width: 0;
+  font-size: 12.5px !important;
+  padding: 0 8px !important;
+  flex: 1;
+}
+.flow-action-editor select:last-child {
+  flex: 0 0 104px;
+}
+.flow-action-editor > div > button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 20px;
+}
+.flow-action-badge {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--flow-blue-bg);
+  color: var(--flow-blue-text);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+}
+.flow-missing-target {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.flow-behavior-editor > .flow-add-action {
+  align-self: flex-start;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px dashed var(--focus);
+  background: var(--flow-blue-bg);
+  color: var(--flow-blue-text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.flow-state-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.flow-state-list > .flow-state-chip {
+  gap: 2px;
+  padding: 1px 2px 1px 8px;
+  margin: 0;
+  color: var(--text);
+}
+.flow-state-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+.flow-new-state {
+  display: flex;
+  gap: 6px;
+}
+.flow-new-state input {
+  flex: 1;
+  min-width: 0;
+  height: 30px !important;
+  padding: 0 8px !important;
+  font-size: 12.5px !important;
+}
+.flow-new-state button {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+.flow-element-footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.flow-geometry label {
+  gap: 2px;
+  font-size: 11px;
+}
+.flow-geometry input {
+  height: 30px !important;
+  padding: 0 6px !important;
+  font-size: 12.5px !important;
+}
+.flow-inspector-box > .flow-inspector-buttons button {
+  height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+.flow-check input {
+  width: 15px !important;
+  height: 15px !important;
+  margin: 0;
+  accent-color: var(--focus);
+}
+.flow-inspector > .flow-detail-title > .flow-number {
+  width: 22px;
+  height: 22px;
+  flex-basis: 22px;
+  font-size: 11px;
+}
+.flow-back-detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.flow-drawn-list > .selected {
+  font-weight: 600;
+}
+.flow-scroll-hint {
+  position: sticky;
+  bottom: 0;
+  height: 0;
+  z-index: 12;
+}
+.flow-scroll-hint > span {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--flow-scroll-bg);
+  color: var(--flow-on-solid);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.flow-reopen {
+  right: 20px;
+  bottom: 20px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+}
+.flow-screen-buttons > .flow-add-screen,
+.flow-behavior-editor > .flow-add-action {
+  background: var(--flow-blue-subtle);
+}
+.flow-danger-outline,
+.flow-delete-confirm {
+  border-color: var(--flow-danger-border) !important;
+}
+.flow-danger-outline,
+.flow-drawn-notice.error {
+  color: var(--flow-error-text) !important;
+}
+.flow-warning,
+.flow-empty-description {
+  border-color: var(--flow-warning-border);
+  color: var(--flow-warning-text);
+}
+.flow-warn {
+  color: var(--flow-warning-text) !important;
+}
+.flow-context-comments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.flow-context-comments > h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.flow-context-comments > p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.handle-nw {
+  left: -5px;
+  top: -5px;
+  cursor: nwse-resize;
+}
+.handle-n {
+  left: calc(50% - 4.5px);
+  top: -5px;
+  cursor: ns-resize;
+}
+.handle-ne {
+  right: -5px;
+  top: -5px;
+  cursor: nesw-resize;
+}
+.handle-e {
+  right: -5px;
+  top: calc(50% - 4.5px);
+  cursor: ew-resize;
+}
+.handle-se {
+  right: -5px;
+  bottom: -5px;
+  cursor: nwse-resize;
+}
+.handle-s {
+  left: calc(50% - 4.5px);
+  bottom: -5px;
+  cursor: ns-resize;
+}
+.handle-sw {
+  left: -5px;
+  bottom: -5px;
+  cursor: nesw-resize;
+}
+.handle-w {
+  left: -5px;
+  top: calc(50% - 4.5px);
+  cursor: ew-resize;
+}
+.flow-floating button:last-child {
+  color: var(--flow-tool-danger);
+}
+.flow-window-bar {
+  background: var(--flow-window-bar);
+  border-bottom-color: var(--flow-window-divider);
+}
+.chrome-window {
+  border-color: var(--flow-window-border);
+}
+.flow-window-bar i {
+  background: var(--flow-window-close);
+}
+.flow-window-bar i:nth-child(2) {
+  background: var(--flow-window-minimize);
+}
+.flow-window-bar i:nth-child(3) {
+  background: var(--flow-window-maximize);
+}
+.chrome-plain,
+.flow-drawn-box.outline {
+  border-color: var(--flow-frame-outline);
+}
+.flow-screen-buttons > .flow-add-screen,
+.flow-behavior-editor > .flow-add-action {
+  border-color: var(--flow-blue-border);
+}
+.flow-drawn-image,
+.flow-drawn-button.disabled,
+.flow-control.inactive > span:last-child {
+  color: var(--flow-text-soft);
+}
+.flow-screen-buttons > button > span:first-child {
+  color: var(--text-muted);
+}
+.flow-screen-buttons > button[aria-pressed='true'] > span:first-child {
+  color: var(--flow-selected-id);
+}
+.is-flow .meta-label {
+  color: var(--text-muted);
+}
+.is-flow .meta-input {
+  color: var(--text);
+}
+.is-flow .doc-banner .btn {
+  height: 26px;
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.flow-hot-items > li.is-hovered {
+  background: var(--flow-blue-bg);
+}
+.flow-deleted-screen {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1.5px dashed var(--flow-history-solid);
+  border-radius: 8px;
+  background: var(--flow-history-soft);
+  color: var(--flow-history-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.flow-properties .flow-thread-target > .flow-target-flag {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  background: var(--warning-bg);
+  color: var(--flow-warning-text);
+}
+.flow-properties .flow-thread-target > .kind-elementDeleted,
+.flow-properties .flow-thread-target > .kind-screenDeleted {
+  background: var(--danger-bg);
+  color: var(--flow-error-text);
+}
+.flow-properties .flow-thread-target > p {
+  color: var(--flow-note-text);
+}
+.flow-properties .flow-thread-target > button:not(:first-child) {
+  border-color: var(--flow-history-border);
+  background: var(--flow-history-soft);
+  color: var(--flow-history-text);
+}
+.flow-marquee {
+  border: 1px solid var(--focus);
+  background: var(--flow-marquee-fill);
+  z-index: 99;
+}
+.flow-element-paint {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.flow-element {
+  touch-action: auto;
+}
+.flow-canvas.editing {
+  user-select: none;
+}
+.editing .flow-element {
+  touch-action: none;
+}

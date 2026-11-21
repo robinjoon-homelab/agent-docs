@@ -112,6 +112,7 @@ export function toThread(value: unknown): Thread {
     suggestions: source.suggestions == null ? [] : list(source.suggestions, toSuggestion),
     id: str(source, 'id'),
     documentId: str(source, 'documentId'),
+    ...(typeof source.anchoredRevision === 'number' ? { anchoredRevision: source.anchoredRevision } : {}),
     anchor: toAnchor(source.anchor),
     resolution: toResolution(source.resolution),
     status: oneOf(source, 'status', STATUSES),

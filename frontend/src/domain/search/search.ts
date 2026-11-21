@@ -5,6 +5,7 @@ export type SearchScope = { readonly kind: 'all' } | { readonly kind: 'space'; r
 export type HitKind = 'title' | 'block' | 'comment';
 
 export type SearchHit = {
+  readonly type?: 'doc' | 'flow';
   readonly kind: HitKind;
   readonly space: { readonly slug: string; readonly name: string };
   readonly documentId: string;
@@ -16,6 +17,7 @@ export type SearchHit = {
 };
 
 export type TitleHit = {
+  readonly type?: 'doc' | 'flow';
   readonly space: { readonly slug: string; readonly name: string };
   readonly documentId: string;
   readonly path: string;

@@ -27,6 +27,7 @@ function page(value: unknown): NavigationPage {
         spaceSlug: str(entry, 'spaceSlug'),
         spaceName: str(entry, 'spaceName'),
         path: str(entry, 'path'),
+        type: entry.type === 'flow' ? 'flow' : 'doc',
         title: str(entry, 'title'),
       };
     }),
