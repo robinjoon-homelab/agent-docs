@@ -1,5 +1,20 @@
 import type { FlowElementBlock } from '../../../../../domain/document/block';
 import { FlowIcon } from './FlowIcon';
+import { imageAssetId } from '../../../../../domain/flow/flow';
+import { useServices } from '../../../../../config/ServicesContext';
+
+function FlowImage({ assetId, alt }: { assetId: string; alt: string }) {
+  const { assets } = useServices();
+  return (
+    <img
+      className="flow-drawn-asset"
+      src={assets.contentUrl(assetId)}
+      alt={alt}
+      loading="lazy"
+      draggable={false}
+    />
+  );
+}
 export function FlowElementVisual({ element: e }: { element: FlowElementBlock }) {
   switch (e.kind) {
     case 'title':
@@ -77,12 +92,15 @@ export function FlowElementVisual({ element: e }: { element: FlowElementBlock })
       return <p className="flow-drawn-block">{e.value}</p>;
     case 'box':
       return <div className={`flow-drawn-box ${e.look ?? 'white'}`} />;
-    case 'image':
+    case 'image': {
+      const assetId = imageAssetId(e);
+      if (assetId) return <FlowImage assetId={assetId} alt={e.label} />;
       return (
         <div className="flow-drawn-image">
           <FlowIcon name="image" size={22} />
           {e.value}
         </div>
       );
+    }
   }
 }

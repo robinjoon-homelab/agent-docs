@@ -15,6 +15,8 @@ data class FlowFrame(
         if (!valid) throw InvalidDocumentException("invalid flow frame")
     }
 
+    val isNote: Boolean get() = preset == NOTE
+
     fun width(default: String): Int = width ?: requireNotNull(presets[preset ?: default]).first
 
     fun height(default: String): Int = height ?: requireNotNull(presets[preset ?: default]).second
@@ -29,6 +31,10 @@ data class FlowFrame(
                 "laptop" to (1280 to 800),
                 "desktop" to (1440 to 900),
                 "modal" to (480 to 560),
+                NOTE to (800 to 600),
             )
+
+        // A note page shows its screen description as wide text instead of a device, so it holds no elements.
+        const val NOTE = "note"
     }
 }

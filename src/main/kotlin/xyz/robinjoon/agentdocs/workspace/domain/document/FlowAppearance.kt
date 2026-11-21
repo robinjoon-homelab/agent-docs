@@ -1,6 +1,8 @@
 package xyz.robinjoon.agentdocs.workspace.domain.document
 
+import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import java.util.Collections
+import java.util.UUID
 
 @ConsistentCopyVisibility
 data class FlowAppearance private constructor(
@@ -82,6 +84,16 @@ data class FlowAppearance private constructor(
             )
 
         fun defaultLook(kind: String): String? = defaultLooks[kind]
+
+        private val assetValue = Regex("asset:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})")
+
+        // An image placeholder whose visible text is exactly asset:<id> shows that uploaded image.
+        fun imageAsset(element: FlowElement): AssetId? =
+            if (element.appearance.kind == "image") {
+                assetValue.matchEntire(element.text.value)?.let { AssetId(UUID.fromString(it.groupValues[1])) }
+            } else {
+                null
+            }
 
         fun of(
             kind: String,

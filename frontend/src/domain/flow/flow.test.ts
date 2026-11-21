@@ -15,8 +15,25 @@ import {
   flowDifferences,
   anchoredScreenId,
   fitScale,
+  frameSize,
+  imageAssetId,
+  isNotePage,
 } from './flow';
 describe('화면 흐름 규칙', () => {
+  it('글 페이지는 기기 틀 대신 글을 보여 주고, 이미지 자리는 asset 값일 때만 첨부를 가리킨다', () => {
+    const flow = readFlow(newFlow('settings', 'screen', 'desktop', 'F'));
+    const first = flow.screens[0];
+    if (!first) throw new Error('화면이 없습니다.');
+    const screen = { ...first.screen, frame: 'note' as const };
+    expect(isNotePage(screen)).toBe(true);
+    expect(frameSize(flow, screen)[0]).toBe('글 페이지');
+    const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    const image = { ...newElement('img', 'image', 390, 844), value: `asset:${id}` };
+    expect(imageAssetId(image)).toBe(id);
+    expect(imageAssetId({ ...image, value: '이미지' })).toBeNull();
+    expect(imageAssetId({ ...image, kind: 'text' })).toBeNull();
+  });
+
   it('맞춤 배율은 측정한 영역에 틀 전체가 들어가게 줄이고 100%를 넘지 않는다', () => {
     expect(fitScale(642, 682, { width: 520, height: 700 })).toBe(0.8);
     expect(fitScale(1442, 932, { width: 520, height: 700 })).toBe(0.36);

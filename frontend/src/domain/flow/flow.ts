@@ -33,6 +33,16 @@ export const KINDS: Record<FlowKind, string> = {
   box: '사각형',
   image: '이미지 자리',
 };
+export const NOTE_FRAME = ['글 페이지', 800, 600] as const;
+/** A note page shows its description as wide text instead of a device and never holds elements. */
+export function isNotePage(screen: FlowScreenBlock): boolean {
+  return screen.frame === 'note';
+}
+const ASSET_VALUE = /^asset:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+/** An image placeholder whose visible text is exactly `asset:<id>` shows that uploaded image. */
+export function imageAssetId(element: FlowElementBlock): string | null {
+  return element.kind === 'image' ? (ASSET_VALUE.exec(element.value)?.[1] ?? null) : null;
+}
 export type FlowScreen = { screen: FlowScreenBlock; elements: FlowElementBlock[] };
 export type Flow = { settings: FlowSettingsBlock; screens: FlowScreen[] };
 export function readFlow(blocks: readonly Block[]): Flow {
@@ -53,6 +63,7 @@ export function flowBlocks(flow: Flow): Block[] {
   return [flow.settings, ...flow.screens.flatMap((s) => [s.screen, ...s.elements])];
 }
 export function frameSize(flow: Flow, screen: FlowScreenBlock): readonly [string, number, number] {
+  if (screen.frame === 'note') return NOTE_FRAME;
   return screen.frame === 'custom'
     ? ['직접 입력', screen.frameW ?? 390, screen.frameH ?? 844]
     : FRAMES[screen.frame ?? flow.settings.frame];
@@ -343,7 +354,9 @@ function screenFields(screen: FlowScreenBlock): ComparedField[] {
           ? '문서 기본값'
           : screen.frame === 'custom'
             ? `직접 입력 ${screen.frameW}×${screen.frameH}`
-            : FRAMES[screen.frame][0],
+            : screen.frame === 'note'
+              ? NOTE_FRAME[0]
+              : FRAMES[screen.frame][0],
     },
   ];
 }

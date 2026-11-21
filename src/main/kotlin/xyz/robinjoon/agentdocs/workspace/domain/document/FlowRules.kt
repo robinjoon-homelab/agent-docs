@@ -16,6 +16,11 @@ object FlowRules {
         ) {
             throw InvalidDocumentException("a flow needs settings first, then one or more screens and their elements")
         }
+        blocks.zipWithNext().forEach { (previous, next) ->
+            if (previous is FlowScreen && previous.frame.isNote && next is FlowElement) {
+                throw InvalidDocumentException("a note page cannot contain elements")
+            }
+        }
         val ids = blocks.filterIsInstance<FlowScreen>().map { it.screenId }
         if (ids.distinct().size != ids.size) throw InvalidDocumentException("screen ids must be unique")
     }

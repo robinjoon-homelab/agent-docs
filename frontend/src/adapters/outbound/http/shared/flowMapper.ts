@@ -23,7 +23,9 @@ export function toFlowBlock(s: Json): Block {
       frame:
         s.frame == null
           ? null
-          : oneOf(s, 'frame', [...Object.keys(FRAMES), 'custom'] as (FlowFrame | 'custom')[]),
+          : oneOf(s, 'frame', [...Object.keys(FRAMES), 'custom', 'note'] as (
+              FlowFrame | 'custom' | 'note'
+            )[]),
       frameW: optNum(s, 'frameW'),
       frameH: optNum(s, 'frameH'),
     };

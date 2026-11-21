@@ -1,6 +1,8 @@
 import type { FlowElementBlock } from '../../../../../domain/document/block';
 import type { Flow, FlowScreen } from '../../../../../domain/flow/flow';
-import { KINDS, numbered, nextScreens } from '../../../../../domain/flow/flow';
+import { KINDS, isNotePage, numbered, nextScreens } from '../../../../../domain/flow/flow';
+import { richPlain } from '../../../../../domain/flow/richText';
+import { FlowRichText } from './FlowRichText';
 import type { Thread } from '../../../../../domain/thread/thread';
 export function FlowOverview({
   flow,
@@ -31,7 +33,11 @@ export function FlowOverview({
         <span className="flow-screen-id">{screen.screenId}</span>화면 설명
       </div>
       <h2>{screen.name}</h2>
-      <p className="flow-description">{screen.desc}</p>
+      {isNotePage(screen) ? (
+        <p className="flow-description muted">글 페이지입니다. 본문은 가운데에 있습니다.</p>
+      ) : (
+        <FlowRichText className="flow-description" text={screen.desc} />
+      )}
       <div className="flow-entry">
         <span>진입</span>
         <div>{screen.entry}</div>
@@ -73,18 +79,22 @@ export function FlowOverview({
                   {element.actions[0]?.to && <span className="flow-target">→ {element.actions[0].to}</span>}
                   {count > 0 && <span className="flow-comment-badge">댓글 {count}</span>}
                 </div>
-                <p>
-                  {element.desc
-                    ? expanded.includes(element.id)
-                      ? element.desc
-                      : element.desc.slice(0, 60) + (element.desc.length > 60 ? '…' : '')
-                    : '(설명 없음)'}
-                  {element.desc.length > 60 && (
-                    <button onClick={() => onExpand(element.id)}>
-                      {expanded.includes(element.id) ? '접기' : '더보기'}
-                    </button>
-                  )}
-                </p>
+                {element.desc && expanded.includes(element.id) ? (
+                  <div>
+                    <FlowRichText text={element.desc} />
+                    <button onClick={() => onExpand(element.id)}>접기</button>
+                  </div>
+                ) : (
+                  <p>
+                    {element.desc
+                      ? richPlain(element.desc).slice(0, 60) +
+                        (richPlain(element.desc).length > 60 ? '…' : '')
+                      : '(설명 없음)'}
+                    {richPlain(element.desc).length > 60 && (
+                      <button onClick={() => onExpand(element.id)}>더보기</button>
+                    )}
+                  </p>
+                )}
               </div>
             </li>
           );

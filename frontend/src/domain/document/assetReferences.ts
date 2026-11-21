@@ -6,6 +6,10 @@ export function assetReferences(blocks: readonly Block[]): string[] {
   const ids = new Set<string>();
   for (const block of blocks) {
     if (block.type === 'image') ids.add(block.assetId);
+    if (block.type === 'flowElement' && block.kind === 'image') {
+      const flowAsset = /^asset:([0-9a-f-]{36})$/i.exec(block.value)?.[1];
+      if (flowAsset) ids.add(flowAsset);
+    }
     if (block.type === 'drawing') {
       ids.add(block.svgAssetId);
       ids.add(block.sceneAssetId);

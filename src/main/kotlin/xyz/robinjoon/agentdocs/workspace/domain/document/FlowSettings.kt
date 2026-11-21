@@ -7,7 +7,7 @@ data class FlowSettings(
     val nextScreen: Int = 2,
 ) : Block {
     init {
-        if (frame !in FlowFrame.presets || !Regex("[A-Z0-9]{0,4}").matches(idPrefix) || nextScreen < 1) {
+        if (frame !in FlowFrame.presets || frame == FlowFrame.NOTE || !Regex("[A-Z0-9]{0,4}").matches(idPrefix) || nextScreen < 1) {
             throw InvalidDocumentException("invalid flow settings")
         }
     }
