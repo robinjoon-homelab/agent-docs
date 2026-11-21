@@ -2,6 +2,7 @@ import { useFlowCommentTargets } from './useFlowCommentTargets';
 import { useDocumentPermission } from './DocumentPermissionContext';
 import { canComment } from '../../../../../domain/space/permission';
 import { FlowDeviceFrame } from './FlowDeviceFrame';
+import { FlowRichText } from './FlowRichText';
 import { FlowIcon, FlowCommentBadge } from './FlowIcon';
 import { flowPreview } from './flowPreview';
 import type { ReactNode } from 'react';
@@ -203,55 +204,66 @@ export function FlowSnapshot({
             </button>
           </div>
           <div className="flow-stage-content" ref={stageRef}>
-            <div className="flow-stage">
-              <FlowDeviceFrame
-                area={stageArea}
-                frame={screen.screen.frame ?? flow.settings.frame}
-                width={width}
-                height={height}
-                title={`agent-docs · ${screen.screen.screenId} ${screen.screen.name}`}
-              >
-                <div
-                  className="flow-canvas"
-                  style={{ width, minHeight: Math.max(height, ...screen.elements.map((e) => e.y + e.h)) }}
+            {screen.screen.frame === 'note' ? (
+              <article className="flow-note">
+                <FlowRichText text={screen.screen.desc} />
+                <p className="flow-frame-caption">글 페이지 · rev {revision} 시점</p>
+              </article>
+            ) : (
+              <div className="flow-stage">
+                <FlowDeviceFrame
+                  area={stageArea}
+                  frame={screen.screen.frame ?? flow.settings.frame}
+                  width={width}
+                  height={height}
+                  title={`agent-docs · ${screen.screen.screenId} ${screen.screen.name}`}
                 >
-                  {screen.elements.map((e) => {
-                    const state = flowTarget(blocks, current, e.id);
-                    return (
-                      <div
-                        key={e.id}
-                        className="flow-element flow-snapshot-element"
-                        style={{
-                          left: e.x,
-                          top: e.y,
-                          width: e.w,
-                          height: e.h,
-                          outline: e.id === blockId ? '2px solid var(--flow-history-solid)' : undefined,
-                        }}
-                      >
-                        <div className="flow-element-paint">
-                          <FlowElementVisual element={e} />
-                        </div>
-                        {e.annotated && (
-                          <div className="flow-markers always">
-                            <b>{numberedElements.findIndex((el) => el.id === e.id) + 1}</b>
+                  <div
+                    className="flow-canvas"
+                    style={{ width, minHeight: Math.max(height, ...screen.elements.map((e) => e.y + e.h)) }}
+                  >
+                    {screen.elements.map((e) => {
+                      const state = flowTarget(blocks, current, e.id);
+                      return (
+                        <div
+                          key={e.id}
+                          className="flow-element flow-snapshot-element"
+                          style={{
+                            left: e.x,
+                            top: e.y,
+                            width: e.w,
+                            height: e.h,
+                            outline: e.id === blockId ? '2px solid var(--flow-history-solid)' : undefined,
+                          }}
+                        >
+                          <div className="flow-element-paint">
+                            <FlowElementVisual element={e} />
                           </div>
-                        )}
-                        {(e.id === blockId || state !== 'ok') && (
-                          <span className={`flow-snapshot-tag${e.id === blockId ? ' anchored' : ''}`}>
-                            {e.id === blockId ? '댓글 위치' : ''}
-                            {state === 'changed' ? ' · 이후 바뀜' : state !== 'ok' ? ' · 지금은 삭제됨' : ''}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </FlowDeviceFrame>
-              <p className="flow-frame-caption">
-                {name} · {width}×{height} · {percent}% {screen.screen.frame === null ? '· 문서 기본값' : ''}
-              </p>
-            </div>
+                          {e.annotated && (
+                            <div className="flow-markers always">
+                              <b>{numberedElements.findIndex((el) => el.id === e.id) + 1}</b>
+                            </div>
+                          )}
+                          {(e.id === blockId || state !== 'ok') && (
+                            <span className={`flow-snapshot-tag${e.id === blockId ? ' anchored' : ''}`}>
+                              {e.id === blockId ? '댓글 위치' : ''}
+                              {state === 'changed'
+                                ? ' · 이후 바뀜'
+                                : state !== 'ok'
+                                  ? ' · 지금은 삭제됨'
+                                  : ''}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </FlowDeviceFrame>
+                <p className="flow-frame-caption">
+                  {name} · {width}×{height} · {percent}% {screen.screen.frame === null ? '· 문서 기본값' : ''}
+                </p>
+              </div>
+            )}
           </div>
         </section>
         {collapsed ? (

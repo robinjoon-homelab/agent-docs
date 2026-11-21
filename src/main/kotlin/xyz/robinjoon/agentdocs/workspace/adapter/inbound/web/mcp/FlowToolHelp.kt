@@ -14,7 +14,11 @@ internal object FlowToolHelp {
             "A heading starts each block. Elements need w and h; other attributes may be omitted: inserts use defaults " +
             "(empty text, the kind's default look, no date, unpinned, ungrouped, document frame) and replace keeps stored values. " +
             "Repeated item/state/when-to-mode lines are replaced as sent. Parse errors name the failing heading. " +
-            "Empty screen ID (two spaces after ##) allocates the next number on insertion. "
+            "Empty screen ID (two spaces after ##) allocates the next number on insertion. " +
+            "Screen frame note is a text page: its description (up to 20000 characters) shows as wide formatted text " +
+            "and it holds no elements. " +
+            "Descriptions render a markdown subset: blank-line paragraphs, - and 1. lists, | tables, bold, italic, code and links. " +
+            "An image element whose value is exactly asset:ID (upload with docs_upload first) shows that image; its label is the alt text. "
     const val EDIT =
         "Flow edits use blockId, never screenId aliases. Screen delete/move carries its elements; " +
             "the last screen cannot " +

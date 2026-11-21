@@ -1268,8 +1268,11 @@ MCP ``docs_edit`` 응답의 ``warnings``는 ``blockId``, ``code`` 배열이며 c
 ==== 흐름 JSON 값 제한
 
 기본 틀은 phone(390×844), phoneSmall(360×800), tabletP(820×1180), tabletL(1180×820), laptop(1280×800), desktop(1440×900), modal(480×560)입니다.
+화면 frame에는 note(글 페이지)도 쓸 수 있습니다. 글 페이지는 기기 틀 대신 화면 설명을 서식 있는 글로 넓게 보여 주며 요소를 둘 수 없고(400), 문서 기본 틀이 될 수 없습니다.
 화면 frame은 null이면 문서 기본값이며 custom이면 frameW·frameH가 200~3000 정수여야 합니다. custom 이외에는 두 치수가 null입니다.
-화면 이름은 100자, 진입 경로는 200자, 설명은 5000자 이하입니다. 화면 ID는 대문자·숫자 0~4자, 하이픈, 숫자 2자리 이상입니다.
+화면 이름은 100자, 진입 경로는 200자, 설명은 20000자 이하입니다. 요소 설명은 5000자 이하입니다.
+화면·요소 설명은 마크다운 일부로 보여 줍니다: 빈 줄 문단, ``-``·``1.`` 목록, ``|`` 표, 굵게·기울임·취소선·코드·링크(``doc:`` 포함). 저장 값은 원문 그대로입니다.
+image 요소의 value가 정확히 ``asset:<UUID>``이면 그 첨부 이미지를 요소 크기에 맞춰 보여 주고 요소 이름을 대체 텍스트로 씁니다. 첨부는 같은 스페이스에 먼저 올려야 하며 문서의 첨부 참조로 셉니다. 화면 ID는 대문자·숫자 0~4자, 하이픈, 숫자 2자리 이상입니다.
 
 요소 kind는 title, text, field, select, area, button, link, list, option, notice, path, bar, crumb, block, box, image입니다.
 look은 box의 white/sheet/gray/dim/outline/handle, title의 large/small, button의 primary/secondary/disabled, notice의 info/error/ok, field/select/area의 normal/inactive 중 하나이며 나머지 종류는 null입니다.

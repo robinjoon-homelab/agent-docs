@@ -392,4 +392,30 @@ class FlowDocumentTest {
         assertThatThrownBy { MarkdownReader.readBlocks("### 상자 · box\n- look:\n- w: 20\n- h: 20", "flow") }
             .hasMessageContaining("invalid flow appearance in block \"### 상자 · box\"")
     }
+
+    @Test
+    fun `note pages hold long text but no elements and cannot be the document default`() {
+        val note = second.copy(frame = FlowFrame(FlowFrame.NOTE), desc = "| 연산 | 화면 |\n".repeat(1000).take(FlowScreen.MAX_DESCRIPTION))
+        assertThat(document(initial + note).blocks).contains(note)
+        assertThatThrownBy { document(initial + note + element) }.hasMessageContaining("a note page cannot contain elements")
+        assertThatThrownBy { FlowSettings(BlockId("settings2"), FlowFrame.NOTE) }.isInstanceOf(InvalidDocumentException::class.java)
+        assertThatThrownBy {
+            second.copy(
+                desc = "x".repeat(FlowScreen.MAX_DESCRIPTION + 1),
+            )
+        }.isInstanceOf(InvalidDocumentException::class.java)
+    }
+
+    @Test
+    fun `image placeholders whose value is an asset id count as asset references`() {
+        val id = UUID.randomUUID()
+        val image =
+            element.copy(
+                appearance = FlowAppearance.of("image", null, null, null),
+                text = FlowDescription("화면 캡처", "asset:$id", ""),
+            )
+        val caption = image.copy(id = BlockId("caption1"), text = FlowDescription("자리", "이미지", ""))
+        val text = image.copy(id = BlockId("text1"), appearance = FlowAppearance.of("text", null, null, null))
+        assertThat(AssetReferences.of(listOf(image, caption, text)).map { it.value }).containsExactly(id)
+    }
 }

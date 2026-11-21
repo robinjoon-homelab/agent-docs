@@ -49,7 +49,7 @@ export function FlowScreenInspector({
         <textarea
           rows={5}
           value={screen.desc}
-          maxLength={5000}
+          maxLength={20000}
           placeholder="이 화면이 무엇을 하는지, 언제 들어오는지, 핵심 규칙을 적으세요."
           onChange={(e) => onScreen({ desc: e.target.value })}
         />
@@ -62,7 +62,7 @@ export function FlowScreenInspector({
             value={screen.frame ?? ''}
             onChange={(e) =>
               onScreen({
-                frame: (e.target.value || null) as FlowFrame | 'custom' | null,
+                frame: (e.target.value || null) as FlowFrame | 'custom' | 'note' | null,
                 frameW: e.target.value === 'custom' ? 600 : null,
                 frameH: e.target.value === 'custom' ? 720 : null,
               })
@@ -75,7 +75,11 @@ export function FlowScreenInspector({
               </option>
             ))}
             <option value="custom">직접 입력</option>
+            <option value="note" disabled={active.elements.length > 0}>
+              글 페이지 (요소 없는 화면만)
+            </option>
           </select>
+          {screen.frame === 'note' && <small>가운데에 기기 틀 대신 화면 설명을 넓은 글로 보여 줍니다.</small>}
         </label>
         {screen.frame === 'custom' && (
           <div className="flow-size-inputs">

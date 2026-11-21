@@ -713,6 +713,7 @@ function DocumentWorkspace({
                 <>
                   <div hidden={flowSnapshot !== null}>
                     <FlowDocument
+                      spaceSlug={document.space.slug}
                       modeTarget={flowModeTarget}
                       statsTarget={flowStatsTarget}
                       ref={flowRef}

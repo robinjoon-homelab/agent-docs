@@ -169,7 +169,8 @@ export type FlowScreenBlock = {
   readonly screenId: string;
   readonly name: string;
   readonly entry: string;
-  readonly frame: FlowFrame | 'custom' | null;
+  /** `note` is a text page: the description is shown as wide text and the screen holds no elements. */
+  readonly frame: FlowFrame | 'custom' | 'note' | null;
   readonly frameW: number | null;
   readonly frameH: number | null;
   readonly desc: string;

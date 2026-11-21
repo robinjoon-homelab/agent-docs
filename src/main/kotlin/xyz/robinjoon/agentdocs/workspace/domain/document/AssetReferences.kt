@@ -39,6 +39,7 @@ object AssetReferences {
             is Quote -> InlineMarkdown.assetIds(block.text.markdown)
             is Callout -> InlineMarkdown.assetIds(block.text.markdown)
             is TableBlock -> block.rows.flatMap { row -> row.cells.flatMap { InlineMarkdown.assetIds(it.markdown) } }.toSet()
-            is CodeBlock, is Divider, is FlowSettings, is FlowScreen, is FlowElement -> emptySet()
+            is FlowElement -> setOfNotNull(FlowAppearance.imageAsset(block))
+            is CodeBlock, is Divider, is FlowSettings, is FlowScreen -> emptySet()
         }
 }

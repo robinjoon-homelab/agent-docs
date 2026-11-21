@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FlowElementBlock, FlowKind, FlowAction } from '../../../../../domain/document/block';
 import type { Flow } from '../../../../../domain/flow/flow';
 import { KINDS, newElement } from '../../../../../domain/flow/flow';
+import { richPlain } from '../../../../../domain/flow/richText';
 import { ACTION_MODES } from './FlowElementOptions';
 const LOOKS: Partial<Record<FlowKind, Record<string, string>>> = {
   title: { large: '큰 제목', small: '작은 제목' },
@@ -29,6 +30,7 @@ export function FlowElementInspector({
   onDuplicate,
   onDelete,
   number,
+  onUploadImage,
 }: {
   element: FlowElementBlock;
   flow: Flow;
@@ -39,8 +41,12 @@ export function FlowElementInspector({
   onDuplicate: () => void;
   onDelete: () => void;
   number: number;
+  /** Uploads the file to the space and returns `asset:<id>`, or throws a message to show. */
+  onUploadImage?: (file: File) => Promise<string>;
 }) {
   const [stateName, setStateName] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const [uploading, setUploading] = useState(false);
   const action = (index: number, patch: Partial<FlowAction>) =>
     onPatch({ actions: e.actions.map((a, i) => (i === index ? { ...a, ...patch } : a)) });
   return (
@@ -112,6 +118,37 @@ export function FlowElementInspector({
             />
           </label>
         )
+      )}
+      {e.kind === 'image' && onUploadImage && (
+        <div className="flow-image-upload">
+          <label className="flow-upload-button">
+            {uploading ? '올리는 중…' : '이미지 올리기'}
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              disabled={uploading}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (!file) return;
+                setUploading(true);
+                setUploadError('');
+                onUploadImage(file)
+                  .then((value) => onPatch({ value }))
+                  .catch((error: unknown) =>
+                    setUploadError(error instanceof Error ? error.message : '이미지를 올리지 못했습니다.'),
+                  )
+                  .finally(() => setUploading(false));
+              }}
+            />
+          </label>
+          <small>
+            보이는 글자가 asset:ID이면 그 이미지를 요소 크기에 맞춰 보여 줍니다. 요소 이름이 대체
+            텍스트입니다.
+          </small>
+          {uploadError && <p role="alert">{uploadError}</p>}
+        </div>
       )}
       {LOOKS[e.kind] && (
         <label>
@@ -214,12 +251,15 @@ export function FlowElementInspector({
               onChange={(event) => onPatch({ desc: event.target.value })}
             />
           </label>
-          <small>{e.desc.length}자 · 화면 설명의 요소 목록에는 앞 60자만 보이고 "더보기"로 펼칩니다.</small>
+          <small>
+            {e.desc.length}자 · 화면 설명의 요소 목록에는 앞 60자만 보이고 "더보기"로 펼칩니다. 목록(- ),
+            표(|), **굵게**, `코드`, [링크](doc:ID)를 쓸 수 있습니다.
+          </small>
           {e.desc.trim() ? (
             <div className="flow-description-preview">
               <strong>목록 미리보기</strong>
-              {e.desc.slice(0, 60)}
-              {e.desc.length > 60 && (
+              {richPlain(e.desc).slice(0, 60)}
+              {richPlain(e.desc).length > 60 && (
                 <>
                   … <span>더보기</span>
                 </>
