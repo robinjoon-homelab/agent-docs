@@ -1,3 +1,8 @@
+import { readFlow, flowTarget } from '../../../../../domain/flow/flow';
+import { flowPreview } from './flowPreview';
+import type { Block } from '../../../../../domain/document/block';
+import { FlowThreadHistory, FlowSnapshot } from './FlowThreadHistory';
+import { FlowDocument, type FlowHandle } from './FlowDocument';
 import { Dialog } from '../../common/Dialog';
 import { DocumentAccessBanner } from './DocumentAccessBanner';
 import { commentAnchorPreparation } from '../../../../../domain/document/commentAnchor';
@@ -175,6 +180,15 @@ function DocumentWorkspace({
   const [transferring, setTransferring] = useState(false);
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const editorRef = useRef<DocumentEditorHandle>(null);
+  const flowRef = useRef<FlowHandle>(null);
+  const [flowModeTarget, setFlowModeTarget] = useState<HTMLDivElement | null>(null);
+  const [flowStatsTarget, setFlowStatsTarget] = useState<HTMLSpanElement | null>(null);
+  const [flowSnapshot, setFlowSnapshot] = useState<{
+    blocks: readonly Block[];
+    blockId: string;
+    revision: number;
+    threadId: string;
+  } | null>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
   const {
     threads,
@@ -196,9 +210,34 @@ function DocumentWorkspace({
   useLayoutEffect(() => {
     closeEvents.current = stopEvents;
   }, [stopEvents]);
-  const [filter, setFilter] = useState<ThreadFilter>('open');
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<ThreadFilter>(() =>
+    flowPreview().filter === 'gone' ? 'detached' : flowPreview().filter === 'all' ? 'all' : 'open',
+  );
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(() =>
+    flowPreview().active ? `flow-${flowPreview().active}` : null,
+  );
   const [pending, setPending] = useState<Anchor | null>(null);
+  useEffect(() => {
+    const preview = flowPreview();
+    const thread = initialThreads.find((t) => t.id === `flow-${preview.snap}`);
+    let active = true;
+    if (thread && thread.anchoredRevision !== undefined && thread.anchor.kind !== 'document') {
+      const blockId = thread.anchor.blockId;
+      void services.documents.revision(document.id, thread.anchoredRevision).then((snapshot) => {
+        if (active) {
+          setFlowSnapshot({
+            blocks: snapshot.blocks,
+            blockId,
+            revision: snapshot.revision,
+            threadId: thread.id,
+          });
+        }
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [document.id, initialThreads, services.documents]);
   const [reanchorThread, setReanchorThread] = useState<Thread | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
   const wide = useMediaQuery('(min-width: 1280px)');
@@ -347,12 +386,16 @@ function DocumentWorkspace({
     return false;
   };
 
-  const startThread = async (body: string): Promise<boolean> => {
-    if (pending === null) return false;
+  const startThread = async (body: string, anchor: Anchor | null = pending): Promise<boolean> => {
+    if (anchor === null) return false;
     // Anchors are offsets into the content the server has, so pending edits go out first.
     if (!canComment(currentAccess().permission)) return false;
     if (!(await prepareCommentAnchor())) return false;
-    const thread = await start(pending, body);
+    if (document.type === 'flow' && session.hasPendingRevision() && canEdit(currentAccess().permission)) {
+      await session.finalize();
+      if (session.getState().status !== 'saved') return false;
+    }
+    const thread = await start(anchor, body);
     if (thread === null) return false;
     setPending(null);
     setActiveThreadId(thread.id);
@@ -467,10 +510,35 @@ function DocumentWorkspace({
   const highlightedThreadId = filterThreads(threads, filter).some((thread) => thread.id === activeThreadId)
     ? activeThreadId
     : null;
-  const rail = (
+  const rail = (flowScope?: string, onlyThreadId?: string) => (
     <CommentRail
-      threads={threads}
-      filter={filter}
+      flowBlocks={document.type === 'flow' ? session.currentBlocks() : undefined}
+      flowScope={flowScope}
+      threadHeading={
+        document.type === 'flow'
+          ? (thread) => (
+              <FlowThreadHistory
+                onSelect={(blockId) => {
+                  setActiveThreadId(thread.id);
+                  flowRef.current?.selectBlock(blockId);
+                }}
+                thread={thread}
+                blocks={session.currentBlocks()}
+                onSnapshot={(blocks, blockId, revision) => {
+                  const parent = readFlow(blocks).screens.find(
+                    (s) => s.screen.id === blockId || s.elements.some((e) => e.id === blockId),
+                  );
+                  if (parent) flowRef.current?.openHistorical(parent.screen.id);
+                  setFlowSnapshot({ blocks, blockId, revision, threadId: thread.id });
+                  setActiveThreadId(thread.id);
+                  setPending(null);
+                }}
+              />
+            )
+          : undefined
+      }
+      threads={onlyThreadId ? threads.filter((thread) => thread.id === onlyThreadId) : threads}
+      filter={flowScope === undefined ? filter : 'all'}
       onFilter={setFilter}
       pending={pending}
       activeThreadId={activeThreadId}
@@ -482,7 +550,7 @@ function DocumentWorkspace({
         toast('본문에서 새 위치의 텍스트를 선택한 뒤 "여기에 다시 달기"를 누르세요');
         if (!wide) setRailOpen(false);
       })}
-      aligned={wide}
+      aligned={document.type !== 'flow' && wide}
       measure={measure}
       layoutVersion={layoutVersion}
       onActivate={(thread) => {
@@ -507,7 +575,10 @@ function DocumentWorkspace({
       }}
     >
       <DocumentPermissionContext value={access.permission}>
-        <div className={`doc-layout${docked ? '' : ' is-undocked'}`} ref={layoutRef}>
+        <div
+          className={`doc-layout${document.type === 'flow' ? ' is-flow' : ''}${docked ? '' : ' is-undocked'}`}
+          ref={layoutRef}
+        >
           <div className="doc-main">
             <div className="doc-body">
               <DocumentAccessBanner
@@ -530,6 +601,8 @@ function DocumentWorkspace({
                 </p>
               ) : null}
               <DocumentHeader
+                flowModeSlot={document.type === 'flow' ? <div ref={setFlowModeTarget} /> : undefined}
+                flowStatsSlot={document.type === 'flow' ? <span ref={setFlowStatsTarget} /> : undefined}
                 document={document}
                 crumbs={breadcrumbOf(spaceDocuments, state.meta.path)}
                 state={state}
@@ -636,27 +709,84 @@ function DocumentWorkspace({
                   onClose={() => setTransferSpaces(null)}
                 />
               )}
-              <DocumentEditor
-                ref={editorRef}
-                document={document}
-                session={session}
-                editable={editable}
-                github={spaceInfo.state === 'ready' ? githubContextOf(spaceInfo.data) : undefined}
-                onInput={() => inputTime.mark('body')}
-                drawingInput={inputTime.drawing}
-                threads={threads}
-                activeThreadId={highlightedThreadId}
-                reanchoring={reanchorThread !== null}
-                mentionLogins={mentionLogins}
-                onActivateThread={(threadId) => {
-                  setActiveThreadId(threadId);
-                  showRail();
-                }}
-                onRequestComment={requestComment}
-                onReanchor={(anchor) => void reanchor(anchor)}
-                onContentChange={relayout}
-                onMessage={toast}
-              />
+              {document.type === 'flow' ? (
+                <>
+                  <div hidden={flowSnapshot !== null}>
+                    <FlowDocument
+                      modeTarget={flowModeTarget}
+                      statsTarget={flowStatsTarget}
+                      ref={flowRef}
+                      session={session}
+                      editable={editable}
+                      onEditMode={() => setFlowSnapshot(null)}
+                      onInput={() => inputTime.mark('body')}
+                      onRequestComment={requestComment}
+                      commentRail={flowSnapshot ? () => null : rail}
+                      reanchoring={reanchorThread !== null}
+                      onReanchor={(anchor) => void reanchor(anchor)}
+                      onStartComment={(anchor, body) => startThread(body, anchor)}
+                      mentionLogins={mentionLogins}
+                      threads={threads}
+                    />
+                  </div>
+                  {flowSnapshot && (
+                    <>
+                      <FlowSnapshot
+                        threads={threads}
+                        onComments={() => {
+                          flowRef.current?.showComments();
+                          setFlowSnapshot(null);
+                        }}
+                        onInfo={() => {
+                          flowRef.current?.showInfo();
+                          setFlowSnapshot(null);
+                        }}
+                        onPanelCollapse={(collapsed) => flowRef.current?.setPanelCollapsed(collapsed)}
+                        threadCard={rail(flowSnapshot.blockId, flowSnapshot.threadId)}
+                        onSelectScreen={(blockId) => {
+                          flowRef.current?.selectBlock(blockId, false);
+                          setFlowSnapshot(null);
+                        }}
+                        {...flowSnapshot}
+                        current={session.currentBlocks()}
+                        onClose={() => {
+                          if (
+                            flowTarget(flowSnapshot.blocks, session.currentBlocks(), flowSnapshot.blockId) ===
+                              'changed' &&
+                            session
+                              .currentBlocks()
+                              .some((b) => b.id === flowSnapshot.blockId && b.type === 'flowElement')
+                          )
+                            flowRef.current?.selectBlock(flowSnapshot.blockId, false);
+                          setFlowSnapshot(null);
+                        }}
+                      />
+                    </>
+                  )}
+                </>
+              ) : (
+                <DocumentEditor
+                  ref={editorRef}
+                  document={document}
+                  session={session}
+                  editable={editable}
+                  github={spaceInfo.state === 'ready' ? githubContextOf(spaceInfo.data) : undefined}
+                  onInput={() => inputTime.mark('body')}
+                  drawingInput={inputTime.drawing}
+                  threads={threads}
+                  activeThreadId={highlightedThreadId}
+                  reanchoring={reanchorThread !== null}
+                  mentionLogins={mentionLogins}
+                  onActivateThread={(threadId) => {
+                    setActiveThreadId(threadId);
+                    showRail();
+                  }}
+                  onRequestComment={requestComment}
+                  onReanchor={(anchor) => void reanchor(anchor)}
+                  onContentChange={relayout}
+                  onMessage={toast}
+                />
+              )}
               <DocumentNavigation navigation={services.navigation} documentId={document.id} />
               <EditTimeDetails statistics={services.statistics} documentId={document.id} />
               <ChildDocuments
@@ -667,8 +797,8 @@ function DocumentWorkspace({
               />
             </div>
           </div>
-          {docked ? (
-            rail
+          {document.type === 'flow' ? null : docked ? (
+            rail()
           ) : wide ? (
             <button
               type="button"
@@ -692,7 +822,7 @@ function DocumentWorkspace({
                 <Icon name="comment" />
                 {openCount > 0 ? <span className="nav-count">{openCount}</span> : null}
               </button>
-              {railOpen ? <div className="rail-drawer">{rail}</div> : null}
+              {railOpen ? <div className="rail-drawer">{rail()}</div> : null}
             </>
           )}
         </div>

@@ -3,12 +3,60 @@
  * only where it carries meaning (status badges, the agent change marker, diff markers, comment marks).
  */
 :root {
+  --flow-marquee-fill: color-mix(in srgb, var(--focus) 8%, transparent);
+  --flow-tool-danger: #ffb4a6;
+  --flow-window-bar: #efeeeb;
+  --flow-window-border: #bdbbb5;
+  --flow-window-divider: #d9d8d3;
+  --flow-window-close: #e0605a;
+  --flow-window-minimize: #e3b341;
+  --flow-window-maximize: #5dbb63;
+  --flow-frame-outline: #9a9893;
+  --flow-blue-border: #9fb8ef;
+  --flow-text-soft: #6b6a65;
+  --flow-selected-id: #d6d5d0;
+
+  --flow-shadow-small: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --flow-shadow-device: 0 18px 40px rgba(20, 20, 18, 0.16);
+  --flow-shadow-window: 0 18px 40px rgba(20, 20, 18, 0.14);
+  --flow-shadow-modal: 0 24px 60px rgba(20, 20, 18, 0.28);
+  --flow-shadow-info: 0 1px 3px rgba(0, 0, 0, 0.25);
+  --flow-shadow-palette: 0 4px 14px rgba(20, 20, 18, 0.08);
+  --flow-shadow-tools: 0 4px 10px rgba(0, 0, 0, 0.2);
+  --flow-dim: rgba(20, 20, 18, 0.42);
+
   color-scheme: light;
   --font-body:
     'Pretendard', 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
     'Noto Sans KR', 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
+  --flow-blue-subtle: #f5f8ff;
+  --flow-danger-border: #f0b4a8;
+  --flow-error-text: #a42d18;
+  --flow-warning-border: #f0c36d;
+  --flow-warning-text: #7a4700;
+  --flow-scroll-bg: color-mix(in srgb, var(--flow-solid) 78%, transparent);
+  --flow-info-border: #cddcfb;
+  --flow-info-text: #1f3f8f;
+  --flow-error-border: #f5c9bf;
+  --flow-ok-border: #bfe5cb;
+  --flow-edit-dot: #e2e1dc;
+  --flow-history-soft: #fff7f2;
+  --flow-note-text: #7a3a12;
+  --flow-history-bg: #fff1e8;
+  --flow-history-text: #8a3200;
+  --flow-history-border: #f6c7aa;
+  --flow-history-solid: #d9480f;
+  --flow-stage: #f3f2ef;
+  --flow-dot: #d3d2cc;
+  --flow-blue-bg: #eef3fe;
+  --flow-blue-text: #1f4fb8;
+  --flow-on-solid: #ffffff;
+  --flow-solid: #1f1f1d;
+  --flow-comment-text: #3d3200;
+  --flow-bezel: #1f1f1d;
+  --flow-guide: #df5d9b;
   --bg: #ffffff;
   --bg-sunken: #f7f7f5;
   --bg-elevated: #ffffff;
@@ -58,7 +106,51 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
+    --flow-tool-danger: #a42d18;
+    --flow-window-bar: #2c2c2b;
+    --flow-window-border: #474744;
+    --flow-window-divider: #353533;
+    --flow-frame-outline: #807e78;
+    --flow-blue-border: #587cb8;
+    --flow-text-soft: #b0aea8;
+    --flow-selected-id: #5f5e5a;
+
+    --flow-shadow-small: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --flow-shadow-device: 0 18px 40px rgba(0, 0, 0, 0.45);
+    --flow-shadow-window: 0 18px 40px rgba(0, 0, 0, 0.45);
+    --flow-shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.6);
+    --flow-shadow-info: 0 1px 3px rgba(0, 0, 0, 0.5);
+    --flow-shadow-palette: 0 4px 14px rgba(0, 0, 0, 0.3);
+    --flow-shadow-tools: 0 4px 10px rgba(0, 0, 0, 0.45);
+    --flow-dim: rgba(0, 0, 0, 0.55);
+
     color-scheme: dark;
+    --flow-blue-subtle: #1c263b;
+    --flow-danger-border: #874b40;
+    --flow-error-text: #ff8f7c;
+    --flow-warning-border: #8b682c;
+    --flow-warning-text: #f0b75a;
+    --flow-info-border: #40588a;
+    --flow-info-text: #a8c2ff;
+    --flow-error-border: #874b40;
+    --flow-ok-border: #3b6749;
+    --flow-edit-dot: #45453f;
+    --flow-history-soft: #33251e;
+    --flow-note-text: #ffc6a5;
+    --flow-history-bg: #3a261d;
+    --flow-history-text: #ffc6a5;
+    --flow-history-border: #7b4e35;
+    --flow-history-solid: #e99362;
+    --flow-stage: #242422;
+    --flow-dot: #45453f;
+    --flow-blue-bg: #222e47;
+    --flow-blue-text: #a8c2ff;
+    --flow-on-solid: #191918;
+    --flow-solid: #e9e8e4;
+    --flow-comment-text: #ffeaa3;
+    --flow-bezel: #5b5b57;
+    --flow-guide: #ff8bc5;
+
     --bg: #191918;
     --bg-sunken: #202020;
     --bg-elevated: #252524;
@@ -98,6 +190,50 @@
 }
 
 :root[data-theme='dark'] {
+  --flow-tool-danger: #a42d18;
+  --flow-window-bar: #2c2c2b;
+  --flow-window-border: #474744;
+  --flow-window-divider: #353533;
+  --flow-frame-outline: #807e78;
+  --flow-blue-border: #587cb8;
+  --flow-text-soft: #b0aea8;
+  --flow-selected-id: #5f5e5a;
+
+  --flow-shadow-small: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --flow-shadow-device: 0 18px 40px rgba(0, 0, 0, 0.45);
+  --flow-shadow-window: 0 18px 40px rgba(0, 0, 0, 0.45);
+  --flow-shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --flow-shadow-info: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --flow-shadow-palette: 0 4px 14px rgba(0, 0, 0, 0.3);
+  --flow-shadow-tools: 0 4px 10px rgba(0, 0, 0, 0.45);
+  --flow-dim: rgba(0, 0, 0, 0.55);
+
+  --flow-blue-subtle: #1c263b;
+  --flow-danger-border: #874b40;
+  --flow-error-text: #ff8f7c;
+  --flow-warning-border: #8b682c;
+  --flow-warning-text: #f0b75a;
+  --flow-info-border: #40588a;
+  --flow-info-text: #a8c2ff;
+  --flow-error-border: #874b40;
+  --flow-ok-border: #3b6749;
+  --flow-edit-dot: #45453f;
+  --flow-history-soft: #33251e;
+  --flow-note-text: #ffc6a5;
+  --flow-history-bg: #3a261d;
+  --flow-history-text: #ffc6a5;
+  --flow-history-border: #7b4e35;
+  --flow-history-solid: #e99362;
+  --flow-stage: #242422;
+  --flow-dot: #45453f;
+  --flow-blue-bg: #222e47;
+  --flow-blue-text: #a8c2ff;
+  --flow-on-solid: #191918;
+  --flow-solid: #e9e8e4;
+  --flow-comment-text: #ffeaa3;
+  --flow-bezel: #5b5b57;
+  --flow-guide: #ff8bc5;
+
   color-scheme: dark;
   --bg: #191918;
   --bg-sunken: #202020;

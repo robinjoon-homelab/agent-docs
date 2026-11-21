@@ -57,11 +57,12 @@ internal object RevisionRows {
                     row[DocumentRevisionsTable.status],
                     row[DocumentRevisionsTable.assignee],
                 ),
+                row[DocumentRevisionsTable.type],
             )
         val content =
             RevisionContent.of(
                 header,
-                DocumentRows.blocksOf(row[DocumentRevisionsTable.body]),
+                DocumentRows.blocksOf(row[DocumentRevisionsTable.body], row[DocumentRevisionsTable.type]),
                 row[DocumentRevisionsTable.trashed],
             )
         return Revision(
@@ -109,6 +110,7 @@ internal object RevisionRows {
         statement[DocumentRevisionsTable.spaceId] = header.spaceId.value
         statement[DocumentRevisionsTable.path] = header.path.value
         statement[DocumentRevisionsTable.title] = header.title
+        statement[DocumentRevisionsTable.type] = header.type
         statement[DocumentRevisionsTable.status] = header.properties.status
         statement[DocumentRevisionsTable.tags] = DocumentRows.tagsOf(header.properties.tags)
         statement[DocumentRevisionsTable.assignee] = header.properties.assignee

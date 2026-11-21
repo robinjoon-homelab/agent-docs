@@ -61,7 +61,16 @@ import org.junit.jupiter.params.provider.Arguments as TestArguments
 
 class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
     private val threads = mockk<ThreadUseCase>()
-    private val queries = mockk<DocumentQueryUseCase>()
+    private val queries =
+        mockk<DocumentQueryUseCase> {
+            every { open(any(), any()) } returns
+                xyz.robinjoon.agentdocs.workspace.application.model.DocumentView(
+                    xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures
+                        .document(),
+                    xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.space,
+                    emptyList(),
+                )
+        }
     private val documents = mockk<DocumentUseCase>()
     private val search = mockk<SearchUseCase>()
     private val documentAssets = mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentAssetUseCase>()
@@ -75,7 +84,7 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
             DocsReadTool(queries, mockk()),
             DocsListTool(queries),
             DocsCreateTool(documents, mockk(relaxed = true)),
-            DocsEditTool(documents, mockk(relaxed = true)),
+            DocsEditTool(documents, mockk(relaxed = true), queries),
             DocsMoveTool(documents, mockk(relaxed = true)),
             DocsHistoryTool(queries, documents, mockk(relaxed = true)),
             DocsSearchTool(search),
@@ -187,7 +196,12 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
     @Test
     fun `a string array of resolved statuses returns resolved threads`() {
         val resolved = requireNotNull(thread.resolve(ownerAccess.actor, at))
-        every { threads.query(agentAccess, ThreadQuery(null, null, setOf(ThreadStatus.RESOLVED), null, null, null)) } returns
+        every {
+            threads.query(
+                agentAccess,
+                ThreadQuery(null, null, setOf(ThreadStatus.RESOLVED), null, null, null, flowTargets = true),
+            )
+        } returns
             listOf(ThreadView(resolved, AnchorResolution.Attached(null, null), null))
 
         call("comments_query", """{"status":["resolved"]}""")
@@ -199,7 +213,12 @@ class McpArgumentsApiDocumentationTest : RestDocsWebTest() {
 
     @Test
     fun `a missing status queries open threads`() {
-        every { threads.query(agentAccess, ThreadQuery(null, null, setOf(ThreadStatus.OPEN), null, null, null)) } returns
+        every {
+            threads.query(
+                agentAccess,
+                ThreadQuery(null, null, setOf(ThreadStatus.OPEN), null, null, null, flowTargets = true),
+            )
+        } returns
             listOf(ThreadView(thread, AnchorResolution.Attached(null, null), null))
 
         call("comments_query", "{}")

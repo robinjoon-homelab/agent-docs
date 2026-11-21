@@ -7,4 +7,5 @@ data class DocumentRef(
     val id: DocumentId,
     val path: DocumentPath,
     val title: String,
+    val type: String = "doc",
 )

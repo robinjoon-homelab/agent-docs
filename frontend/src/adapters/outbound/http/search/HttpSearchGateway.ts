@@ -8,6 +8,7 @@ import { toSpaceName } from '../shared/mappers';
 function toHit(value: unknown): SearchHit {
   const source = obj(value, 'hit');
   return {
+    type: source.type === 'flow' ? 'flow' : 'doc',
     kind: oneOf(source, 'kind', ['title', 'block', 'comment'] as const),
     space: toSpaceName(source.space),
     documentId: str(source, 'documentId'),
@@ -22,6 +23,7 @@ function toHit(value: unknown): SearchHit {
 function toTitleHit(value: unknown): TitleHit {
   const source = obj(value, 'hit');
   return {
+    type: source.type === 'flow' ? 'flow' : 'doc',
     space: toSpaceName(source.space),
     documentId: str(source, 'documentId'),
     path: str(source, 'path'),

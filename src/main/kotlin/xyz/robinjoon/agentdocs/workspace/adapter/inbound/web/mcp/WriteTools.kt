@@ -31,15 +31,22 @@ class DocsCreateTool(
             name = "docs_create",
             title = "Create a document",
             description =
-                "Creates a document from markdown. Images must already be uploaded with docs_upload and referenced as ![alt](asset:ID). " +
-                    "The leading segments of the path are parent documents; missing ones are created empty and listed in alsoChanged. " +
+                "Use type flow with frame (default phone), idPrefix (default M), and optional markdown for a screen flow. " +
+                    FlowToolHelp.SYNTAX +
+                    "Creates a document from markdown. Images must already be uploaded with " +
+                    "docs_upload and referenced as ![alt](asset:ID). " +
+                    "The leading segments of the path are parent documents; missing ones are " +
+                    "created empty and listed in alsoChanged. " +
                     "A retry with the same opId replays the original result including alsoChanged.",
             properties =
                 mapOf(
                     "space" to Schemas.string("Space slug"),
                     "path" to Schemas.string("Path inside the space such as payments/retry-design"),
                     "title" to Schemas.string("Title"),
-                    "markdown" to Schemas.string("Body as GFM markdown, without front matter"),
+                    "type" to Schemas.choice("Document type", listOf("doc", "flow")),
+                    "frame" to Schemas.string("Default flow frame (phone by default)"),
+                    "idPrefix" to Schemas.string("Flow screen prefix (M by default)"),
+                    "markdown" to Schemas.string("Body without front matter. Required for doc; optional for flow"),
                     "status" to Schemas.choice("Initial status", listOf("draft", "in_review", "confirmed", "archived")),
                     "tags" to Schemas.strings("Tags"),
                     "assignee" to Schemas.string("GitHub login of the assignee"),
@@ -50,7 +57,7 @@ class DocsCreateTool(
                         ),
                     "opId" to Schemas.operationId,
                 ),
-            required = listOf("space", "path", "title", "markdown"),
+            required = listOf("space", "path", "title"),
             readOnly = false,
         )
 
@@ -58,14 +65,7 @@ class DocsCreateTool(
         arguments: Arguments,
         context: WriteContext,
     ): McpToolResult {
-        val properties =
-            DocumentProperties.of(
-                arguments.strings("tags").orEmpty(),
-                statusOf(arguments.optionalString("status")) ?: DocumentStatus.DRAFT,
-                arguments.optionalString("assignee")?.removePrefix("@")?.ifBlank { null },
-            )
-        val blocks = MarkdownReader.readBlocks(arguments.string("markdown")).map { it.block }
-        val draft = DocumentDraft(DocumentPath(arguments.string("path")), arguments.string("title"), properties, blocks)
+        val draft = draft(arguments)
         val written =
             documents.create(
                 RevisionMetadataJson
@@ -76,24 +76,50 @@ class DocsCreateTool(
         recorder.agent(context.access, written.document.id)
         return WriteResults.of(written, all = true)
     }
+
+    private fun draft(arguments: Arguments): DocumentDraft {
+        val properties =
+            DocumentProperties.of(
+                arguments.strings("tags").orEmpty(),
+                statusOf(arguments.optionalString("status")) ?: DocumentStatus.DRAFT,
+                arguments.optionalString("assignee")?.removePrefix("@")?.ifBlank { null },
+            )
+        val type = arguments.optionalString("type") ?: "doc"
+        val markdown = if (type == "flow") arguments.optionalString("markdown") ?: "" else arguments.string("markdown")
+        val parsed = MarkdownReader.readBlocks(markdown, type)
+        val blocks =
+            if (type == "flow") {
+                xyz.robinjoon.agentdocs.workspace.application.model.FlowDraftContent.markdown(
+                    parsed,
+                    arguments.optionalString("frame") ?: "phone",
+                    xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.Wire
+                        .optional(arguments.node, "idPrefix") ?: "M",
+                )
+            } else {
+                parsed.map { it.block }
+            }
+        return DocumentDraft(DocumentPath(arguments.string("path")), arguments.string("title"), properties, blocks, type)
+    }
 }
 
 // The way agents change documents: small guarded operations, applied together or not at all.
 class DocsEditTool(
     private val documents: DocumentUseCase,
     private val recorder: EditStatisticsRecorder,
+    private val queries: xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase,
 ) : McpTool {
     override val definition =
         ToolDefinition(
             name = "docs_edit",
             title = "Edit a document",
             description =
-                "Applies operations atomically. Each op: {op: replace|insert|delete|move|replaceText, ...}. " +
+                FlowToolHelp.EDIT + "Applies operations atomically. Each op: {op: replace|insert|delete|move|replaceText, ...}. " +
                     "replace/delete/move/replaceText need blockId and ifHash from docs_read. Replace and insert take markdown. " +
                     "Insert and move take after or before a block id, or at start|end. " +
                     "replaceText also takes find (must occur once) and replace. If a block changed since you read it, nothing is " +
                     "applied and the " +
-                    "error returns the current block: read it and retry. Pass answering with a thread id to link the new revision to " +
+                    "error returns the current block: read it and retry. Pass answering with a " +
+                    "thread id to link the new revision to " +
                     "that thread.",
             properties =
                 mapOf(
@@ -123,7 +149,12 @@ class DocsEditTool(
                     RevisionMetadataJson
                         .context(context, arguments.node),
                     id,
-                    EditJson.operations(arguments.node.get("operations")),
+                    EditJson.operations(
+                        arguments.node.get("operations"),
+                        queries
+                            .open(context.access, id)
+                            .document.header.type,
+                    ),
                     answering,
                 )
             }
@@ -141,8 +172,10 @@ class DocsMoveTool(
             name = "docs_move",
             title = "Move, rename, or relabel a document",
             description =
-                "Changes a document's path inside its space, its title, status, tags, or assignee. The document id stays the same, so " +
-                    "links, history, and comments follow. A new path takes the documents under it along and creates missing parents; " +
+                "Changes a document's path inside its space, its title, status, tags, or " +
+                    "assignee. The document id stays the same, so " +
+                    "links, history, and comments follow. A new path takes the documents under " +
+                    "it along and creates missing parents; " +
                     "alsoChanged lists them, including on a retry with the same opId. " +
                     "If any of them would land on a path in use, nothing moves.",
             properties =
@@ -219,6 +252,11 @@ internal object WriteResults {
         return McpToolResult.data(
             mapOf(
                 "documentId" to written.document.id.value,
+                "type" to written.document.header.type,
+                "warnings" to
+                    xyz.robinjoon.agentdocs.workspace.domain.document.FlowWarnings.of(written.document.blocks).map {
+                        mapOf("blockId" to it.blockId.value, "code" to it.code)
+                    },
                 "revision" to written.revision,
                 "version" to written.document.version,
                 "unchanged" to written.unchanged,

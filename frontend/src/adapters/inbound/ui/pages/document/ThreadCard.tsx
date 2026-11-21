@@ -102,6 +102,8 @@ function CommentItem({
 }
 
 export function ThreadCard({
+  anchorText,
+  compact = false,
   thread,
   active,
   login,
@@ -110,6 +112,8 @@ export function ThreadCard({
   actions,
   onActivate,
 }: {
+  compact?: boolean;
+  anchorText?: string;
   thread: Thread;
   active: boolean;
   login: string;
@@ -121,7 +125,7 @@ export function ThreadCard({
   const permission = useDocumentPermission();
   const commentable = canComment(permission);
   const detached = isDetached(thread);
-  const quote = anchorLabel(thread);
+  const quote = anchorText ?? anchorLabel(thread);
   return (
     <article
       id={`thread-${thread.id}`}
@@ -158,18 +162,22 @@ export function ThreadCard({
           </div>
         ) : null}
         <ThreadCollaboration thread={thread} login={login} actions={actions} />
-        <ul className="comments">
-          {thread.comments.map((comment) => (
-            <CommentItem
-              key={comment.id}
-              thread={thread}
-              comment={comment}
-              login={login}
-              mentionLogins={mentionLogins}
-              actions={actions}
-            />
-          ))}
-        </ul>
+        {compact && !active ? (
+          <p>댓글 {thread.comments.length}개</p>
+        ) : (
+          <ul className="comments">
+            {thread.comments.map((comment) => (
+              <CommentItem
+                key={comment.id}
+                thread={thread}
+                comment={comment}
+                login={login}
+                mentionLogins={mentionLogins}
+                actions={actions}
+              />
+            ))}
+          </ul>
+        )}
         {thread.linkedRevisions.length === 0 ? null : (
           <div className="comment-revisions">
             {thread.linkedRevisions.map((revision) => (

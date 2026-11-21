@@ -12,7 +12,6 @@ import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ActivityUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadUseCase
-import xyz.robinjoon.agentdocs.workspace.domain.ActorKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
@@ -33,7 +32,8 @@ class CommentsQueryTool(
             description =
                 "Threads in the spaces this connection sees, most recently changed first, at most 100. Defaults to open threads. Each " +
                     "result has " +
-                    "the quote, the anchored block's current markdown, and the blocks around it.",
+                    "the quote, the anchored block's current markdown, and the blocks around it. Flow threads also report target: " +
+                    "ok, changed, elementDeleted, screenDeleted, compared with the anchored revision.",
             properties =
                 mapOf(
                     "space" to Schemas.string("Space slug"),
@@ -61,8 +61,16 @@ class CommentsQueryTool(
                 Wire.actorKind(arguments.optionalString("authorKind"), "authorKind"),
                 arguments.optionalString("mention")?.removePrefix("@"),
                 arguments.optionalInstant("since"),
+                flowTargets = true,
             )
-        return McpToolResult.data(mapOf("threads" to threads.query(context.access, query).map(ThreadJson::thread)))
+        return McpToolResult.data(
+            mapOf(
+                "threads" to
+                    threads.query(context.access, query).map { view ->
+                        ThreadJson.thread(view) + (view.target?.let { mapOf("target" to it) } ?: emptyMap())
+                    },
+            ),
+        )
     }
 }
 
@@ -83,7 +91,8 @@ class CommentsWriteTool(
                     "or remove your own comment. You cannot resolve a thread a person opened; mark it answered instead. " +
                     "react_add/react_remove sets an emoji reaction. claim acquires for 15 minutes; " +
                     "renew/release needs the same connection. " +
-                    "suggest stores anchor, hash, before and after without applying. " +
+                    "suggest stores anchor, hash, before and after without applying. For a flow screen or element block anchor, " +
+                    "before/after replace only its description. " +
                     "Only a human with edit or owner permission may accept/reject a comment. " +
                     "A live claim blocks another agent replying, answering, linking, or suggesting; open queries still include claimed threads.",
             properties =

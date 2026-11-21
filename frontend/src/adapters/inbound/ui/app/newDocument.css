@@ -1,0 +1,156 @@
+.dialog:has(#new-document) {
+  width: 520px;
+  border-radius: 12px;
+  padding: 0;
+}
+.dialog:has(#new-document) .dialog-header {
+  padding: 16px 20px 8px;
+}
+.dialog:has(#new-document) .dialog-header h2 {
+  font-size: 17px;
+}
+.dialog:has(#new-document) .dialog-body {
+  padding: 8px 20px 16px;
+}
+.dialog:has(#new-document) .dialog-footer {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+#new-document {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+#new-document .field {
+  margin: 0;
+}
+#new-document .field > label {
+  font-size: 13px;
+  font-weight: 600;
+}
+#new-document .input {
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+#new-document .mono {
+  font-size: 13px;
+}
+.new-document-types {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.new-document-types legend {
+  padding: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.new-document-types label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--bg);
+}
+.new-document-types label.selected {
+  border-color: var(--focus);
+  background: var(--flow-blue-subtle, var(--bg-hover));
+}
+.new-document-types input {
+  margin: 3px 0 0;
+  accent-color: var(--focus);
+}
+.new-document-types span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.new-document-types strong {
+  font-weight: 600;
+}
+.new-document-types small {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.new-flow-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg-sunken);
+}
+.new-flow-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.new-flow-settings input,
+.new-flow-settings select {
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  width: 100%;
+}
+.new-flow-settings > span {
+  grid-column: 1/-1;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.dialog:has(#new-document) {
+  border: 0;
+  line-height: 1.5;
+}
+.dialog[open]:has(#new-document) {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+}
+.dialog:has(#new-document)::backdrop {
+  background: var(--flow-dim);
+}
+.dialog:has(#new-document) .dialog-header,
+.dialog:has(#new-document) .dialog-footer {
+  flex: none;
+}
+.dialog:has(#new-document) .dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+.dialog:has(#new-document) .dialog-header h2 {
+  font-weight: 700;
+}
+.dialog:has(#new-document) .dialog-footer .btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.dialog:has(#new-document) .dialog-footer .btn-primary {
+  border: 0;
+  font-weight: 600;
+}
+#new-document .field > label {
+  color: var(--text);
+}
+#new-document .field-hint {
+  color: var(--text-muted);
+}

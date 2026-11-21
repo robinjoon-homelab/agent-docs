@@ -17,6 +17,7 @@ internal object DocumentRevisionsTable : Table("document_revisions") {
     val spaceId = javaUUID("space_id")
     val path = varchar("doc_path", 300)
     val title = varchar("title", 200)
+    val type = varchar("document_type", 4)
     val status = enumerationByName("status", 20, DocumentStatus::class)
     val tags = varchar("tags", 1000)
     val assignee = varchar("assignee", 39).nullable()

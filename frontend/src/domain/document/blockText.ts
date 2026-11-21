@@ -21,6 +21,12 @@ export function blockPlainText(block: Block): string {
       return block.alt;
     case 'table':
       return block.rows.map((row) => row.cells.map(plainText).join('\t')).join('\n');
+    case 'flowSettings':
+      return '';
+    case 'flowScreen':
+      return `${block.name} ${block.entry} ${block.desc}`;
+    case 'flowElement':
+      return `${block.label} ${block.value} ${block.desc}`;
     case 'divider':
       return '';
   }

@@ -1,6 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence
 
 import org.jetbrains.exposed.v1.core.JoinType
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNull
@@ -17,13 +18,13 @@ internal object DocumentAssetReferences {
     }
 
     private fun documentSources(ids: Set<DocumentId>?): List<Pair<DocumentId, String>> {
-        val current = DocumentsTable.select(DocumentsTable.id, DocumentsTable.body)
+        val current = DocumentsTable.select(DocumentsTable.id, DocumentsTable.body).where { DocumentsTable.type eq "doc" }
         val history =
             DocumentRevisionsTable
                 .select(
                     DocumentRevisionsTable.documentId,
                     DocumentRevisionsTable.body,
-                ).where { DocumentRevisionsTable.pending eq false }
+                ).where { (DocumentRevisionsTable.pending eq false) and (DocumentRevisionsTable.type eq "doc") }
         if (ids != null) {
             current.andWhere { DocumentsTable.id inList ids.map { it.value } }
             history.andWhere { DocumentRevisionsTable.documentId inList ids.map { it.value } }

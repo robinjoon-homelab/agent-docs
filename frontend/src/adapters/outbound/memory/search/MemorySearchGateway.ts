@@ -33,6 +33,7 @@ export class MemorySearchGateway implements SearchGateway {
           space: { slug: space.slug, name: space.name },
           documentId: document.id,
           path: document.path,
+          type: document.type ?? ('doc' as const),
           title: document.title,
         };
         if (matches(document.title, query))
@@ -82,6 +83,7 @@ export class MemorySearchGateway implements SearchGateway {
             space: { slug: space.slug, name: space.name },
             documentId: document.id,
             path: document.path,
+            type: document.type ?? ('doc' as const),
             title: document.title,
           };
         }),

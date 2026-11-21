@@ -78,7 +78,10 @@ export type Block =
   | TableBlock
   | ImageBlock
   | DrawingBlock
-  | DividerBlock;
+  | DividerBlock
+  | FlowSettingsBlock
+  | FlowScreenBlock
+  | FlowElementBlock;
 
 export type BlockType = Block['type'];
 
@@ -129,6 +132,16 @@ function sameArray<T>(a: readonly T[], b: readonly T[], same: (x: T, y: T) => bo
 
 /** Structural equality ignoring the server hash. */
 export function blocksEqual(a: Block, b: Block): boolean {
+  if (a.type === 'flowElement' && b.type === 'flowElement') {
+    const { actions: aa, states: as, items: ai, ...left } = withoutHash(a) as FlowElementBlock;
+    const { actions: ba, states: bs, items: bi, ...right } = withoutHash(b) as FlowElementBlock;
+    return (
+      Object.keys(left).every((key) => left[key as keyof typeof left] === right[key as keyof typeof right]) &&
+      sameArray(aa, ba, (x, y) => x.when === y.when && x.to === y.to && x.mode === y.mode) &&
+      sameArray(as, bs, (x, y) => x === y) &&
+      (ai === null || bi === null ? ai === bi : sameArray(ai, bi, (x, y) => x === y))
+    );
+  }
   if (a.type === 'table' && b.type === 'table') {
     return (
       a.id === b.id &&
@@ -141,3 +154,65 @@ export function blocksEqual(a: Block, b: Block): boolean {
   const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
   return [...keys].every((key) => left[key] === right[key]);
 }
+
+export type FlowFrame = 'phone' | 'phoneSmall' | 'tabletP' | 'tabletL' | 'laptop' | 'desktop' | 'modal';
+export type FlowSettingsBlock = {
+  readonly id: string;
+  readonly type: 'flowSettings';
+  readonly frame: FlowFrame;
+  readonly idPrefix: string;
+  readonly nextScreen: number;
+};
+export type FlowScreenBlock = {
+  readonly id: string;
+  readonly type: 'flowScreen';
+  readonly screenId: string;
+  readonly name: string;
+  readonly entry: string;
+  readonly frame: FlowFrame | 'custom' | null;
+  readonly frameW: number | null;
+  readonly frameH: number | null;
+  readonly desc: string;
+};
+export type FlowKind =
+  | 'title'
+  | 'text'
+  | 'field'
+  | 'select'
+  | 'area'
+  | 'button'
+  | 'link'
+  | 'list'
+  | 'option'
+  | 'notice'
+  | 'path'
+  | 'bar'
+  | 'crumb'
+  | 'block'
+  | 'box'
+  | 'image';
+export type FlowAction = {
+  readonly when: string;
+  readonly to: string | null;
+  readonly mode: 'same' | 'page' | 'sheet' | 'sheetClose' | 'popup' | 'newWindow' | 'error';
+};
+export type FlowElementBlock = {
+  readonly id: string;
+  readonly type: 'flowElement';
+  readonly kind: FlowKind;
+  readonly label: string;
+  readonly value: string;
+  readonly items: readonly string[] | null;
+  readonly date: string | null;
+  readonly look: string | null;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  readonly pinned: boolean;
+  readonly group: string | null;
+  readonly annotated: boolean;
+  readonly desc: string;
+  readonly actions: readonly FlowAction[];
+  readonly states: readonly string[];
+};

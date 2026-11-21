@@ -14,6 +14,7 @@ object NavigationJson {
                         "spaceName" to entry.spaceName,
                         "path" to entry.path,
                         "title" to entry.title,
+                        "type" to entry.type,
                     )
                 },
             "total" to page.total,

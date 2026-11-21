@@ -21,6 +21,9 @@ internal object McpInstructions {
             "so the " +
             "revision is linked, then comments_write action reply with markAnswered true. You cannot resolve a thread a person " +
             "opened.\n\n" +
+            "Screen flows use type flow and settings, screen, element blocks with the same b:ID/h:HASH comments. " +
+            "Use block IDs for edits; deleting or moving a screen carries its elements. Replace settings to change frame/idPrefix. " +
+            "Flow comment suggestions replace desc; comments_query reports target ok/changed/elementDeleted/screenDeleted. " +
             "Images: upload with docs_upload first and always give alt text. For a local file, call it with no content and run the curl " +
             "command it returns; write out contentBase64 only without a shell and only up to about 5KB, because long base64 gets " +
             "mistyped. A hand-drawn diagram is ![alt](asset:SVG \"excalidraw asset:SCENE\"); read its SVG or text elements with " +

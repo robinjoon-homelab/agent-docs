@@ -5,8 +5,6 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.Wire
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WorkspaceJson
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListPosition
-import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
-import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownFormat
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceGuide
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
@@ -54,6 +52,7 @@ class DocsSearchTool(
                             "documentId" to it.document.id.value,
                             "path" to it.document.path.value,
                             "title" to it.document.title,
+                            "type" to it.document.type,
                             "blockId" to it.blockId?.value,
                             "threadId" to it.threadId?.value,
                             "snippet" to it.snippet,
@@ -118,7 +117,7 @@ class DocsReadTool(
             title = "Read a document",
             description =
                 "Reads a document as markdown. format markdown (default) puts <!-- b:ID h:HASH --> before every block; use those with " +
-                    "docs_edit. " +
+                    "docs_edit. " + FlowToolHelp.SYNTAX +
                     "plain has no annotations; outline lists headings and block ids with sizes. Large documents come in chunks: pass " +
                     "cursor to continue.",
             properties =

@@ -15,7 +15,6 @@ import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.Persistenc
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListPosition
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionFilter
-import xyz.robinjoon.agentdocs.workspace.domain.ActorKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
@@ -32,6 +31,34 @@ class ExposedDocumentRepositoryTest {
 
     @AfterEach
     fun closeDatabase() = database.close()
+
+    @Test
+    fun `flow type survives document revision and listing round trips`() {
+        val base = document(space.id, "flow", emptyList())
+        val flow =
+            xyz.robinjoon.agentdocs.workspace.domain.document.Document.create(
+                base.id,
+                base.header.copy(type = "flow"),
+                xyz.robinjoon.agentdocs.workspace.domain.document.FlowRules
+                    .initial("phone", "M"),
+                at,
+            )
+        val stored = database.inTransaction { documents.add(flow, revisionOf(flow)) }
+        assertThat(stored).isEqualTo(flow)
+        assertThat(
+            database
+                .inTransaction { revisions.find(flow.id, 1) }
+                ?.content
+                ?.header
+                ?.type,
+        ).isEqualTo("flow")
+        assertThat(
+            database
+                .inTransaction { documents.list(setOf(space.id), DocumentFilter(null, null, null, false), 10) }
+                .single()
+                .header.type,
+        ).isEqualTo("flow")
+    }
 
     @Test
     fun `every block type round trips with its ids and the first revision holds the same content`() {

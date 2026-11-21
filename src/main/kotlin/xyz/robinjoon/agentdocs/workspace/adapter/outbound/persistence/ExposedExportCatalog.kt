@@ -49,7 +49,7 @@ private class ExportRows(
         val contents =
             documents.associate { row ->
                 row[DocumentsTable.id].toString() to
-                    ExportDocument(row[DocumentsTable.title], DocumentRows.blocksOf(row[DocumentsTable.body]))
+                    ExportDocument(row[DocumentsTable.title], DocumentRows.blocksOf(row[DocumentsTable.body], row[DocumentsTable.type]))
             }
         return WorkspaceExport(
             records,
@@ -75,8 +75,14 @@ private class ExportRows(
     private fun primaryRecords(): Map<String, List<Map<String, Any?>>> =
         mapOf(
             "spaces" to spaces.map { record(SpacesTable, it) },
-            "documents" to documents.map { record(DocumentsTable, it) + body(it[DocumentsTable.body]) },
-            "revisions" to revisions.map { record(DocumentRevisionsTable, it) + body(it[DocumentRevisionsTable.body]) },
+            "documents" to documents.map { record(DocumentsTable, it) + body(it[DocumentsTable.body], it[DocumentsTable.type]) },
+            "revisions" to
+                revisions.map {
+                    record(
+                        DocumentRevisionsTable,
+                        it,
+                    ) + body(it[DocumentRevisionsTable.body], it[DocumentRevisionsTable.type])
+                },
             "threads" to threads.map { record(ThreadsTable, it) },
             "comments" to
                 comments.map { row ->
@@ -110,5 +116,8 @@ private class ExportRows(
             else -> value.toString()
         }
 
-    private fun body(markdown: String): Map<String, Any?> = mapOf("blocks" to DocumentRows.blocksOf(markdown).map(PortableBlocks::write))
+    private fun body(
+        markdown: String,
+        type: String,
+    ): Map<String, Any?> = mapOf("blocks" to DocumentRows.blocksOf(markdown, type).map(PortableBlocks::write))
 }

@@ -1,5 +1,5 @@
 import type { InputTracePayload } from '../../../domain/statistics/statistics';
-import type { Block, StoredBlock } from '../../../domain/document/block';
+import type { Block, StoredBlock, FlowFrame } from '../../../domain/document/block';
 import type {
   AgentDocument,
   DocumentDiff,
@@ -12,6 +12,9 @@ import type {
 } from '../../../domain/document/document';
 
 export type NewDocument = {
+  readonly type?: 'doc' | 'flow';
+  readonly frame?: FlowFrame;
+  readonly idPrefix?: string;
   readonly path: string;
   readonly title: string;
   readonly blocks?: readonly Block[];

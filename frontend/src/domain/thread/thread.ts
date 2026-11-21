@@ -61,6 +61,7 @@ export type Suggestion = SuggestionInput & {
 };
 
 export type Thread = {
+  readonly anchoredRevision?: number;
   readonly claim?: ThreadClaim | null;
   readonly reactions?: readonly ThreadReaction[];
   readonly suggestions?: readonly Suggestion[];

@@ -47,6 +47,10 @@ export type DraftBlock =
 export function toDraftBlock(stored: Block): DraftBlock {
   const block = withoutHash(stored);
   switch (block.type) {
+    case 'flowSettings':
+    case 'flowScreen':
+    case 'flowElement':
+      throw new Error('화면 흐름 문서는 전용 편집기로 여세요.');
     case 'heading':
     case 'paragraph':
     case 'listItem':

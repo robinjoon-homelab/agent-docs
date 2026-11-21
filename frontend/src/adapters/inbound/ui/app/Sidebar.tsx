@@ -1,3 +1,4 @@
+import { FlowIcon } from '../pages/document/FlowIcon';
 import { useSpacePermissions } from './SpacePermissionsContext';
 import { canEdit, permissionInSpace } from '../../../../domain/space/permission';
 import type { DragEvent } from 'react';
@@ -194,7 +195,13 @@ function TreeNodes({
                     drag.setDragged(null);
                   }}
                 >
-                  <Icon name="doc" size={14} />
+                  <span style={node.document.type === 'flow' ? { color: 'var(--link)' } : undefined}>
+                    {node.document.type === 'flow' ? (
+                      <FlowIcon name="flow" size={15} />
+                    ) : (
+                      <Icon name="doc" size={14} />
+                    )}
+                  </span>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {name}
                   </span>

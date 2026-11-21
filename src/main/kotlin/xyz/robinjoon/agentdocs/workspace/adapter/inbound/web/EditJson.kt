@@ -11,20 +11,24 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.MarkdownReader
 // Edit operations as agents send them. New content is markdown, read with the same reader as whole documents, so an
 // annotation in it can keep a block id.
 object EditJson {
-    fun operations(node: JsonNode?): List<EditOperation> {
+    fun operations(
+        node: JsonNode?,
+        type: String = "doc",
+    ): List<EditOperation> {
         if (node == null || !node.isArray) throw InvalidRequestException("operations must be an array", "send [{\"op\": \"replace\", ...}]")
-        return node.values().mapIndexed { index, operation -> operation(operation, index) }
+        return node.values().mapIndexed { index, operation -> operation(operation, index, type) }
     }
 
     private fun operation(
         node: JsonNode,
         index: Int,
+        type: String,
     ): EditOperation {
         val target = { BlockId(field(node, "blockId", index)) }
         val hash = { field(node, "ifHash", index) }
         return when (val op = node.path("op").asString("")) {
-            "replace" -> EditOperation.Replace(target(), hash(), blocks(node, index))
-            "insert" -> EditOperation.Insert(position(node, index), blocks(node, index))
+            "replace" -> replacement(node, index, type)
+            "insert" -> insertion(node, index, type)
             "delete" -> EditOperation.Delete(target(), hash())
             "move" -> EditOperation.Move(target(), hash(), position(node, index))
             "replaceText" -> EditOperation.ReplaceText(target(), hash(), field(node, "find", index), node.path("replace").asString(""))
@@ -32,10 +36,29 @@ object EditJson {
         }
     }
 
-    private fun blocks(
+    private fun insertion(
         node: JsonNode,
         index: Int,
-    ): List<Block> = MarkdownReader.readBlocks(field(node, "markdown", index)).map { it.block }
+        type: String,
+    ): EditOperation.Insert {
+        val parsed = MarkdownReader.readBlocks(field(node, "markdown", index), type)
+        return EditOperation.Insert(position(node, index), parsed.map { it.block }, parsed.associate { it.block.id to it.flowDefaults })
+    }
+
+    private fun replacement(
+        node: JsonNode,
+        index: Int,
+        type: String,
+    ): EditOperation.Replace {
+        val parsed = MarkdownReader.readBlocks(field(node, "markdown", index), type)
+        return EditOperation.Replace(
+            BlockId(field(node, "blockId", index)),
+            field(node, "ifHash", index),
+            parsed.map { it.block },
+            parsed.firstOrNull()?.flowDefaults ?: xyz.robinjoon.agentdocs.workspace.domain.document
+                .FlowDefaults(),
+        )
+    }
 
     private fun position(
         node: JsonNode,

@@ -268,9 +268,12 @@ class ThreadService(
                 ).filter { access.sees(it.location.spaceId) }
         val byId = documents.findByIds(found.map { it.location.documentId }.distinct()).associateBy { it.id }
         val spacesById = spaces.findByIds(byId.values.map { it.spaceId }.toSet()).associateBy { it.id }
+        val flowRevisions = HashMap<Pair<DocumentId, Int>, List<Block>>()
         return found.mapNotNull { thread ->
             val document = byId[thread.location.documentId] ?: return@mapNotNull null
-            spacesById[document.spaceId]?.let { contextualView(thread, document, it) }
+            spacesById[document.spaceId]?.let { contextualView(thread, document, it) }?.let { view ->
+                if (!query.flowTargets || document.header.type != "flow") view else withFlowTarget(view, document, flowRevisions)
+            }
         }
     }
 
@@ -400,6 +403,29 @@ class ThreadService(
             ?.blocks
             ?.firstOrNull { it.id == anchor.blockId }
             ?.plainText()
+
+    private fun withFlowTarget(
+        view: ThreadView,
+        document: Document,
+        cache: MutableMap<Pair<DocumentId, Int>, List<Block>>,
+    ): ThreadView {
+        val key = document.id to view.thread.location.anchoredRevision
+        val earlier =
+            cache.getOrPut(key) {
+                revisions
+                    .find(key.first, key.second)
+                    ?.content
+                    ?.blocks
+                    .orEmpty()
+            }
+        val target =
+            xyz.robinjoon.agentdocs.workspace.domain.thread.FlowAnchorTarget.of(
+                view.thread.location.anchor,
+                earlier,
+                document.blocks,
+            )
+        return view.copy(target = target)
+    }
 
     private fun contextualView(
         thread: CommentThread,

@@ -50,6 +50,9 @@ class ZipExportArchive(
                     paths.getValue(it.getValue("stored_asset_id").toString())
             }
         val body = BlockMarkdown.forExport(document.blocks) { asset -> boundPaths[asset.toString()] ?: paths[asset.toString()] }
+        if (document.blocks.firstOrNull() is xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings) {
+            return "---\ntype: flow\n---\n\n$body"
+        }
         return "# ${document.title}\n\n$body"
     }
 

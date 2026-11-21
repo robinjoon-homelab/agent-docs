@@ -55,7 +55,16 @@ class McpApiDocumentationTest : RestDocsWebTest() {
         mockk<xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceUseCase> {
             every { agentGuide(any(), any()) } returns null
         }
-    private val queries = mockk<DocumentQueryUseCase>()
+    private val queries =
+        mockk<DocumentQueryUseCase> {
+            every { open(any(), any()) } returns
+                xyz.robinjoon.agentdocs.workspace.application.model.DocumentView(
+                    xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures
+                        .document(),
+                    xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.space,
+                    emptyList(),
+                )
+        }
     private val documents = mockk<DocumentUseCase>()
     private val json = JsonMapper.builder().build()
     private val meters = SimpleMeterRegistry()
@@ -66,7 +75,7 @@ class McpApiDocumentationTest : RestDocsWebTest() {
     private val tools =
         listOf(
             DocsReadTool(queries, spaces),
-            DocsEditTool(documents, mockk(relaxed = true)),
+            DocsEditTool(documents, mockk(relaxed = true), queries),
             DocsMoveTool(documents, mockk(relaxed = true)),
         )
 

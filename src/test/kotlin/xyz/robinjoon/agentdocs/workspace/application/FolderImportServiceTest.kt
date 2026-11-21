@@ -160,4 +160,55 @@ class FolderImportServiceTest {
         path: String,
         body: String,
     ): FolderFile = FolderFile(path, "text/markdown", body.toByteArray())
+
+    @Test
+    fun `non-flow front matter retains the original ordinary block parsing`() {
+        listOf("---\ntype: note\n---\nBody", "---\ntitle: Memo\n---\nBody", "## flowSettings\n- frame: phone").forEach { source ->
+            val expected =
+                xyz.robinjoon.agentdocs.workspace.domain.document.markdown.MarkdownReader
+                    .readBlocks(source)
+                    .map {
+                        xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
+                            .of(it.block)
+                    }
+            val created = WorkspaceFixtures.document(emptyList(), 1)
+            every {
+                documents.create(
+                    any(),
+                    SpaceSlug("docs"),
+                    match { draft ->
+                        draft.type == "doc" &&
+                            draft.blocks.map {
+                                xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
+                                    .of(it)
+                            } == expected
+                    },
+                )
+            } returns DocumentWrite(created, 1, emptyList(), false, false)
+            val result = service.importFolder(context, SpaceSlug("docs"), "Markdown", listOf(file("ordinary.md", source)))
+            assertThat(result.files.single().status).isEqualTo("created")
+            assertThat(result.files.single().documentId).isEqualTo(created.id.toString())
+        }
+    }
+
+    @Test
+    fun `explicit flow imports allocate consecutive ids for unnamed screens`() {
+        val screen = "##  Name\n- entry:\n- frame:\n- frameW:\n- frameH:"
+        val source = "---\ntype: flow\n---\n\n$screen\n\n$screen"
+        val created = WorkspaceFixtures.document(emptyList(), 1)
+        every {
+            documents.create(
+                any(),
+                SpaceSlug("docs"),
+                match { draft ->
+                    draft.type == "flow" && draft.blocks
+                        .filterIsInstance<xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen>()
+                        .map { it.screenId } == listOf("M-01", "M-02")
+                },
+            )
+        } returns DocumentWrite(created, 1, emptyList(), false, false)
+        val result = service.importFolder(context, SpaceSlug("docs"), "Markdown", listOf(file("flow.md", source)))
+        assertThat(result.files.single().status).isEqualTo("created")
+        assertThat(result.files.single().documentId).isEqualTo(created.id.toString())
+    }
 }
