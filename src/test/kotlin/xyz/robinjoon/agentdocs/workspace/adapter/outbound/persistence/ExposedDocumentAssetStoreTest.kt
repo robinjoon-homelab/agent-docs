@@ -8,6 +8,15 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import xyz.robinjoon.agentdocs.support.persistence.MigratedH2Database
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentAssetBinding
+import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowAppearance
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowBehavior
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowControls
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDescription
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowPlacement
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowRules
+import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
 
 class ExposedDocumentAssetStoreTest {
     private val database = MigratedH2Database()
@@ -45,6 +54,29 @@ class ExposedDocumentAssetStoreTest {
 
         assertThat(database.inTransaction { store.references(current.id) }).containsExactlyInAnyOrder(svg.id, scene.id)
         assertThat(database.inTransaction { store.references(past.id) }).containsExactlyInAnyOrder(oldSvg.id, oldScene.id)
+    }
+
+    @Test
+    fun `flow image elements count as references of their flow document`() {
+        val image = fixture.asset(fixture.source)
+        val doc = fixture.document(fixture.source, "flow", "No current attachment")
+        val element =
+            FlowElement(
+                BlockId("image1"),
+                FlowAppearance.of("image", null, null, null),
+                FlowPlacement(0, 0, 200, 100),
+                FlowDescription("화면 캡처", "asset:${image.id}", ""),
+                FlowBehavior.of(FlowControls(false, null, false), emptyList(), emptyList()),
+            )
+        val body = BlockMarkdown.write(FlowRules.initial("phone", "M") + element, annotated = true)
+        database.inTransaction {
+            DocumentsTable.update({ DocumentsTable.id eq doc.id.value }) {
+                it[DocumentsTable.body] = body
+                it[DocumentsTable.type] = "flow"
+            }
+        }
+
+        assertThat(database.inTransaction { store.references(doc.id) }).containsExactly(image.id)
     }
 
     @Test
