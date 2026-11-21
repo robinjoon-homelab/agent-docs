@@ -57,6 +57,11 @@ export function frameSize(flow: Flow, screen: FlowScreenBlock): readonly [string
     ? ['직접 입력', screen.frameW ?? 390, screen.frameH ?? 844]
     : FRAMES[screen.frame ?? flow.settings.frame];
 }
+/** '맞춤' fits the whole frame into the measured preview area and never enlarges it past 100%. */
+export function fitScale(frameW: number, frameH: number, area: { width: number; height: number }): number {
+  const ratio = Math.min(1, area.width / frameW, area.height / frameH);
+  return Math.max(0.1, Math.floor(ratio * 100) / 100);
+}
 export function nextScreenId(settings: FlowSettingsBlock): string {
   return `${settings.idPrefix || 'S'}-${String(settings.nextScreen).padStart(2, '0')}`;
 }

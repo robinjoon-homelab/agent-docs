@@ -207,6 +207,13 @@
   height: 28px;
   font-size: 12px;
 }
+/* In view mode the route and hint shrink with an ellipsis so the zoom controls stay on the same row. */
+.flow-toolbar.is-view {
+  flex-wrap: nowrap;
+}
+.flow-toolbar > * {
+  flex-shrink: 0;
+}
 .flow-trail {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -216,6 +223,14 @@
   margin-left: auto;
   font-size: 12px;
   color: var(--text-muted);
+}
+.flow-toolbar > .flow-trail,
+.flow-toolbar > .flow-stage-hint {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .flow-editing-chip {
   background: var(--flow-blue-bg);

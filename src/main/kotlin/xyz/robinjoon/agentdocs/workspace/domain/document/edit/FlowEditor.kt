@@ -3,6 +3,7 @@ package xyz.robinjoon.agentdocs.workspace.domain.document.edit
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowOmitted
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowRules
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
@@ -53,23 +54,9 @@ internal object FlowEditor {
         defaults: xyz.robinjoon.agentdocs.workspace.domain.document.FlowDefaults,
     ): Block =
         when {
-            target is FlowScreen && next is FlowScreen && defaults.screenId -> {
-                next.copy(screenId = target.screenId)
-            }
-
-            target is FlowElement && next is FlowElement -> {
-                next.copy(
-                    placement =
-                        next.placement.copy(
-                            x = if (defaults.x) target.placement.x else next.placement.x,
-                            y = if (defaults.y) target.placement.y else next.placement.y,
-                        ),
-                )
-            }
-
-            else -> {
-                next
-            }
+            target is FlowScreen && next is FlowScreen -> FlowOmitted.keep(target, next, defaults)
+            target is FlowElement && next is FlowElement -> FlowOmitted.keep(target, next, defaults)
+            else -> next
         }
 
     private fun insert(

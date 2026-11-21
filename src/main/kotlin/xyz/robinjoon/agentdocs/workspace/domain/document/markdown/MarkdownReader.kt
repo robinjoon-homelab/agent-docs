@@ -66,7 +66,7 @@ class MarkdownReader private constructor(
         val id = claimId(note?.id)
         val trimmed = line.trim()
         return when {
-            flow && FlowMarkdown.recognizes(line, lines.getOrNull(index + 1)) -> readFlow(id)
+            flow && FlowMarkdown.recognizes(line) -> readFlow(id)
             trimmed == "$$" -> readMath(id)
             fencePattern.matches(trimmed) -> readCode(id)
             startsTable(index) -> TableReader.read(lines, index, id, note?.columns.orEmpty()).also { index = it.next }.table
@@ -87,7 +87,7 @@ class MarkdownReader private constructor(
         }
         if (lines.getOrNull(index)?.isBlank() == true && lines.getOrNull(index + 1)?.isNotBlank() == true) {
             val next = lines[index + 1]
-            if (Annotation.parse(next) == null && !FlowMarkdown.recognizes(next, lines.getOrNull(index + 2))) {
+            if (Annotation.parse(next) == null && !FlowMarkdown.recognizes(next)) {
                 content += ""
                 content += next
                 index += 2

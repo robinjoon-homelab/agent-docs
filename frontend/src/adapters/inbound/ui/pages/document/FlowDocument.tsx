@@ -19,7 +19,9 @@ import {
   cloneElements,
   resizeElement,
   anchoredScreenId,
+  fitScale,
 } from '../../../../../domain/flow/flow';
+import { useStageArea } from './useStageArea';
 import { canComment } from '../../../../../domain/space/permission';
 import { useDocumentPermission } from './DocumentPermissionContext';
 import { useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore } from 'react';
@@ -135,6 +137,7 @@ export function FlowDocument({
   };
   const [markers, setMarkers] = useState(preview.markers ?? false);
   const [fullSize, setFullSize] = useState(preview.zoom === '100');
+  const stageRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<string[]>(preview.expanded ?? []);
   const [dragging, setDragging] = useState<string | null>(preview.drag ?? null);
   const [hover, setHover] = useState<string | null>(preview.hover ?? null);
@@ -238,7 +241,11 @@ export function FlowDocument({
   const pad = chrome === 'phone' ? 8 : chrome === 'tablet' ? 12 : chrome === 'modal' ? 0 : 1;
   const outerW = width + pad * 2,
     outerH = height + pad * 2 + (chrome === 'window' ? 30 : 0);
-  const scale = fullSize ? 1 : Math.floor(Math.min(1, (edit ? 560 : 740) / outerW, 690 / outerH) * 100) / 100;
+  // The palette (150px + 20px gap) shares the row in edit mode; the caption takes about 30px below the frame.
+  const stageArea = useStageArea(stageRef, edit ? 170 : 0, 30);
+  const scale = fullSize
+    ? 1
+    : fitScale(outerW, outerH, stageArea ?? { width: edit ? 560 : 740, height: 690 });
 
   const numbers = numbered(active.elements);
   const onCommit = (next: Flow, record = true, key?: string) => {
@@ -415,7 +422,7 @@ export function FlowDocument({
       </nav>
       <div className="flow-layout">
         <section className="flow-preview">
-          <div className="flow-toolbar">
+          <div className={edit ? 'flow-toolbar' : 'flow-toolbar is-view'}>
             <button
               disabled={!trail.length}
               onClick={() => {
@@ -496,7 +503,7 @@ export function FlowDocument({
               </button>
             </div>
           </div>
-          <div className="flow-stage-content">
+          <div className="flow-stage-content" ref={stageRef}>
             {edit && (
               <aside className="flow-palette">
                 <strong>요소 추가</strong>
@@ -1079,8 +1086,10 @@ export function FlowDocument({
                                 <span>{action.when}</span>
                                 <button onClick={() => action.to && navigate(action.to)}>
                                   {action.to ?? '이동 없음'}{' '}
-                                  {flow.screens.find((s) => s.screen.screenId === action.to)?.screen.name}
-                                  <span>{ACTION_MODES[action.mode]}</span>
+                                  {action.to &&
+                                    (flow.screens.find((s) => s.screen.screenId === action.to)?.screen.name ??
+                                      '(삭제된 화면)')}
+                                  <span>({ACTION_MODES[action.mode]})</span>
                                   <FlowIcon name="right" size={12} />
                                 </button>
                               </li>

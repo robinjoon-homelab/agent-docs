@@ -337,4 +337,59 @@ class FlowDocumentTest {
             )
         }.isInstanceOf(xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditConflictException::class.java)
     }
+
+    @Test
+    fun `omitted attributes take kind defaults and write back in full`() {
+        val parsed = MarkdownReader.readBlocks("### 상자 · box · 모양만\n- w: 120\n- h: 40\n\n## M-02 빈 화면", "flow").map { it.block }
+        val box = parsed[0] as FlowElement
+        assertThat(box.appearance.look).isEqualTo("white")
+        assertThat(box.text.value).isEmpty()
+        assertThat(box.appearance.date).isNull()
+        assertThat(box.behavior.pinned).isFalse()
+        assertThat(box.behavior.group).isNull()
+        assertThat(box.behavior.annotated).isFalse()
+        val screen = parsed[1] as FlowScreen
+        assertThat(screen.entry).isEmpty()
+        assertThat(screen.frame).isEqualTo(FlowFrame())
+        val written = BlockMarkdown.write(parsed, true)
+        assertThat(written).contains("- look: white", "- pinned: false", "- frameW:")
+        assertThat(MarkdownReader.readBlocks(written, "flow").map { it.block }).isEqualTo(parsed)
+    }
+
+    @Test
+    fun `replace keeps omitted attributes and changes only what was sent`() {
+        val screen = first.copy(entry = "사이드바", frame = FlowFrame("tabletP"))
+        val path =
+            FlowElement(
+                BlockId("path1"),
+                FlowAppearance.of("path", null, null, "2026-11-20"),
+                FlowPlacement(18, 400, 354, 46),
+                FlowDescription("경로", "agent-docs/메모", "old"),
+                FlowBehavior.of(FlowControls(true, "g1", true), emptyList(), emptyList()),
+            )
+        val source = listOf(initial[0], screen, path)
+        val parsedScreen = MarkdownReader.readBlocks("## M-01 새 이름", "flow").single()
+        val parsedPath = MarkdownReader.readBlocks("### 경로 · path\n- w: 200\n- h: 46\n\nnew", "flow").single()
+        val result =
+            DocumentEditor.apply(
+                source,
+                listOf(
+                    EditOperation.Replace(screen.id, BlockMarkdown.hash(screen), listOf(parsedScreen.block), parsedScreen.flowDefaults),
+                    EditOperation.Replace(path.id, BlockMarkdown.hash(path), listOf(parsedPath.block), parsedPath.flowDefaults),
+                ),
+            )
+        assertThat(result[1]).isEqualTo(screen.copy(name = "새 이름"))
+        assertThat(result[2]).isEqualTo(
+            path.copy(placement = path.placement.copy(w = 200), text = path.text.copy(desc = "new")),
+        )
+    }
+
+    @Test
+    fun `parse errors name the block that failed`() {
+        assertThatThrownBy { MarkdownReader.readBlocks("### 저장 · button\n- w: wide\n- h: 40", "flow") }
+            .hasMessageContaining("invalid flow integer w")
+            .hasMessageContaining("### 저장 · button")
+        assertThatThrownBy { MarkdownReader.readBlocks("### 상자 · box\n- look:\n- w: 20\n- h: 20", "flow") }
+            .hasMessageContaining("invalid flow appearance in block \"### 상자 · box\"")
+    }
 }

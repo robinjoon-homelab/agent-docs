@@ -14,14 +14,26 @@ internal class FlowFieldReader(
     fun text(key: String): String =
         fields.firstOrNull { it.first == key }?.second ?: throw InvalidDocumentException("missing flow field $key")
 
+    private fun has(key: String): Boolean = fields.any { it.first == key }
+
+    // Omitted optional attributes read as their empty default; replace restores the stored value afterwards.
+    fun optionalText(key: String): String = fields.firstOrNull { it.first == key }?.second.orEmpty()
+
     fun int(key: String): Int = text(key).toIntOrNull() ?: throw InvalidDocumentException("invalid flow integer $key")
 
-    private fun nullable(key: String): String? = text(key).ifEmpty { null }
+    private fun nullable(key: String): String? = optionalText(key).ifEmpty { null }
 
     private fun all(key: String): List<String> = fields.filter { it.first == key }.map { it.second }
 
-    private fun bool(key: String): Boolean =
-        text(key).toBooleanStrictOrNull() ?: throw InvalidDocumentException("invalid flow boolean $key")
+    private fun bool(
+        key: String,
+        default: Boolean,
+    ): Boolean =
+        if (!has(key)) {
+            default
+        } else {
+            text(key).toBooleanStrictOrNull() ?: throw InvalidDocumentException("invalid flow boolean $key")
+        }
 
     fun frame(): FlowFrame = FlowFrame(nullable("frame"), optionalInt("frameW"), optionalInt("frameH"))
 
@@ -33,9 +45,9 @@ internal class FlowFieldReader(
     fun appearance(kind: String): FlowAppearance =
         FlowAppearance.of(
             kind,
-            nullable("look"),
+            if (has("look")) nullable("look") else FlowAppearance.defaultLook(kind),
             if (kind == "list") all("item") else null,
-            if (bool("hasDate")) text("date") else null,
+            if (bool("hasDate", false)) optionalText("date") else null,
         )
 
     fun placement(): FlowPlacement = FlowPlacement(optionalCoordinate("x"), optionalCoordinate("y"), int("w"), int("h"))
@@ -48,6 +60,6 @@ internal class FlowFieldReader(
         val modes = all("mode")
         if (conditions.size != targets.size || targets.size != modes.size) throw InvalidDocumentException("incomplete flow action")
         val actions = conditions.mapIndexed { index, condition -> FlowAction(condition, targets[index].ifEmpty { null }, modes[index]) }
-        return FlowBehavior.of(FlowControls(bool("pinned"), nullable("group"), annotated), actions, all("state"))
+        return FlowBehavior.of(FlowControls(bool("pinned", false), nullable("group"), annotated), actions, all("state"))
     }
 }
