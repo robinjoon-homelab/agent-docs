@@ -14,8 +14,17 @@ import {
   flowTarget,
   flowDifferences,
   anchoredScreenId,
+  fitScale,
 } from './flow';
 describe('화면 흐름 규칙', () => {
+  it('맞춤 배율은 측정한 영역에 틀 전체가 들어가게 줄이고 100%를 넘지 않는다', () => {
+    expect(fitScale(642, 682, { width: 520, height: 700 })).toBe(0.8);
+    expect(fitScale(1442, 932, { width: 520, height: 700 })).toBe(0.36);
+    expect(fitScale(406, 860, { width: 740, height: 430 })).toBe(0.5);
+    expect(fitScale(406, 860, { width: 2000, height: 2000 })).toBe(1);
+    expect(fitScale(1442, 932, { width: 40, height: 40 })).toBe(0.1);
+  });
+
   it('블록 순서를 보존하고 삭제해도 다음 번호를 낮추지 않는다', () => {
     const blocks = newFlow('settings', 'screen');
     const flow = readFlow(blocks);

@@ -6,7 +6,8 @@ import { FlowIcon, FlowCommentBadge } from './FlowIcon';
 import { flowPreview } from './flowPreview';
 import type { ReactNode } from 'react';
 import { FlowElementVisual } from './FlowElementVisual';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useStageArea } from './useStageArea';
 import type { Block } from '../../../../../domain/document/block';
 import type { Thread } from '../../../../../domain/thread/thread';
 import {
@@ -125,6 +126,8 @@ export function FlowSnapshot({
   const targets = useFlowCommentTargets(threads, current);
   const commentable = canComment(useDocumentPermission());
   const [collapsed, setCollapsed] = useState(false);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const stageArea = useStageArea(stageRef, 0, 30);
   const openCount = threads.filter(
     (t) => t.status !== 'resolved' && targets.get(t.id) !== 'screenDeleted',
   ).length;
@@ -199,9 +202,10 @@ export function FlowSnapshot({
               {target === 'changed' && before?.type === 'flowElement' ? '현재 요소 보기' : '현재 화면으로'}
             </button>
           </div>
-          <div className="flow-stage-content">
+          <div className="flow-stage-content" ref={stageRef}>
             <div className="flow-stage">
               <FlowDeviceFrame
+                area={stageArea}
                 frame={screen.screen.frame ?? flow.settings.frame}
                 width={width}
                 height={height}

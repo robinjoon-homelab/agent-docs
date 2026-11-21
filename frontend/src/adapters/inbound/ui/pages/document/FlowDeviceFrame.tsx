@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import type { FlowFrame } from '../../../../../domain/document/block';
+import { fitScale } from '../../../../../domain/flow/flow';
+import type { StageArea } from './useStageArea';
 export function FlowDeviceFrame({
   frame,
   width,
@@ -7,6 +9,7 @@ export function FlowDeviceFrame({
   title,
   children,
   full = false,
+  area = null,
 }: {
   frame: FlowFrame | 'custom';
   width: number;
@@ -14,6 +17,7 @@ export function FlowDeviceFrame({
   title: string;
   children: ReactNode;
   full?: boolean;
+  area?: StageArea | null;
 }) {
   const chrome = frame.startsWith('phone')
     ? 'phone'
@@ -27,7 +31,7 @@ export function FlowDeviceFrame({
   const pad = chrome === 'phone' ? 8 : chrome === 'tablet' ? 12 : chrome === 'modal' ? 0 : 1;
   const w = width + pad * 2,
     h = height + pad * 2 + (chrome === 'window' ? 30 : 0);
-  const scale = full ? 1 : Math.floor(Math.min(1, 740 / w, 690 / h) * 100) / 100;
+  const scale = full ? 1 : fitScale(w, h, area ?? { width: 740, height: 690 });
   return (
     <div className="flow-frame-box" style={{ width: Math.round(w * scale), height: Math.round(h * scale) }}>
       <div
