@@ -2320,9 +2320,6 @@
   align-items: center;
   gap: 2px;
 }
-.flow-drawn-list > .selected {
-  font-weight: 600;
-}
 .flow-scroll-hint {
   position: sticky;
   bottom: 0;
