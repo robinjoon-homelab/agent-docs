@@ -1220,11 +1220,6 @@ include::{snippets}/flow-design-create/http-request.adoc[]
 include::{snippets}/flow-design-author/http-request.adoc[]
 include::{snippets}/flow-design-author/http-response.adoc[]
 
-`flow_design_render`는 동일한 캔버스를 브라우저에서 측정합니다. 선택 주소를 전달하면 해당 레이어의 실제 표시 영역·콘텐츠 크기·스크롤 위치를 반환합니다. `image: true`로 PNG를 요청할 수 있습니다. 서버에는 실행 가능한 Chromium이 필요하며, 실행 경로는 `AGENT_DOCS_RENDER_CHROMIUM`으로 지정합니다. 브라우저를 사용할 수 없으면 503을 반환합니다.
-
-include::{snippets}/flow-design-render/http-request.adoc[]
-include::{snippets}/flow-design-render/http-response.adoc[]
-
 기존 문서는 `baseVersion`으로 전환합니다. 재시도할 때 같은 `opId`를 사용합니다. 변환 후에도 기존 화면·요소 댓글은 같은 저장 블록 ID를 사용합니다. `flowTargets=true`는 저장된 리비전과 비교한 대상 상태를 함께 반환합니다.
 
 include::{snippets}/flow-design-upgrade/http-request.adoc[]

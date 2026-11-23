@@ -11,7 +11,7 @@
     "dev": "vite",
     "dev:fake": "VITE_FAKE_API=true vite",
     "typecheck": "node node_modules/tsgo/bin/tsc -p tsconfig.app.json && node node_modules/tsgo/bin/tsc -p tsconfig.node.json",
-    "build": "pnpm typecheck && vite build && vite build --config render.config.ts",
+    "build": "pnpm typecheck && vite build",
     "test": "vitest run",
     "lint": "eslint . --max-warnings=0 && prettier --check .",
     "lint:arch": "depcruise src --config .dependency-cruiser.cjs",

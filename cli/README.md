@@ -22,7 +22,6 @@ adocs read DOCUMENT_UUID --flow-text 저장 --flow-kind button # 화면 흐름 �
 adocs flow-read DOCUMENT_UUID --body find.json --json # {"view":"blocks","kind":"screen"}
 adocs flow-author DOCUMENT_UUID --body markup.json --json
 adocs flow-patch DOCUMENT_UUID --body change.json --json
-adocs flow-render DOCUMENT_UUID --body selection.json --json
 adocs flow-upgrade DOCUMENT_UUID --body upgrade.json --json
 adocs search --query 'q=search&space=my-project' --json
 adocs create --space my-project --body create.json --json

@@ -29,7 +29,6 @@ internal object CommandRegistry {
                 ),
             "flow-author" to Route("POST", "/api/documents/{id}/flow-design/author"),
             "flow-read" to Route("POST", "/api/documents/{id}/flow-design/read"),
-            "flow-render" to Route("POST", "/api/documents/{id}/flow-design/render"),
             "flow-patch" to Route("POST", "/api/documents/{id}/flow-design/patch"),
             "flow-upgrade" to Route("POST", "/api/documents/{id}/flow-design/upgrade"),
             "open" to Route("GET", "/api/documents/{id}"),

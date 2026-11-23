@@ -47,7 +47,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadActionException
         SearchController::class, InboxController::class, ActivityController::class,
         DocumentTransferController::class, DocumentAssetController::class, NavigationController::class,
         PortabilityController::class, SuggestionController::class, EditStatisticsController::class,
-        FlowDesignController::class, FlowDesignAuthorController::class, FlowUpgradeController::class, FlowDesignRenderController::class,
+        FlowDesignController::class, FlowDesignAuthorController::class, FlowUpgradeController::class,
     ],
 )
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -55,10 +55,6 @@ class WorkspaceExceptionHandler : ResponseEntityExceptionHandler() {
     @ExceptionHandler(DesignAuthorConflict::class)
     fun authorConflict(exception: DesignAuthorConflict): ProblemDetail =
         problem(HttpStatus.CONFLICT, "conflict", exception, exception.fix).also { it.setProperty("currentVersion", exception.version) }
-
-    @ExceptionHandler(xyz.robinjoon.agentdocs.workspace.application.model.RenderUnavailableException::class)
-    fun renderUnavailable(exception: xyz.robinjoon.agentdocs.workspace.application.model.RenderUnavailableException): ProblemDetail =
-        problem(HttpStatus.SERVICE_UNAVAILABLE, "render_unavailable", exception, "Retry after checking renderer availability")
 
     @ExceptionHandler(
         SpaceNotFoundException::class,

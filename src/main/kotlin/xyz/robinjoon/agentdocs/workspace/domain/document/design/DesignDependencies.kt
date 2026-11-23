@@ -21,21 +21,3 @@ fun FlowDesignBlock.referencedComponents(): Set<String> {
 }
 
 private fun instanceId(node: Map<*, *>): String? = if (node["kind"] == "instance") node["component"] as? String else null
-
-/** Rendering one screen needs its slot contents, selected state, nested components and document-wide styles. */
-fun DesignScene.renderBlocks(blocks: List<FlowDesignBlock>): List<FlowDesignBlock> {
-    val components = blocks.filter { it.kind == "component" }.associateBy { it.designId }
-    val used = mutableSetOf<String>()
-    val queue = ArrayDeque(listOfNotNull(screen, state))
-    while (queue.isNotEmpty()) {
-        val next = queue.removeFirst()
-        if (used.add(next.designId)) queue.addAll(next.referencedComponents().mapNotNull(components::get))
-    }
-    return blocks.filter {
-        when (it.kind) {
-            "screen", "state", "component" -> it.designId in used
-            "annotation" -> it.string("screen") == screen.designId && (it.string("state") == null || it.string("state") == state?.designId)
-            else -> true
-        }
-    }
-}

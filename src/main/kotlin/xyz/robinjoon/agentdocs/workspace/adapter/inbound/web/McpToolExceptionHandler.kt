@@ -3,7 +3,6 @@ package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.McpToolResult
 import xyz.robinjoon.agentdocs.workspace.application.model.AssetContentMissingException
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
-import xyz.robinjoon.agentdocs.workspace.application.model.RenderUnavailableException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.AssetNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.CommentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
@@ -36,13 +35,6 @@ object McpToolExceptionHandler {
     private fun resultOf(exception: RuntimeException): McpToolResult? {
         val message = exception.message.orEmpty()
         if (exception::class in notFound) return McpToolResult.error("not_found", message, ProblemFixes.NOT_FOUND)
-        if (exception is RenderUnavailableException) {
-            return McpToolResult.error(
-                "render_unavailable",
-                message,
-                "Retry when a render worker is available",
-            )
-        }
         return when (exception) {
             is PermissionDeniedException -> denied(exception)
             is ThreadActionException -> McpToolResult.error("forbidden", message, exception.fix)
