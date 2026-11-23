@@ -1,4 +1,6 @@
 import type { Block } from '../../../../../domain/document/block';
+import { flowAnchorLocation } from '../../../../../domain/flow/flowAnchorLocation';
+import type { FlowAnchorTarget } from '../../../../../domain/flow/flowAnchorComparison';
 import { useFlowCommentTargets } from './useFlowCommentTargets';
 import type { ReactNode, ComponentProps } from 'react';
 import { useDocumentPermission } from './DocumentPermissionContext';
@@ -28,6 +30,7 @@ export type RailMeasure = {
  */
 function CommentRailContent({
   flowTargets,
+  snapshots,
   flowBlocks,
   flowScope,
   threadHeading,
@@ -50,10 +53,12 @@ function CommentRailContent({
   onClose,
   onCollapse,
 }: {
-  flowTargets?: Map<string, string>;
+  flowTargets?: ReadonlyMap<string, FlowAnchorTarget>;
+  snapshots?: Readonly<Record<string, readonly Block[]>>;
+  flowTargetVersion?: number;
   flowBlocks?: readonly Block[];
   flowScope?: string;
-  threadHeading?: (thread: Thread) => ReactNode;
+  threadHeading?: (thread: Thread, past?: readonly Block[], target?: FlowAnchorTarget) => ReactNode;
   threads: readonly Thread[];
   filter: ThreadFilter;
   onFilter: (filter: ThreadFilter) => void;
@@ -75,13 +80,15 @@ function CommentRailContent({
   onCollapse?: () => void;
 }) {
   const commentable = canComment(useDocumentPermission());
-  const targets = flowTargets ?? new Map<string, string>();
+  const targets = flowTargets ?? new Map<string, FlowAnchorTarget>();
   const available = flowBlocks
     ? threads
-        .filter((t) =>
-          filter === 'detached'
-            ? targets.get(t.id) === 'screenDeleted'
-            : targets.get(t.id) !== 'screenDeleted',
+        .filter(
+          (t) =>
+            flowScope !== undefined ||
+            (filter === 'detached'
+              ? targets.get(t.id) === 'screenDeleted'
+              : targets.get(t.id) !== 'screenDeleted'),
         )
         .filter(
           (t) => flowScope === undefined || (t.anchor.kind !== 'document' && t.anchor.blockId === flowScope),
@@ -242,65 +249,62 @@ function CommentRailContent({
             </article>
           </div>
         )}
-        {visible.map((thread) => (
-          <div className="rail-item" key={thread.id} data-rail-id={thread.id}>
-            {threadHeading?.(thread)}
-            <ThreadCard
-              compact={false}
-              anchorText={
-                flowBlocks
-                  ? thread.anchor.kind === 'document'
-                    ? '문서 전체'
-                    : (flowBlocks.flatMap((b) =>
-                        thread.anchor.kind !== 'document' && b.id === thread.anchor.blockId
-                          ? b.type === 'flowScreen'
-                            ? [`${b.screenId} ${b.name} · 화면 전체`]
-                            : b.type === 'flowElement'
-                              ? [b.label]
-                              : []
-                          : [],
-                      )[0] ?? '삭제된 대상')
-                  : undefined
-              }
-              thread={
-                flowBlocks && thread.anchor.kind === 'block'
-                  ? {
-                      ...thread,
-                      resolution: { state: 'attached' },
-                      anchor: {
-                        ...thread.anchor,
-                        quote:
-                          (
-                            flowBlocks.find(
-                              (b) => thread.anchor.kind === 'block' && b.id === thread.anchor.blockId,
-                            ) as { desc?: string } | undefined
-                          )?.desc ?? '',
-                      },
-                    }
-                  : thread
-              }
-              active={thread.id === activeThreadId}
-              login={login}
-              mentionLogins={mentionLogins}
-              spaceSlug={spaceSlug}
-              actions={
-                flowBlocks &&
-                (targets.get(thread.id) === 'elementDeleted' || targets.get(thread.id) === 'screenDeleted')
-                  ? { ...actions, suggest: undefined }
-                  : actions
-              }
-              onActivate={() => onActivate(thread)}
-            />
-          </div>
-        ))}
+        {visible.map((thread) => {
+          const location =
+            flowBlocks && thread.anchor.kind !== 'document'
+              ? flowAnchorLocation(flowBlocks, thread.anchor.blockId)
+              : undefined;
+          const past = snapshots?.[`${thread.documentId}:${thread.anchoredRevision}`];
+          const target = targets.get(thread.id);
+          return (
+            <div className="rail-item" key={thread.id} data-rail-id={thread.id}>
+              {threadHeading?.(thread, past, target)}
+              <ThreadCard
+                compact={false}
+                anchorText={
+                  flowBlocks
+                    ? thread.anchor.kind === 'document'
+                      ? '문서 전체'
+                      : location?.kind === 'screen'
+                        ? `${location.code} ${location.screenName} · 화면 전체`
+                        : (location?.name ?? '삭제된 대상')
+                    : undefined
+                }
+                thread={
+                  flowBlocks && thread.anchor.kind === 'block'
+                    ? {
+                        ...thread,
+                        resolution: { state: 'attached' },
+                        anchor: {
+                          ...thread.anchor,
+                          quote: location?.description ?? '',
+                        },
+                      }
+                    : thread
+                }
+                active={thread.id === activeThreadId}
+                login={login}
+                mentionLogins={mentionLogins}
+                spaceSlug={spaceSlug}
+                actions={
+                  flowBlocks &&
+                  (targets.get(thread.id) === 'elementDeleted' || targets.get(thread.id) === 'screenDeleted')
+                    ? { ...actions, suggest: undefined }
+                    : actions
+                }
+                onActivate={() => onActivate(thread)}
+              />
+            </div>
+          );
+        })}
       </div>
     </aside>
   );
 }
 
 function FlowCommentRail(props: ComponentProps<typeof CommentRailContent>) {
-  const targets = useFlowCommentTargets(props.threads, props.flowBlocks);
-  return <CommentRailContent {...props} flowTargets={targets} />;
+  const targets = useFlowCommentTargets(props.threads, props.flowBlocks, props.flowTargetVersion);
+  return <CommentRailContent {...props} flowTargets={targets} snapshots={targets.snapshots} />;
 }
 export function CommentRail(props: ComponentProps<typeof CommentRailContent>) {
   return props.flowBlocks ? <FlowCommentRail {...props} /> : <CommentRailContent {...props} />;

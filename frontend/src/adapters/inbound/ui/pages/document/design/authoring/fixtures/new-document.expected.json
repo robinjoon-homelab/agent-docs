@@ -1,0 +1,88 @@
+{
+  "id": "new-document",
+  "blocks": [
+    {
+      "kind": "settings",
+      "id": "settings",
+      "modelVersion": 4,
+      "frame": "desktop",
+      "idPrefix": "F",
+      "nextScreen": 2
+    },
+    {
+      "kind": "screen",
+      "id": "screen",
+      "code": "F-01",
+      "name": "새 문서",
+      "root": {
+        "id": "dialog-root",
+        "kind": "box",
+        "layout": {
+          "mode": "grid",
+          "columns": [
+            {
+              "fr": 1,
+              "min": 0
+            },
+            120
+          ],
+          "gap": 10,
+          "padding": {
+            "top": 12,
+            "right": 12,
+            "bottom": 12,
+            "left": 12
+          }
+        },
+        "children": [
+          {
+            "id": "n1",
+            "kind": "text",
+            "text": "새 문서",
+            "alias": "title",
+            "cell": {
+              "column": {
+                "span": 2
+              }
+            },
+            "style": {
+              "text": {
+                "weight": 700
+              }
+            }
+          },
+          {
+            "id": "n2",
+            "kind": "box",
+            "layout": {
+              "mode": "row",
+              "gap": 6
+            },
+            "children": [
+              {
+                "id": "n3",
+                "kind": "text",
+                "text": "◉"
+              },
+              {
+                "id": "n4",
+                "kind": "text",
+                "text": "화면 흐름 문서"
+              }
+            ],
+            "role": "radio",
+            "accessibleName": "화면 흐름 문서 선택"
+          },
+          {
+            "id": "n5",
+            "kind": "text",
+            "text": "일반 문서"
+          }
+        ],
+        "role": "dialog",
+        "accessibleName": "새 문서",
+        "boxSizing": "border-box"
+      }
+    }
+  ]
+}

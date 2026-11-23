@@ -22,7 +22,9 @@ internal object DocumentAssetWriteGuard {
         kind: RevisionKind = RevisionKind.RESTORE,
     ) {
         if (kind == RevisionKind.EDIT) requirePairedDrawingEdits(document)
-        requireSpace(document.id, document.spaceId, AssetReferences.of(document.blocks), AssetReferences.expectedTypes(document.blocks))
+        val design = AssetReferences.designTypes(document.blocks)
+        val expected = AssetReferences.expectedTypes(document.blocks).mapValues { setOf(it.value) } + design
+        requireSpace(document.id, document.spaceId, AssetReferences.of(document.blocks, design.keys), expected)
     }
 
     // Normal edits may keep both assets (alt-only edit) or replace both SVG and scene together on the same block id;
@@ -72,7 +74,7 @@ internal object DocumentAssetWriteGuard {
         document: DocumentId,
         space: SpaceId,
         references: Set<AssetId>,
-        expected: Map<AssetId, AssetMediaType>,
+        expected: Map<AssetId, Set<AssetMediaType>>,
     ) {
         if (references.isEmpty()) return
         val bindings =
@@ -101,10 +103,10 @@ internal object DocumentAssetWriteGuard {
     private fun requireType(
         id: AssetId,
         actual: AssetMediaType?,
-        needed: AssetMediaType,
+        needed: Set<AssetMediaType>,
     ) {
-        if (actual != needed) {
-            throw InvalidDocumentException("a drawing needs an uploaded ${needed.mime} asset in this space, but $id is not one")
+        if (actual !in needed) {
+            throw InvalidDocumentException("asset $id must be uploaded in this space with type ${needed.joinToString { it.mime }}")
         }
     }
 }

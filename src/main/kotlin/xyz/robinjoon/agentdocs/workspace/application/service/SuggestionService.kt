@@ -17,6 +17,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedExc
 import xyz.robinjoon.agentdocs.workspace.application.port.input.SuggestionUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
+import xyz.robinjoon.agentdocs.workspace.application.port.output.FlowDesignValidator
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepository
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
@@ -40,6 +41,7 @@ class SuggestionService(
     private val documents: DocumentRepository,
     private val journal: WriteJournal,
     private val inbox: xyz.robinjoon.agentdocs.workspace.application.port.output.InboxRepository,
+    private val designs: FlowDesignValidator,
 ) : SuggestionUseCase {
     @Transactional
     override fun suggest(
@@ -133,6 +135,7 @@ class SuggestionService(
     ): Document {
         if (document.isTrashed) throw InvalidRequestException("cannot accept a suggestion in the trash")
         val blocks = SuggestionPatch.apply(document.blocks, suggestion.basis)
+        designs.validateContent(document.id, blocks, document.blocks)
         val current = PendingEdits(documents, journal).confirm(document)
         val at = journal.now()
         val next = current.revise(current.header, blocks, at)

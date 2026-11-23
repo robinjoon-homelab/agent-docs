@@ -1,0 +1,8 @@
+<style>:root{--accent:#6542C1}.action{background-color:var(--accent);color:#fff}</style>
+<template data-component="button" data-name="버튼" data-props="caption">
+  <button type="button" id="body" class="action" style="display:flex;gap:6px">
+    <svg id="mark" viewBox="0 0 16 16" width="16" height="16"><path id="check" d="M2 7L5 10L12 3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+    <span id="label" data-bind="caption"></span>
+  </button>
+</template>
+<div id="form"><flow-use id="save" component="button" data-input-caption="메모 저장"></flow-use></div>

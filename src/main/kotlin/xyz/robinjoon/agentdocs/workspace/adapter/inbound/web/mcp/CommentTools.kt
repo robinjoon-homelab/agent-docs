@@ -84,7 +84,7 @@ class CommentsWriteTool(
             title = "Write a comment",
             description =
                 "action open: new thread on document with anchor {kind: text|cell|block|document, blockId, quote, start?, rowId?, " +
-                    "columnId?} and body. " +
+                    "columnId?, viewedStateId?} and body. For a design annotation, viewedStateId is the viewed state block's storage ID. " +
                     "action reply: reply to thread with body; markAnswered true when you handled the request. action answered or " +
                     "reopen: change status. " +
                     "action link: link revision to thread. action move: put thread on a new anchor. action edit or delete: change " +
@@ -92,7 +92,7 @@ class CommentsWriteTool(
                     "react_add/react_remove sets an emoji reaction. claim acquires for 15 minutes; " +
                     "renew/release needs the same connection. " +
                     "suggest stores anchor, hash, before and after without applying. For a flow screen or element block anchor, " +
-                    "before/after replace only its description. " +
+                    "before/after replace only its description. The same applies to v4 screen, state and annotation blocks. " +
                     "Only a human with edit or owner permission may accept/reject a comment. " +
                     "A live claim blocks another agent replying, answering, linking, or suggesting; open queries still include claimed threads.",
             properties =

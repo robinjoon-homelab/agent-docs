@@ -1,0 +1,5 @@
+<section data-key="dialog-root" role="dialog" aria-label="새 문서" style="display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:10px;padding:12px;box-sizing:border-box">
+  <p id="title" style="grid-column:span 2;font-weight:700">새 문서</p>
+  <button role="radio" aria-label="화면 흐름 문서 선택" style="display:flex;gap:6px"><span>◉</span><span>화면 흐름 문서</span></button>
+  <p>일반 문서</p>
+</section>

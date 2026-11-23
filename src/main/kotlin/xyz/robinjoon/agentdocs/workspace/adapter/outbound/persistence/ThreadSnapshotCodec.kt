@@ -141,7 +141,8 @@ internal object ThreadSnapshotCodec {
             }
 
             is Anchor.Whole -> {
-                mapOf("kind" to "whole", "block" to anchor.blockId.value, "quote" to anchor.quote)
+                val state = anchor.viewedStateId?.let { mapOf("viewedStateId" to it.value) }.orEmpty()
+                mapOf("kind" to "whole", "block" to anchor.blockId.value, "quote" to anchor.quote) + state
             }
         }
 
@@ -165,7 +166,7 @@ internal object ThreadSnapshotCodec {
             }
 
             "whole" -> {
-                Anchor.Whole(BlockId(node.text("block")), node.text("quote"))
+                Anchor.Whole(BlockId(node.text("block")), node.text("quote"), node.optionalText("viewedStateId")?.let(::BlockId))
             }
 
             else -> {

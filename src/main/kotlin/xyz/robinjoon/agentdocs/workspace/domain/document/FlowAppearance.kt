@@ -85,6 +85,10 @@ data class FlowAppearance private constructor(
 
         fun defaultLook(kind: String): String? = defaultLooks[kind]
 
+        fun isKind(kind: String): Boolean = kind in kinds
+
+        fun kindNames(): List<String> = kinds.toList()
+
         private val assetValue = Regex("asset:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})")
 
         // An image placeholder whose visible text is exactly asset:<id> shows that uploaded image.

@@ -39,6 +39,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.ThreadView
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadUseCase
 import xyz.robinjoon.agentdocs.workspace.domain.ActorKind
+import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
@@ -82,6 +83,27 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
     }
 
     @Test
+    fun `flow threads optionally include the target at the current document version`() {
+        every { threads.forDocument(ownerAccess, documentId, true) } returns listOf(view.copy(target = "changed", targetVersion = 7))
+        mockMvc
+            .perform(get("/api/documents/{id}/threads", documentId).param("flowTargets", "true").principal(owner))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].target").value("changed"))
+            .andExpect(jsonPath("$[0].targetVersion").value(7))
+            .andDo(
+                documented(
+                    "threads-for-document-flow-targets",
+                    queryParameters(parameterWithName("flowTargets").description("화면 흐름 문서의 댓글 대상 변경 여부 조회")),
+                    responseFields(
+                        *threadFields("[]."),
+                        fieldWithPath("[].target").description("ok, changed, elementDeleted, screenDeleted"),
+                        fieldWithPath("[].targetVersion").description("댓글 대상 판정에 사용한 현재 문서 버전"),
+                    ),
+                ),
+            )
+    }
+
+    @Test
     fun `opening a thread on a text range takes the quote and its offset`() {
         every { threads.open(webContext, documentId, AnchorRequest.Text(body.id, "30초", 5), "60초로 늘려 줘") } returns view
 
@@ -98,12 +120,45 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
                     requestFields(
                         fieldWithPath("anchor.kind").description("text, cell, block, document"),
                         fieldWithPath("anchor.blockId").optional().description("블록 ID. document에는 없다"),
+                        fieldWithPath(
+                            "anchor.viewedStateId",
+                        ).type(JsonFieldType.STRING).optional().description("디자인 주석을 보고 있던 같은 화면 상태의 저장 블록 ID"),
                         fieldWithPath("anchor.quote").optional().description("text: 블록 plain text에서 고른 글자"),
                         fieldWithPath("anchor.start").optional().description("text: quote의 시작 위치. quote가 한 번만 나오면 생략할 수 있다"),
                         fieldWithPath("anchor.rowId").optional().type(JsonFieldType.STRING).description("cell: 행 ID"),
                         fieldWithPath("anchor.columnId").optional().type(JsonFieldType.STRING).description("cell: 열 ID"),
                         fieldWithPath("body").description("댓글 마크다운. @login은 그 사람의 받은편지함으로 간다"),
                         fieldWithPath("opId").optional().type(JsonFieldType.STRING).description("멱등 키"),
+                    ),
+                    responseFields(*threadFields("")),
+                ),
+            )
+    }
+
+    @Test
+    fun `a comment on a design annotation carries the viewed state through the request and response`() {
+        val state = BlockId("state01")
+        val request = AnchorRequest.Whole(body.id, state)
+        val location = ThreadLocation(spaceId, documentId, Anchor.Whole(body.id, "저장", state), 3)
+        val opened = CommentThread.open(threadId, location, Comment.write(commentId, ownerAccess.actor, "확인", at), at)
+        every { threads.open(webContext, documentId, request, "확인") } returns
+            ThreadView(opened, AnchorResolution.Attached(null, null), null)
+        mockMvc
+            .perform(
+                post("/api/documents/{id}/threads", documentId)
+                    .principal(owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"anchor":{"kind":"block","blockId":"para01","viewedStateId":"state01"},"body":"확인"}"""),
+            ).andExpect(status().isCreated)
+            .andExpect(jsonPath("$.anchor.viewedStateId").value("state01"))
+            .andDo(
+                documented(
+                    "threads-open-design-state",
+                    requestFields(
+                        fieldWithPath("anchor.kind").description("블록 전체 댓글"),
+                        fieldWithPath("anchor.blockId").description("주석의 저장 블록 ID"),
+                        fieldWithPath("anchor.viewedStateId").description("주석을 보던 같은 화면의 상태 블록 ID"),
+                        fieldWithPath("body").description("댓글 본문"),
                     ),
                     responseFields(*threadFields("")),
                 ),
@@ -406,7 +461,9 @@ class ThreadApiDocumentationTest : RestDocsWebTest() {
         arrayOf(
             fieldWithPath("${prefix}id").description("스레드 ID"),
             fieldWithPath("${prefix}documentId").description("문서 ID"),
-            subsectionWithPath("${prefix}anchor").description("앵커. kind와 종류별 필드(blockId, start, end, quote, rowId, columnId)"),
+            subsectionWithPath(
+                "${prefix}anchor",
+            ).description("앵커. kind와 종류별 필드(blockId, start, end, quote, rowId, columnId, viewedStateId)"),
             fieldWithPath("${prefix}anchoredRevision").description("앵커를 단 리비전"),
             fieldWithPath("${prefix}resolution.state").description("attached 또는 detached. 대상이 사라지면 detached"),
             fieldWithPath("${prefix}resolution.start").type(JsonFieldType.NUMBER).optional().description("지금 문서에서의 시작 위치"),

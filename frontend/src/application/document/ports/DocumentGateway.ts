@@ -69,6 +69,7 @@ export interface DocumentGateway {
   listTrash(spaceSlug: string): Promise<TrashedDocument[]>;
   create(spaceSlug: string, document: NewDocument): Promise<AgentDocument>;
   get(documentId: string): Promise<AgentDocument>;
+  upgradeFlow?(documentId: string, baseVersion: number, opId: string): Promise<void>;
   /** Returns the current document when the base version is stale. */
   saveContent(
     documentId: string,

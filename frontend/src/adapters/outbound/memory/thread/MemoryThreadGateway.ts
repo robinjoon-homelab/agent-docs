@@ -9,11 +9,22 @@ import type {
   ThreadStatus,
   SuggestionInput,
 } from '../../../../domain/thread/thread';
+import { flowAnchorLocation } from '../../../../domain/flow/flowAnchorLocation';
+import { flowAnchorTarget } from '../../../../domain/flow/flowAnchorComparison';
 import { plainText } from '../../../../domain/document/inline';
-import type { StoredBlock } from '../../../../domain/document/block';
+import type { Block, StoredBlock } from '../../../../domain/document/block';
 import { withReply } from '../../../../domain/thread/thread';
 import type { MemoryStore } from '../shared/store';
 import { respond } from '../shared/store';
+
+function checkViewedState(blocks: readonly Block[], anchor: Anchor) {
+  if (
+    anchor.kind === 'block' &&
+    anchor.viewedStateId &&
+    !flowAnchorLocation(blocks, anchor.blockId, anchor.viewedStateId)
+  )
+    throw new ApiError('invalid', 400, '댓글 위치의 화면 상태를 찾을 수 없습니다.');
+}
 
 function resolutionFor(anchor: Anchor): Thread['resolution'] {
   return anchor.kind === 'text'
@@ -158,12 +169,25 @@ export class MemoryThreadGateway implements ThreadGateway {
     });
   }
 
-  list(documentId: string, status?: ThreadStatus): Promise<Thread[]> {
+  list(documentId: string, status?: ThreadStatus, flowTargets = false): Promise<Thread[]> {
     return respond(() => {
-      this.store.document(documentId);
+      const document = this.store.document(documentId);
       const threads = this.store.threads.get(documentId) ?? [];
       const matching = status === undefined ? threads : threads.filter((thread) => thread.status === status);
-      return matching.map((thread) => this.withCallerFlags(thread));
+      return matching.map((thread) => {
+        const result = this.withCallerFlags(thread);
+        if (!flowTargets || document.type !== 'flow' || thread.anchor.kind === 'document') return result;
+        const past = this.store.revisions
+          .get(documentId)
+          ?.find((r) => r.meta.revision === thread.anchoredRevision)?.snapshot.blocks;
+        return past
+          ? {
+              ...result,
+              target: flowAnchorTarget(past, document.blocks, thread.anchor.blockId, thread),
+              targetVersion: document.version,
+            }
+          : result;
+      });
     });
   }
 
@@ -171,6 +195,7 @@ export class MemoryThreadGateway implements ThreadGateway {
     return respond(() => {
       const document = this.store.document(documentId);
       const now = this.store.now();
+      checkViewedState(document.blocks, anchor);
       const firstComment = this.comment(body);
       const thread: Thread = {
         anchoredRevision: this.store.document(documentId).revision,
@@ -219,12 +244,14 @@ export class MemoryThreadGateway implements ThreadGateway {
         if (!canResolve) throw new ApiError('forbidden', 403, '해결할 권한이 없습니다.');
       }
       const anchor = patch.anchor ?? thread.anchor;
+      if (patch.anchor) checkViewedState(document.blocks, patch.anchor);
       return this.withCallerFlags(
         this.store.replaceThread({
           ...thread,
           status: patch.status ?? thread.status,
           claim: patch.status === 'resolved' ? null : thread.claim,
           anchor,
+          anchoredRevision: patch.anchor ? document.revision : thread.anchoredRevision,
           resolution: patch.anchor === undefined ? thread.resolution : resolutionFor(anchor),
           updatedAt: this.store.now(),
         }),
@@ -349,9 +376,18 @@ function previewReplacement(block: StoredBlock, input: SuggestionInput): StoredB
       ),
     };
   }
+  if (
+    block.type === 'flowDesign' &&
+    anchor.kind === 'block' &&
+    ['screen', 'state', 'annotation'].some((kind) => kind === block.design.kind)
+  ) {
+    if ((block.design.description ?? '') !== input.before)
+      throw new ApiError('conflict', 409, '설명이 변경되었습니다.');
+    return { ...block, design: { ...block.design, description: input.after }, hash };
+  }
   if (block.type === 'flowScreen' || block.type === 'flowElement') {
-    if (!block.desc.includes(input.before)) throw new ApiError('conflict', 409, '설명이 변경되었습니다.');
-    return { ...block, desc: block.desc.replace(input.before, input.after), hash };
+    if (block.desc !== input.before) throw new ApiError('conflict', 409, '설명이 변경되었습니다.');
+    return { ...block, desc: input.after, hash };
   }
   const source = 'text' in block ? block.text : block.type === 'code' ? block.code : null;
   if (source === null)

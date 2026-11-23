@@ -6,6 +6,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Callout
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
@@ -65,8 +66,14 @@ object BlockMarkdown {
     }
 
     // The first 8 hex digits of the SHA-256 of the canonical markdown, including row and column ids for tables.
-    fun hash(block: Block): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest((of(block) + columnsOf(block)).toByteArray())
+    fun hash(block: Block): String = hash(block, of(block))
+
+    // Same hash when the caller already rendered the block, so a listing renders each block once.
+    fun hash(
+        block: Block,
+        markdown: String,
+    ): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest((markdown + columnsOf(block)).toByteArray())
         return digest.joinToString("") { (it.toInt() and BYTE_MASK).toString(HEX_RADIX).padStart(2, '0') }.take(HASH_LENGTH)
     }
 
@@ -77,6 +84,7 @@ object BlockMarkdown {
         pathOf: ((AssetId) -> String?)?,
     ): String =
         when (block) {
+            is FlowDesignBlock -> "```flow-design\n${block.json}\n```"
             is FlowSettings, is FlowScreen, is FlowElement -> FlowMarkdown.write(block)
             is Heading -> "#".repeat(block.level) + " " + block.text.render(pathOf)
             is Paragraph -> escapeLeading(block.text.render(pathOf))

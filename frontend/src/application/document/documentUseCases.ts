@@ -47,10 +47,11 @@ export interface DocumentUseCases {
     spaceSlug: string,
     path: string,
     title: string,
-    options?: Pick<NewDocument, 'type' | 'frame' | 'idPrefix'>,
+    options?: Pick<NewDocument, 'type' | 'frame' | 'idPrefix' | 'blocks'>,
   ): Promise<Result<AgentDocument, NewDocumentError[]>>;
   transfer(documentId: string, baseVersion: number, space: string, path: string): Promise<TransferResult>;
   get(documentId: string): Promise<AgentDocument>;
+  upgradeFlow?(documentId: string, baseVersion: number, opId: string): Promise<void>;
   trash(documentId: string): Promise<void>;
   untrash(documentId: string): Promise<void>;
   destroy(documentId: string): Promise<void>;
@@ -91,6 +92,7 @@ export function createDocumentUseCases(gateway: DocumentGateway): DocumentUseCas
     },
     transfer: (id, version, space, path) => gateway.transfer(id, version, space, path),
     get: (documentId) => gateway.get(documentId),
+    upgradeFlow: gateway.upgradeFlow?.bind(gateway),
     trash: (documentId) => gateway.trash(documentId),
     untrash: (documentId) => gateway.untrash(documentId),
     destroy: (documentId) => gateway.destroy(documentId),

@@ -33,8 +33,9 @@ class DocumentQueryService(
     private val spaces: SpaceRepository,
     private val threads: ThreadRepository,
     tokens: MarkdownTokenCounter,
+    publicUrl: String? = null,
 ) : DocumentQueryUseCase {
-    private val markdownPages = MarkdownPages(tokens)
+    private val markdownPages = MarkdownPages(tokens, publicUrl)
 
     override fun open(
         access: Access,

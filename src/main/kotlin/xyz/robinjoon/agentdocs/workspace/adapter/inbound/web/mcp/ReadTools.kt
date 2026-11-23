@@ -5,6 +5,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.Wire
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WorkspaceJson
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListPosition
+import xyz.robinjoon.agentdocs.workspace.application.model.FlowQuery
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceGuide
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
@@ -119,7 +120,9 @@ class DocsReadTool(
                 "Reads a document as markdown. format markdown (default) puts <!-- b:ID h:HASH --> before every block; use those with " +
                     "docs_edit. " + FlowToolHelp.SYNTAX +
                     "plain has no annotations; outline lists headings and block ids with sizes. Large documents come in chunks: pass " +
-                    "cursor to continue.",
+                    "cursor to continue. For a flow document, flowQuery finds screens and elements by text, kind or screen without " +
+                    "knowing ids: each candidate line names its block id, hash, screen and a web link; read the ones you need with " +
+                    "blocks or section.",
             properties =
                 mapOf(
                     "document" to Schemas.string("Document id"),
@@ -128,6 +131,23 @@ class DocsReadTool(
                     "blocks" to Schemas.strings("Block ids: read only these blocks"),
                     "cursor" to Schemas.integer("nextCursor in the previous result metadata"),
                     "revision" to Schemas.integer("Confirmed revision to read instead of the current document"),
+                    "flowQuery" to
+                        Schemas.obj(
+                            "Flow documents only: list matching screens and elements instead of the body. Not with section or blocks",
+                            mapOf(
+                                "text" to
+                                    Schemas.string(
+                                        "Case-insensitive part of a screen id, name, entry or description, or an element label, value, item, state, action or description",
+                                    ),
+                                "kind" to Schemas.string("screen, element, or an element kind such as button"),
+                                "screen" to
+                                    Schemas.string(
+                                        "Screen ID such as M-01 or a screen block id: only that screen and its elements",
+                                    ),
+                                "limit" to Schemas.integer("Candidates per call, 1 to 100 (default 20)"),
+                                "offset" to Schemas.integer("Skip this many matches; the last line gives the next offset"),
+                            ),
+                        ),
                 ),
             required = listOf("document"),
             readOnly = true,
@@ -137,13 +157,15 @@ class DocsReadTool(
         arguments: Arguments,
         context: WriteContext,
     ): McpToolResult {
+        val flowQuery = arguments.optionalObject("flowQuery", flowQueryFields)?.let(::flowQueryOf)
         val request =
             MarkdownRequest(
-                Wire.markdownFormat(arguments.optionalString("format")),
+                Wire.markdownFormat(arguments.optionalString("format"), flowQuery),
                 arguments.optionalString("section")?.let(::BlockId),
                 arguments.strings("blocks")?.map(::BlockId),
                 arguments.optionalInt("cursor") ?: 0,
                 arguments.optionalInt("revision"),
+                flowQuery,
             )
         val chunk = queries.markdown(context.access, DocumentId(arguments.uuid("document")), request)
         val more = chunk.nextCursor?.let { "Continue docs_read with nextCursor $it (${chunk.totalBlocks} blocks in total)." }
@@ -162,6 +184,15 @@ class DocsReadTool(
         return McpToolResult.markdown(chunk.text, notes, metadata)
     }
 
+    private fun flowQueryOf(query: Arguments): FlowQuery =
+        FlowQuery(
+            query.optionalString("text"),
+            query.optionalString("kind"),
+            query.optionalString("screen"),
+            query.optionalInt("limit") ?: FlowQuery.DEFAULT_LIMIT,
+            query.optionalInt("offset") ?: 0,
+        )
+
     // Reading the guide itself needs no pointer to it.
     private fun guideNotes(
         context: WriteContext,
@@ -174,4 +205,8 @@ class DocsReadTool(
     private fun noteOf(guide: SpaceGuide.Offered): String =
         "This space's agent guide is [${guide.title}](doc:${guide.documentId}). Read it with docs_read before you write in this " +
             "space, and follow its writing rules, terms, and templates."
+
+    private companion object {
+        val flowQueryFields = setOf("text", "kind", "screen", "limit", "offset")
+    }
 }

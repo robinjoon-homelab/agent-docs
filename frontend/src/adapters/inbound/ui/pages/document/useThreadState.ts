@@ -6,7 +6,21 @@ import { errorMessage } from '../../common/States';
 import type { ThreadActions } from './ThreadCard';
 
 function replaceThread(threads: readonly Thread[], updated: Thread): Thread[] {
-  return threads.map((thread) => (thread.id === updated.id ? updated : thread));
+  return threads.map((thread) => {
+    if (thread.id !== updated.id) return thread;
+    if (
+      thread.target &&
+      !updated.target &&
+      thread.anchoredRevision === updated.anchoredRevision &&
+      thread.anchor.kind === 'block' &&
+      updated.anchor.kind === 'block' &&
+      thread.anchor.blockId === updated.anchor.blockId &&
+      thread.anchor.viewedStateId === updated.anchor.viewedStateId
+    ) {
+      return { ...updated, target: thread.target, targetVersion: thread.targetVersion };
+    }
+    return updated;
+  });
 }
 
 export function useThreadState(
@@ -87,7 +101,7 @@ export function useThreadState(
     async function reloadLatest(): Promise<void> {
       const mutation = mutationGeneration.current;
       const request = ++listGeneration.current;
-      const current = await guard(() => service.list(documentId));
+      const current = await guard(() => service.list(documentId, true));
       if (current === null || request !== listGeneration.current) return;
       if (mutation !== mutationGeneration.current) {
         await reloadLatest();

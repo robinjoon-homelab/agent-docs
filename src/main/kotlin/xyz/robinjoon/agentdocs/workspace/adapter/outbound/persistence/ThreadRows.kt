@@ -175,6 +175,7 @@ internal object ThreadRows {
                 Anchor.Document -> DOCUMENT
             }
         val whole = anchor as? Anchor.Whole
+        statement[ThreadsTable.anchorViewedState] = whole?.viewedStateId?.value
         statement[ThreadsTable.anchorBlock] = (text?.blockId ?: cell?.blockId ?: whole?.blockId)?.value
         statement[ThreadsTable.anchorRow] = cell?.rowId?.value
         statement[ThreadsTable.anchorColumn] = cell?.columnId?.value
@@ -205,7 +206,7 @@ internal object ThreadRows {
             }
 
             BLOCK -> {
-                Anchor.Whole(requireNotNull(block), quoteOf(row))
+                Anchor.Whole(requireNotNull(block), quoteOf(row), row[ThreadsTable.anchorViewedState]?.let(::BlockId))
             }
 
             else -> {

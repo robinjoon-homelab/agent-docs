@@ -1,0 +1,31 @@
+Agent Docs design canvas · bundled typefaces
+
+Noto Sans KR 2.004 — © 2014–2021 Adobe (http://www.adobe.com/).
+Source: https://github.com/notofonts/noto-cjk/tree/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/SubsetOTF/KR
+License: NotoSansKR-OFL.txt (SIL OFL 1.1)
+Modifications: fontTools 4.61.1 / Brotli 1.2.0, three Unicode shards per original static face, WOFF2 compression. All original encoded code points (23,174), hinting and available shaping features are retained collectively. Stylesheet alias: Agent Docs Design Sans.
+
+JetBrains Mono 2.304 — Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrainsMono).
+Source: https://github.com/JetBrains/JetBrainsMono/tree/v2.304/fonts/webfonts
+License: JetBrainsMono-OFL.txt (SIL OFL 1.1)
+Unmodified official WOFF2 files. Stylesheet alias: Agent Docs Design Mono.
+
+Original static TTF/OTF SHA-256 (also used for renderer reference measurements)
+NotoSansKR-Regular.otf  69975a0ac8472717870aefeab0a4d52739308d90856b9955313b2ad5e0148d68
+NotoSansKR-Medium.otf  b46988ef13e8bac08f3933af686eaf770972994f9b6d335be0184d60169b5431
+NotoSansKR-Bold.otf  5a6ceb287ed2fc6cfc6213144ebea68cbd94b20fc9eb873d8486493bf02d9bda
+JetBrainsMono-Regular.ttf  a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f
+JetBrainsMono-Medium.ttf  31c92d01a8a08528b718a43addf0ad3df0af2ca4b7b3290a452f70f358e14d3d
+
+Bundled files (size and SHA-256)
+noto-sans-kr-400-other.woff2  1964448 B  dbe3d75ee44875b5d29a1416816dd81e4c9d45681158f3aa388091de9e6058b2
+noto-sans-kr-400-hangul.woff2  1108384 B  1a8396e482acec4ada0bb4d18544c419ce968781f434afdad1ced1752275add3
+noto-sans-kr-400-latin.woff2  103196 B  9d588c918ee2299c6ac8b75d9afa201c8331e0cec09304b72071c96b89e7b21f
+noto-sans-kr-500-other.woff2  1996212 B  122d061eff78340244d21646572101c89b1666976b609b63c4082a76b7e43312
+noto-sans-kr-500-hangul.woff2  1156496 B  97196f66dfde346ecc14e8fe609bc5a6a7d4490c111d6e7ee7757955680b804b
+noto-sans-kr-500-latin.woff2  104576 B  348e35ef1387d7d28f5345dae5d43683aaffdb0012ef07964202e3d7f51cb8d0
+noto-sans-kr-700-other.woff2  2041048 B  2ef31227cb977d297ca71c281109868b7b6779fed740783ff4c50b55918fffe4
+noto-sans-kr-700-hangul.woff2  1192372 B  b2573edc3938fc38d0f554744e497410014a7e1cf3dad156f5e8cf486cf51cfe
+noto-sans-kr-700-latin.woff2  103804 B  d0682d33e7671b292c6611df12db2b366559156fec04222bf6b919bb1b40ac73
+jetbrains-mono-400.woff2  92164 B  a9cb1cd82332b23a47e3a1239d25d13c86d16c4220695e34b243effa999f45f2
+jetbrains-mono-500.woff2  93824 B  086c48dfbea9ddaff1320f7e09399b8e2924e88ce67453721255db3bdbb5a353

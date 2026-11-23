@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.workspace.domain.document.edit
 
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
 
 // Merges a whole-document save with changes others made since the writer's base revision, block by block. A block
@@ -47,7 +48,7 @@ object BlockMerge {
     private fun conflictOf(
         id: BlockId,
         current: Block?,
-    ): BlockConflict = BlockConflict(id, current?.let(BlockMarkdown::hash), current?.let(BlockMarkdown::of))
+    ): BlockConflict = BlockConflict(id, current?.let(BlockMarkdown::hash), current?.let(BlockMarkdown::of), current as? FlowDesignBlock)
 
     private fun withOthersAdditions(
         kept: List<Block>,

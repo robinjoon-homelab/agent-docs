@@ -107,7 +107,8 @@ object ThreadJson {
             }
 
             is Anchor.Whole -> {
-                mapOf("kind" to "block", "blockId" to anchor.blockId.value, "quote" to anchor.quote)
+                val state = anchor.viewedStateId?.let { mapOf("viewedStateId" to it.value) }.orEmpty()
+                mapOf("kind" to "block", "blockId" to anchor.blockId.value, "quote" to anchor.quote) + state
             }
 
             Anchor.Document -> {
@@ -118,12 +119,33 @@ object ThreadJson {
     fun anchorRequest(node: JsonNode?): AnchorRequest {
         if (node == null || node.isNull) throw InvalidRequestException("anchor is required")
         val block = { BlockId(node.path("blockId").asString("")) }
-        return when (val kind = node.path("kind").asString("")) {
-            "text" -> AnchorRequest.Text(block(), node.path("quote").asString(""), node.get("start")?.takeIf(JsonNode::isInt)?.intValue())
-            "cell" -> AnchorRequest.Cell(block(), BlockId(node.path("rowId").asString("")), BlockId(node.path("columnId").asString("")))
-            "block" -> AnchorRequest.Whole(block())
-            "document" -> AnchorRequest.Document
-            else -> throw InvalidRequestException("anchor kind must be text, cell, block, or document, not '$kind'")
+        val kind = node.path("kind").asString("")
+        val state = node.get("viewedStateId")?.takeUnless(JsonNode::isNull)
+        if (state != null &&
+            (kind != "block" || !state.isString)
+        ) {
+            throw InvalidRequestException("viewedStateId needs a block anchor and string ID")
+        }
+        return when (kind) {
+            "text" -> {
+                AnchorRequest.Text(block(), node.path("quote").asString(""), node.get("start")?.takeIf(JsonNode::isInt)?.intValue())
+            }
+
+            "cell" -> {
+                AnchorRequest.Cell(block(), BlockId(node.path("rowId").asString("")), BlockId(node.path("columnId").asString("")))
+            }
+
+            "block" -> {
+                AnchorRequest.Whole(block(), state?.stringValue()?.let(::BlockId))
+            }
+
+            "document" -> {
+                AnchorRequest.Document
+            }
+
+            else -> {
+                throw InvalidRequestException("anchor kind must be text, cell, block, or document, not '$kind'")
+            }
         }
     }
 

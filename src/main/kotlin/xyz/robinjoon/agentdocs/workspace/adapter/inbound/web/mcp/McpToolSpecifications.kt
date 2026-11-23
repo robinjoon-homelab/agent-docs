@@ -67,8 +67,11 @@ class McpToolSpecifications(
     private fun McpToolResult.toCallToolResult(): McpSchema.CallToolResult =
         McpSchema.CallToolResult
             .builder()
-            .content(listOf(McpSchema.TextContent(markdown ?: json.writeValueAsString(data))) + notes.map { McpSchema.TextContent(it) })
-            .apply { if (markdown != null && data != null) structuredContent(data) }
+            .content(
+                listOf(McpSchema.TextContent(markdown ?: json.writeValueAsString(data))) +
+                    notes.map { McpSchema.TextContent(it) } +
+                    listOfNotNull(png?.let { McpSchema.ImageContent(null, it, "image/png", null) }),
+            ).apply { if (markdown != null && data != null) structuredContent(data) }
             .isError(isError)
             .build()
 

@@ -8,8 +8,14 @@ class McpToolResult private constructor(
     val data: Map<String, Any?>?,
     val isError: Boolean,
     val notes: List<String>,
+    val png: String? = null,
 ) {
     companion object {
+        fun render(
+            data: Map<String, Any?>,
+            png: String?,
+        ): McpToolResult = McpToolResult(null, data, false, emptyList(), png)
+
         fun data(data: Map<String, Any?>): McpToolResult = McpToolResult(null, data, false, emptyList())
 
         fun markdown(

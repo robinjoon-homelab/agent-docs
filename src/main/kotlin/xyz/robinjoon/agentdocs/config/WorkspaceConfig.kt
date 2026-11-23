@@ -107,7 +107,9 @@ class WorkspaceConfig {
     fun documentUseCase(
         persistence: WorkspacePersistence,
         journal: WriteJournal,
-    ): DocumentUseCase = DocumentService(persistence.documents, persistence.revisions, persistence.spaces, persistence.threads, journal)
+        designs: xyz.robinjoon.agentdocs.workspace.application.port.output.FlowDesignValidator,
+    ): DocumentUseCase =
+        DocumentService(persistence.documents, persistence.revisions, persistence.spaces, persistence.threads, journal, designs)
 
     // Folders from before documents had parent documents become documents in the owner's name on each start.
     @Bean
@@ -126,13 +128,17 @@ class WorkspaceConfig {
     fun pendingEditScheduler(documents: DocumentUseCase): PendingEditScheduler = PendingEditScheduler(documents)
 
     @Bean
-    fun documentQueryUseCase(persistence: WorkspacePersistence): DocumentQueryUseCase =
+    fun documentQueryUseCase(
+        persistence: WorkspacePersistence,
+        properties: AgentDocsProperties,
+    ): DocumentQueryUseCase =
         DocumentQueryService(
             persistence.documents,
             persistence.revisions,
             persistence.spaces,
             persistence.threads,
             O200kMarkdownTokenCounter(),
+            properties.publicUrl,
         )
 
     @Bean
@@ -201,7 +207,8 @@ class WorkspaceConfig {
     fun suggestionUseCase(
         persistence: WorkspacePersistence,
         journal: WriteJournal,
-    ): SuggestionUseCase = SuggestionService(persistence.threads, persistence.documents, journal, persistence.inbox)
+        designs: xyz.robinjoon.agentdocs.workspace.application.port.output.FlowDesignValidator,
+    ): SuggestionUseCase = SuggestionService(persistence.threads, persistence.documents, journal, persistence.inbox, designs)
 
     @Bean
     fun folderImportUseCase(

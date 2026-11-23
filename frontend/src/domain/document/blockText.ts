@@ -23,6 +23,10 @@ export function blockPlainText(block: Block): string {
       return block.rows.map((row) => row.cells.map(plainText).join('\t')).join('\n');
     case 'flowSettings':
       return '';
+    case 'flowDesign':
+      return [block.design.name, block.design.entry, block.design.description]
+        .filter((value) => typeof value === 'string')
+        .join(' ');
     case 'flowScreen':
       return `${block.name} ${block.entry} ${block.desc}`;
     case 'flowElement':

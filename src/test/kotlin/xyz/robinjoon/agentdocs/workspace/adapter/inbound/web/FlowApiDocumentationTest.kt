@@ -31,6 +31,47 @@ class FlowApiDocumentationTest : RestDocsWebTest() {
     private val mvc = restDocsMockMvc(DocumentController(documents, queries, spaces, recorder), WorkspaceExceptionHandler())
 
     @Test
+    fun `create a version four flow with server block ids and model ids`() {
+        every { documents.create(any(), WebFixtures.space.slug, any()) } answers {
+            val draft = thirdArg<DocumentDraft>()
+            val header = DocumentHeader(WebFixtures.spaceId, draft.path, draft.title, draft.properties, draft.type)
+            val doc = Document.create(WebFixtures.documentId, header, draft.blocks, WebFixtures.at)
+            DocumentWrite(doc, 1, doc.blocks.map { it.id }, false, false)
+        }
+        every { queries.open(any(), any()) } returns DocumentView(WebFixtures.document(), WebFixtures.space, emptyList())
+        val input =
+            """
+            {"path":"version-four","title":"메모 화면","type":"flow","blocks":[
+              {"id":"outerconfig","type":"flowDesign","design":{"kind":"settings","id":"config","modelVersion":4,"frame":"phone","idPrefix":"M","nextScreen":2}},
+              {"id":"outerscreen","type":"flowDesign","design":{"kind":"screen","id":"memo","code":"M-01","name":"메모","root":{"id":"root","kind":"box","layout":{"mode":"column"},"children":[]}}}]}
+            """.trimIndent()
+        mvc
+            .perform(
+                post("/api/spaces/{slug}/documents", "agent-docs")
+                    .principal(WebFixtures.owner)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(input),
+            ).andExpect(status().isCreated)
+            .andExpect(jsonPath("$.blocks[1].id").value("outerscreen"))
+            .andExpect(jsonPath("$.blocks[1].design.id").value("memo"))
+            .andExpect(jsonPath("$.blocks[1].hash").isString)
+            .andDo(
+                documented(
+                    "flow-design-create",
+                    requestFields(
+                        fieldWithPath("path").description("스페이스 안의 문서 경로"),
+                        fieldWithPath("title").description("문서 제목"),
+                        fieldWithPath("type").description("화면 흐름 문서는 flow"),
+                        fieldWithPath("blocks[].id").description("댓글·리비전·충돌 검사가 가리키는 블록 ID"),
+                        fieldWithPath("blocks[].type").description("v4 블록은 flowDesign"),
+                        subsectionWithPath("blocks[].design").description("모델의 id·kind와 해당 종류의 필드. 첫 블록은 modelVersion 4인 설정"),
+                    ),
+                    relaxedResponseFields(subsectionWithPath("blocks").description("정규화한 디자인 블록, 외부 블록 ID와 해시")),
+                ),
+            )
+    }
+
+    @Test
     fun `create a flow with the default screen and an empty prefix`() {
         every { documents.create(any(), WebFixtures.space.slug, any()) } answers {
             val draft = thirdArg<DocumentDraft>()

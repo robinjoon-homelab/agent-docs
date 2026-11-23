@@ -8,6 +8,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.CalloutKind
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Heading
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
@@ -125,7 +126,7 @@ class MarkdownReader private constructor(
         return CodeBlock(id, "math", body.joinToString("\n"), displayMath = true)
     }
 
-    private fun readCode(id: BlockId): CodeBlock {
+    private fun readCode(id: BlockId): Block {
         val opening = requireNotNull(fencePattern.matchEntire(lines[index].trim()))
         val fence = opening.groupValues[1]
         val body = ArrayList<String>()
@@ -134,8 +135,12 @@ class MarkdownReader private constructor(
             body += lines[index]
             index++
         }
+        val language = opening.groupValues[2]
+        val design = flow && language == "flow-design"
+        if (design && index == lines.size) throw InvalidDocumentException("flow-design needs a closing fence")
         index++
-        return CodeBlock(id, opening.groupValues[2], body.joinToString("\n"))
+        val source = body.joinToString("\n")
+        return if (design) FlowDesignBlock.parse(id, source) else CodeBlock(id, language, source)
     }
 
     private fun isClosingFence(

@@ -72,4 +72,65 @@ describe('content expressions', () => {
       ]),
     ).toEqual([id]);
   });
+  it('keeps nested component asset values and state changes without collecting UUIDs in text', () => {
+    const image = '11111111-1111-4111-8111-111111111111';
+    const stateImage = '22222222-2222-4222-8222-222222222222';
+    const label = '33333333-3333-4333-8333-333333333333';
+    const guide = '44444444-4444-4444-8444-444444444444';
+    const ids = assetReferences([
+      {
+        id: 'screen01',
+        type: 'flowDesign',
+        design: {
+          kind: 'screen',
+          id: 'home',
+          description: `[안내](asset:${guide})`,
+          root: {
+            kind: 'instance',
+            id: 'grid',
+            component: 'gallery',
+            inputs: { rows: [{ itemKey: 'a', fields: { file: image, asset: label } }] },
+          },
+        },
+      },
+      {
+        id: 'state001',
+        type: 'flowDesign',
+        design: {
+          kind: 'state',
+          id: 'active',
+          screen: 'home',
+          changes: [
+            {
+              op: 'itemSet',
+              target: { owner: 'home', node: 'grid' },
+              prop: 'rows',
+              itemKey: 'a',
+              field: 'file',
+              value: stateImage,
+            },
+          ],
+        },
+      },
+      {
+        id: 'gallery1',
+        type: 'flowDesign',
+        design: {
+          kind: 'component',
+          id: 'gallery',
+          props: [
+            {
+              id: 'rows',
+              type: 'list',
+              fields: [
+                { id: 'file', type: 'asset' },
+                { id: 'asset', type: 'text' },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+    expect(new Set(ids)).toEqual(new Set([image, stateImage, guide]));
+  });
 });

@@ -1,0 +1,120 @@
+@font-face {
+  font-family: 'Agent Docs Design Sans';
+  src: url('./noto-sans-kr-400-other.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range:
+    U+0200-04FF, U+1E00-1EFF, U+2900-29FF, U+2B00-2BFF, U+2E00-9FFF, U+F900-FBFF, U+FE00-FEFF, U+1F100-1F2FF,
+    U+20000-201FF, U+20500-206FF, U+20900-209FF, U+21100-212FF, U+21500-215FF, U+21700-217FF, U+21F00-21FFF,
+    U+22400-224FF, U+22900-229FF, U+22C00-22CFF, U+22E00-22EFF, U+23000-230FF, U+23300-233FF, U+23600-236FF,
+    U+23A00-23AFF, U+24200-243FF, U+24800-248FF, U+24A00-24AFF, U+25000-250FF, U+25300-253FF, U+25800-25BFF,
+    U+25E00-25EFF, U+26000-260FF, U+26500-265FF, U+26700-267FF, U+26900-269FF, U+27100-271FF, U+27500-276FF,
+    U+27800-278FF, U+27A00-27CFF, U+27E00-27FFF, U+28300-284FF, U+28D00-28EFF, U+29100-291FF, U+29400-296FF,
+    U+29800-298FF, U+2A200-2A2FF, U+2A400-2A4FF, U+2A600-2A6FF, U+2C100-2C1FF, U+2C700-2C7FF, U+2D500-2D5FF,
+    U+2E500-2E5FF, U+2F800-2F9FF, U+30700-307FF, U+30E00-30EFF;
+}
+
+@font-face {
+  font-family: 'Agent Docs Design Sans';
+  src: url('./noto-sans-kr-400-hangul.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7FF;
+}
+
+@font-face {
+  font-family: 'Agent Docs Design Sans';
+  src: url('./noto-sans-kr-400-latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0000-024F, U+0300-036F, U+2000-27FF, U+2E00-2E7F, U+3000-303F, U+FF00-FFEF;
+}
+
+@font-face {
+  font-family: 'Agent Docs Design Sans';
+  src: url('./noto-sans-kr-500-other.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  unicode-range:
+    U+0200-04FF, U+1E00-1EFF, U+2900-29FF, U+2B00-2BFF, U+2E00-9FFF, U+F900-FBFF, U+FE00-FEFF, U+1F100-1F2FF,
+    U+20000-201FF, U+20500-206FF, U+20900-209FF, U+21100-212FF, U+21500-215FF, U+21700-217FF, U+21F00-21FFF,
+    U+22400-224FF, U+22900-229FF, U+22C00-22CFF, U+22E00-22EFF, U+23000-230FF, U+23300-233FF, U+23600-236FF,
+    U+23A00-23AFF, U+24200-243FF, U+24800-248FF, U+24A00-24AFF, U+25000-250FF, U+25300-253FF, U+25800-25BFF,
+    U+25E00-25EFF, U+26000-260FF, U+26500-265FF, U+26700-267FF, U+26900-269FF, U+27100-271FF, U+27500-276FF,
+    U+27800-278FF, U+27A00-27CFF, U+27E00-27FFF, U+28300-284FF, U+28D00-28EFF, U+29100-291FF, U+29400-296FF,
+    U+29800-298FF, U+2A200-2A2FF, U+2A400-2A4FF, U+2A600-2A6FF, U+2C100-2C1FF, U+2C700-2C7FF, U+2D500-2D5FF,
+    U+2E500-2E5FF, U+2F800-2F9FF, U+30700-307FF, U+30E00-30EFF;
+}
+
+@font-face {
+  font-family: 'Agent Docs Design Sans';
+  src: url('./noto-sans-kr-500-hangul.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7FF;
+}
+
+@font-face {
+  font-family: 'Agent Docs Design Sans';
+  src: url('./noto-sans-kr-500-latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  unicode-range: U+0000-024F, U+0300-036F, U+2000-27FF, U+2E00-2E7F, U+3000-303F, U+FF00-FFEF;
+}
+
+@font-face {
+  font-family: 'Agent Docs Design Sans';
+  src: url('./noto-sans-kr-700-other.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  unicode-range:
+    U+0200-04FF, U+1E00-1EFF, U+2900-29FF, U+2B00-2BFF, U+2E00-9FFF, U+F900-FBFF, U+FE00-FEFF, U+1F100-1F2FF,
+    U+20000-201FF, U+20500-206FF, U+20900-209FF, U+21100-212FF, U+21500-215FF, U+21700-217FF, U+21F00-21FFF,
+    U+22400-224FF, U+22900-229FF, U+22C00-22CFF, U+22E00-22EFF, U+23000-230FF, U+23300-233FF, U+23600-236FF,
+    U+23A00-23AFF, U+24200-243FF, U+24800-248FF, U+24A00-24AFF, U+25000-250FF, U+25300-253FF, U+25800-25BFF,
+    U+25E00-25EFF, U+26000-260FF, U+26500-265FF, U+26700-267FF, U+26900-269FF, U+27100-271FF, U+27500-276FF,
+    U+27800-278FF, U+27A00-27CFF, U+27E00-27FFF, U+28300-284FF, U+28D00-28EFF, U+29100-291FF, U+29400-296FF,
+    U+29800-298FF, U+2A200-2A2FF, U+2A400-2A4FF, U+2A600-2A6FF, U+2C100-2C1FF, U+2C700-2C7FF, U+2D500-2D5FF,
+    U+2E500-2E5FF, U+2F800-2F9FF, U+30700-307FF, U+30E00-30EFF;
+}
+
+@font-face {
+  font-family: 'Agent Docs Design Sans';
+  src: url('./noto-sans-kr-700-hangul.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7FF;
+}
+
+@font-face {
+  font-family: 'Agent Docs Design Sans';
+  src: url('./noto-sans-kr-700-latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  unicode-range: U+0000-024F, U+0300-036F, U+2000-27FF, U+2E00-2E7F, U+3000-303F, U+FF00-FFEF;
+}
+
+@font-face {
+  font-family: 'Agent Docs Design Mono';
+  src: url('./jetbrains-mono-400.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Agent Docs Design Mono';
+  src: url('./jetbrains-mono-500.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}

@@ -62,6 +62,7 @@ interface ThreadUseCase {
     fun forDocument(
         access: Access,
         document: DocumentId,
+        flowTargets: Boolean = false,
     ): List<ThreadView>
 
     // Each result carries the anchored block and its neighbors, at most ThreadQuery.MAX_RESULTS results.

@@ -2,6 +2,9 @@ package xyz.robinjoon.agentdocs.workspace.application.model
 
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowWarning
+import xyz.robinjoon.agentdocs.workspace.domain.document.design.DesignAddress
+import xyz.robinjoon.agentdocs.workspace.domain.document.design.DesignVertexPath
 
 // The document and response facts captured by one write, including related writes and block marks for replay.
 data class DocumentWrite
@@ -17,4 +20,13 @@ data class DocumentWrite
         val related: List<RelatedWrite> = emptyList(),
         val marks: List<BlockMark> = emptyList(),
         val space: SpaceReference? = null,
+        val designWarnings: List<FlowWarning> = emptyList(),
+        val designPatch: PatchedDesignTarget? = null,
     )
+
+data class PatchedDesignTarget(
+    val screen: BlockId,
+    val state: BlockId,
+    val address: DesignAddress,
+    val vertex: DesignVertexPath?,
+)

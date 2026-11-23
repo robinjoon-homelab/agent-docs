@@ -7,6 +7,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.TableBlock
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Anchor
@@ -20,7 +21,7 @@ internal object AnchorPlacement {
         when (request) {
             is AnchorRequest.Text -> text(request, document.block(request.blockId) ?: missing(request.blockId))
             is AnchorRequest.Cell -> cell(request, document.block(request.blockId) ?: missing(request.blockId))
-            is AnchorRequest.Whole -> whole(document.block(request.blockId) ?: missing(request.blockId))
+            is AnchorRequest.Whole -> whole(request, document)
             AnchorRequest.Document -> Anchor.Document
         }
 
@@ -28,7 +29,7 @@ internal object AnchorPlacement {
         request: AnchorRequest.Text,
         block: Block,
     ): Anchor.Text {
-        if (block is TableBlock || block is ImageBlock || block is DrawingBlock || block is Divider) {
+        if (block is TableBlock || block is ImageBlock || block is DrawingBlock || block is Divider || block is FlowDesignBlock) {
             throw InvalidRequestException("block ${block.id} has no text range", "anchor on a table cell or on the whole block")
         }
         val text = block.plainText()
@@ -72,7 +73,33 @@ internal object AnchorPlacement {
     }
 
     // The start of the block is enough to recognize it; the whole of a long code block is not kept.
-    private fun whole(block: Block): Anchor.Whole = Anchor.Whole(block.id, block.plainText().take(WHOLE_QUOTE_LENGTH))
+    private fun whole(
+        request: AnchorRequest.Whole,
+        document: Document,
+    ): Anchor.Whole {
+        val block = document.block(request.blockId) ?: missing(request.blockId)
+        if (block is FlowDesignBlock && block.kind !in setOf("screen", "state", "annotation")) {
+            throw InvalidRequestException("design comments need a screen, state or annotation block")
+        }
+        request.viewedStateId?.let { requireViewedState(block, document.block(it)) }
+        return Anchor.Whole(block.id, block.plainText().take(WHOLE_QUOTE_LENGTH), request.viewedStateId)
+    }
+
+    private fun requireViewedState(
+        block: Block,
+        viewed: Block?,
+    ) {
+        if (block !is FlowDesignBlock ||
+            block.kind != "annotation"
+        ) {
+            throw InvalidRequestException("viewedStateId needs a design annotation")
+        }
+        if (viewed !is FlowDesignBlock || viewed.kind != "state" || viewed.string("screen") != block.string("screen")) {
+            throw InvalidRequestException("viewedStateId must identify a state of the annotation's screen")
+        }
+        val own = block.string("state")
+        if (own != null && own != viewed.designId) throw InvalidRequestException("this annotation belongs to another state")
+    }
 
     private fun missing(id: BlockId): Nothing =
         throw InvalidRequestException("block $id is not in the document", "read the document again for current block ids")

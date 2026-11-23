@@ -1,3 +1,7 @@
+import { equalDesignValues, type FlowDesignBlock } from './designBlock';
+
+export type { FlowDesignBlock } from './designBlock';
+
 /**
  * The document body is a flat ordered list of blocks. Nesting is expressed with list item `depth`,
  * never with child blocks. Inline text fields hold GFM inline markdown (see inline.ts).
@@ -81,7 +85,8 @@ export type Block =
   | DividerBlock
   | FlowSettingsBlock
   | FlowScreenBlock
-  | FlowElementBlock;
+  | FlowElementBlock
+  | FlowDesignBlock;
 
 export type BlockType = Block['type'];
 
@@ -132,6 +137,8 @@ function sameArray<T>(a: readonly T[], b: readonly T[], same: (x: T, y: T) => bo
 
 /** Structural equality ignoring the server hash. */
 export function blocksEqual(a: Block, b: Block): boolean {
+  if (a.type === 'flowDesign' && b.type === 'flowDesign')
+    return a.id === b.id && equalDesignValues(a.design, b.design);
   if (a.type === 'flowElement' && b.type === 'flowElement') {
     const { actions: aa, states: as, items: ai, ...left } = withoutHash(a) as FlowElementBlock;
     const { actions: ba, states: bs, items: bi, ...right } = withoutHash(b) as FlowElementBlock;

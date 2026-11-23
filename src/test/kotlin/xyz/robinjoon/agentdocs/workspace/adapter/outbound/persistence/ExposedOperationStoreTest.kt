@@ -15,6 +15,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationKey
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
+import xyz.robinjoon.agentdocs.workspace.application.model.PatchedDesignTarget
 import xyz.robinjoon.agentdocs.workspace.application.model.RelatedChange
 import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceReference
@@ -24,6 +25,9 @@ import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowWarning
+import xyz.robinjoon.agentdocs.workspace.domain.document.design.DesignAddress
+import xyz.robinjoon.agentdocs.workspace.domain.document.design.DesignVertexPath
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Anchor
 import xyz.robinjoon.agentdocs.workspace.domain.thread.AnchorResolution
@@ -81,6 +85,14 @@ class ExposedOperationStoreTest {
                 listOf(RelatedWrite(related, RelatedChange.CREATED)),
                 marks = listOf(BlockMark(document.blocks.first().id, PersistenceFixtures.agent, 1, at)),
                 space = SpaceReference(space, SpaceSlug("original-space"), "Original space"),
+                designWarnings = listOf(FlowWarning(document.blocks.first().id, "orphanedReference", "original target")),
+                designPatch =
+                    PatchedDesignTarget(
+                        BlockId("screen1"),
+                        BlockId("state1"),
+                        DesignAddress("icon", "edge"),
+                        DesignVertexPath(null, "tip"),
+                    ),
             )
         val record = OperationRecord("document.edit", document.id.value, 1, documentWrite = result)
         val key = OperationKey("writer", "doc")
@@ -119,6 +131,7 @@ class ExposedOperationStoreTest {
             listOf(
                 Anchor.Document,
                 Anchor.Whole(BlockId("block1"), "Quote"),
+                Anchor.Whole(BlockId("annot1"), "Quote", BlockId("state1")),
                 Anchor.Text(BlockId("block1"), 0, 5, "Quote"),
                 Anchor.Cell(BlockId("table1"), BlockId("row001"), BlockId("col001"), "Cell"),
             )

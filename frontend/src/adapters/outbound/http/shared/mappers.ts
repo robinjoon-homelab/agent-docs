@@ -1,4 +1,5 @@
 import { toFlowBlock } from './flowMapper';
+import { isDesignObject } from '../../../../domain/document/designBlock';
 export { permissionOf as toPermission } from '../../../../domain/space/permission';
 import type {
   Block,
@@ -94,6 +95,12 @@ export function toBlock(value: unknown): Block {
   const id = str(source, 'id');
   const type = str(source, 'type');
   switch (type) {
+    case 'flowDesign': {
+      const design = source.design;
+      if (!isDesignObject(design) || typeof design.id !== 'string' || typeof design.kind !== 'string')
+        throw contractError('flowDesign.design');
+      return { id, type, design };
+    }
     case 'flowSettings':
     case 'flowScreen':
     case 'flowElement':

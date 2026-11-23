@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
+import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -21,6 +22,7 @@ import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.paragraph
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.revision
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.space
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.spaceId
+import xyz.robinjoon.agentdocs.workspace.application.model.DesignValidationWarning
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentDraft
 import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
@@ -33,6 +35,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDenied
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ResultRemovedException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.StaleRevisionException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
+import xyz.robinjoon.agentdocs.workspace.application.port.output.FlowDesignValidator
 import xyz.robinjoon.agentdocs.workspace.application.port.output.OperationStore
 import xyz.robinjoon.agentdocs.workspace.application.port.output.RevisionCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
@@ -41,12 +44,16 @@ import xyz.robinjoon.agentdocs.workspace.application.service.DocumentService
 import xyz.robinjoon.agentdocs.workspace.application.service.WriteJournal
 import xyz.robinjoon.agentdocs.workspace.domain.Permission
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
+import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.ChangeSource
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowWarning
+import xyz.robinjoon.agentdocs.workspace.domain.document.InvalidDocumentException
 import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditConflictException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
@@ -63,8 +70,9 @@ class DocumentServiceTest {
     private val threads = mockk<ThreadRepository>()
     private val activity = mockk<ActivityReporter>()
     private val operations = mockk<OperationStore>()
+    private val designs = mockk<FlowDesignValidator>()
     private val service =
-        DocumentService(documents, revisions, spaces, threads, WriteJournal(activity, operations, WorkspaceFixtures.clock))
+        DocumentService(documents, revisions, spaces, threads, WriteJournal(activity, operations, WorkspaceFixtures.clock), designs)
     private val first = paragraph("first1", "First")
     private val second = paragraph("second", "Second")
     private val current = document(listOf(first, second), revision = 3)
@@ -78,6 +86,53 @@ class DocumentServiceTest {
         every { documents.pending(any()) } returns null
         every { documents.confirmPending(any()) } answers { firstArg() }
         every { documents.savePending(any(), any()) } answers { firstArg() }
+    }
+
+    @Test
+    fun `a successful design write returns the original server block ID for a model warning`() {
+        val path = DocumentPath("design")
+        val config =
+            FlowDesignBlock.parse(
+                BlockId("outerconfig"),
+                """{"id":"settings","kind":"settings","modelVersion":4,"frame":"phone","idPrefix":"M","nextScreen":2}""",
+            )
+        val screen =
+            FlowDesignBlock.parse(
+                BlockId("outerview"),
+                """{"id":"memo","kind":"screen","code":"M-01","name":"메모","root":{"id":"root","kind":"box","layout":{"mode":"free"},
+                    "children":[],"style":{"fill":{"token":"accent"}}}}""",
+            )
+        every { spaces.findBySlug(space.slug) } returns space
+        every { documents.findByPath(spaceId, path) } returns null
+        every { documents.add(any(), any()) } answers { firstArg() }
+        every { designs.validate(any(), null) } returns listOf(DesignValidationWarning("memo", "missingToken", "accent"))
+        val draft = DocumentDraft(path, "메모", DocumentProperties.initial, listOf(config, screen), "flow")
+        val written = service.create(context(ownerAccess), space.slug, draft)
+        assertThat(written.designWarnings).containsExactly(FlowWarning(screen.id, "missingToken", "accent"))
+    }
+
+    @Test
+    fun `a rejected design batch never writes a document or pending revision`() {
+        val settings = FlowDesignBlock.parse(BlockId("config"), """{"kind":"settings","id":"config","modelVersion":4,"nextScreen":2}""")
+        val screen =
+            FlowDesignBlock.parse(
+                BlockId("screen"),
+                """{"kind":"screen","id":"memo","code":"M-01","name":"Memo","frame":"note"}""",
+            )
+        val flow = Document.create(documentId, current.header.copy(type = "flow"), listOf(settings, screen), now)
+        val next = listOf(settings, screen.withFields(screen.fields + ("invalid" to true)))
+        every { documents.findByIdForUpdate(documentId) } returns flow
+        every {
+            designs.validate(
+                FlowDesignBlock.documentJson(documentId, next),
+                FlowDesignBlock.documentJson(documentId, listOf(settings, screen)),
+            )
+        } throws InvalidDocumentException("invalid design field")
+        assertThatThrownBy { service.save(context(ownerAccess), documentId, flow.version, next) }
+            .isInstanceOf(InvalidDocumentException::class.java)
+            .hasMessageContaining("invalid design field")
+        verify(exactly = 0) { documents.savePending(any(), any()) }
+        verify(exactly = 0) { documents.update(any(), any(), any()) }
     }
 
     @Test
@@ -312,6 +367,7 @@ class DocumentServiceTest {
     @Test
     fun `a retried write answers with the revision the first attempt produced`() {
         val key = OperationKey(WorkspaceFixtures.connectionId.toString(), "op-1")
+        val warning = FlowWarning(first.id, "orphanedReference", "original target")
         val snapshot =
             xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite(
                 document(listOf(first), revision = 7),
@@ -319,6 +375,7 @@ class DocumentServiceTest {
                 listOf(first.id),
                 amended = false,
                 unchanged = false,
+                designWarnings = listOf(warning),
             )
         every { operations.findForWrite(key) } returns OperationRecord("document.edit", documentId.value, 7, documentWrite = snapshot)
         every { documents.findById(documentId) } returns document(listOf(first), revision = 9)
@@ -329,6 +386,7 @@ class DocumentServiceTest {
 
         assertThat(written.revision).isEqualTo(7)
         assertThat(written.changedBlocks).containsExactly(first.id)
+        assertThat(written.designWarnings).containsExactly(warning)
     }
 
     @Test

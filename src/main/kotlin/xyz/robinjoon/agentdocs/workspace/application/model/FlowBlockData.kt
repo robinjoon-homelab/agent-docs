@@ -1,6 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.application.model
 
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
@@ -8,6 +9,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
 object FlowBlockData {
     fun type(block: Block): String =
         when (block) {
+            is FlowDesignBlock -> "flowDesign"
             is FlowSettings -> "flowSettings"
             is FlowScreen -> "flowScreen"
             is FlowElement -> "flowElement"
@@ -16,6 +18,10 @@ object FlowBlockData {
 
     fun fields(block: Block): Map<String, Any?> =
         when (block) {
+            is FlowDesignBlock -> {
+                mapOf("design" to block.fields)
+            }
+
             is FlowSettings -> {
                 mapOf("frame" to block.frame, "idPrefix" to block.idPrefix, "nextScreen" to block.nextScreen)
             }

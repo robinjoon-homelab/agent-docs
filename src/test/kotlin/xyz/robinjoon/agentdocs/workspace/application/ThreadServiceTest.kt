@@ -449,7 +449,7 @@ class ThreadServiceTest {
     }
 
     @Test
-    fun `flow target comparison is opt in and REST thread lists omit it`() {
+    fun `flow target comparison is opt in for document and cross document thread lists`() {
         val blocks =
             xyz.robinjoon.agentdocs.workspace.domain.document.FlowRules
                 .initial("phone", "M")
@@ -486,6 +486,9 @@ class ThreadServiceTest {
             )
         every { revisions.find(documentId, 1) } returns revision
         assertThat(service.query(ownerAccess, query().copy(flowTargets = true)).single().target).isEqualTo("changed")
+        val scoped = service.forDocument(ownerAccess, documentId, flowTargets = true).single()
+        assertThat(scoped.target).isEqualTo("changed")
+        assertThat(scoped.targetVersion).isEqualTo(changed.version)
     }
 
     private fun query(spaces: Set<SpaceId>? = setOf(spaceId)): ThreadQuery =

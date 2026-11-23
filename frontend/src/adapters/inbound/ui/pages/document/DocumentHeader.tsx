@@ -100,6 +100,7 @@ export function DocumentHeader({
   onPatch,
   onInput,
   onTransfer,
+  onUpgradeFlow,
   onCancelInput,
   onTrash,
   onRetrySave,
@@ -113,6 +114,7 @@ export function DocumentHeader({
   onPatch: (patch: MetaPatch) => void;
   onInput: (patch: MetaPatch) => void;
   onTransfer: () => void;
+  onUpgradeFlow?: () => void;
   onCancelInput: (key: keyof MetaPatch) => void;
   onTrash: () => void;
   onRetrySave: () => void;
@@ -220,6 +222,20 @@ export function DocumentHeader({
               </button>
               {menuOpen ? (
                 <div className="popover" role="menu" style={{ right: 0, top: 34 }}>
+                  {onUpgradeFlow && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="menu-item"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        saveTitle.flush();
+                        onUpgradeFlow();
+                      }}
+                    >
+                      레이어 디자인으로 전환
+                    </button>
+                  )}
                   <button
                     type="button"
                     role="menuitem"

@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.workspace.domain.document.edit
 
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.TableBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.MarkdownReader
@@ -22,6 +23,8 @@ object DocumentEditor {
         return operations.foldIndexed(blocks) { index, current, operation ->
             if (current.firstOrNull() is xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings) {
                 FlowEditor.apply(current, operation, index)
+            } else if (current.firstOrNull() is FlowDesignBlock) {
+                FlowDesignEditor.apply(current, operation, index)
             } else {
                 applyOrdinary(current, operation, index)
             }
@@ -49,7 +52,7 @@ object DocumentEditor {
             is EditOperation.Delete -> operation.target to operation.expectedHash
             is EditOperation.Move -> operation.target to operation.expectedHash
             is EditOperation.ReplaceText -> operation.target to operation.expectedHash
-            is EditOperation.Insert -> null
+            is EditOperation.Insert, is EditOperation.DesignField -> null
         }
 
     private fun conflictOf(
@@ -59,7 +62,7 @@ object DocumentEditor {
     ): BlockConflict? {
         if (block == null) return BlockConflict(id, null, null)
         val hash = BlockMarkdown.hash(block)
-        return if (hash == expected) null else BlockConflict(id, hash, BlockMarkdown.of(block))
+        return if (hash == expected) null else BlockConflict(id, hash, BlockMarkdown.of(block), block as? FlowDesignBlock)
     }
 
     internal fun applyOrdinary(
@@ -68,6 +71,7 @@ object DocumentEditor {
         index: Int,
     ): List<Block> =
         when (operation) {
+            is EditOperation.DesignField -> operation.patch.apply(blocks)
             is EditOperation.Replace -> replace(blocks, operation, index)
             is EditOperation.Insert -> insert(blocks, positionOf(blocks, operation.position, index), operation.blocks, index)
             is EditOperation.Delete -> blocks.filterNot { it.id == require(blocks, operation.target, index).id }
@@ -129,11 +133,19 @@ object DocumentEditor {
         if (operation.find.isEmpty()) throw InvalidEditException("operation $index: find text must not be empty")
         val occurrences = markdown.windowed(operation.find.length).count { it == operation.find }
         // Text that is gone was most likely changed by someone after the read, so the answer is the block as it is now.
-        if (occurrences == 0) throw EditConflictException(listOf(BlockConflict(block.id, BlockMarkdown.hash(block), markdown)))
+        if (occurrences ==
+            0
+        ) {
+            throw EditConflictException(listOf(BlockConflict(block.id, BlockMarkdown.hash(block), markdown, block as? FlowDesignBlock)))
+        }
         if (occurrences > 1) {
             throw InvalidEditException("operation $index: find text must occur exactly once in block ${block.id}, found $occurrences")
         }
-        val parsed = MarkdownReader.readBlocks(markdown.replace(operation.find, operation.replacement))
+        val parsed =
+            MarkdownReader.readBlocks(
+                markdown.replace(operation.find, operation.replacement),
+                if (block is FlowDesignBlock) "flow" else "doc",
+            )
         val replaced = parsed.singleOrNull()?.block ?: throw InvalidEditException("operation $index: the replaced text must stay one block")
         requireTableReplacement(block, replaced, index)
         return blocks.map { if (it.id == block.id) keptIds(block, replaced.withId(block.id)) else it }

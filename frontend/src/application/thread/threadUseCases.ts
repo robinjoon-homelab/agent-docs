@@ -15,7 +15,7 @@ export interface ThreadUseCases {
   suggest(threadId: string, input: SuggestionInput): Promise<Thread>;
   decide(commentId: string, accept: boolean): Promise<Thread>;
 
-  list(documentId: string): Promise<Thread[]>;
+  list(documentId: string, flowTargets?: boolean): Promise<Thread[]>;
   start(documentId: string, anchor: Anchor, body: string): Promise<Result<Thread, CommentError>>;
   reply(thread: Thread, body: string): Promise<Result<Thread, CommentError>>;
   resolve(threadId: string): Promise<Thread>;
@@ -41,7 +41,7 @@ export function createThreadUseCases(gateway: ThreadGateway): ThreadUseCases {
     claim: (threadId, action) => gateway.claim(threadId, action),
     suggest: (threadId, input) => gateway.suggest(threadId, input),
     decide: (commentId, accept) => gateway.decide(commentId, accept),
-    list: (documentId) => gateway.list(documentId),
+    list: (documentId, flowTargets) => gateway.list(documentId, undefined, flowTargets),
     async start(documentId, anchor, rawBody) {
       const body = rawBody.trim();
       if (body === '') return failure('body_required');

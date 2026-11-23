@@ -8,14 +8,18 @@ import xyz.robinjoon.agentdocs.application.model.ActivityQuery
 import xyz.robinjoon.agentdocs.support.persistence.MigratedH2Database
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.PersistenceFixtures.at
 import xyz.robinjoon.agentdocs.workspace.adapter.outbound.persistence.PersistenceFixtures.person
+import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItem
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxItemId
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.InboxKind
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.Notice
 import xyz.robinjoon.agentdocs.workspace.domain.inbox.NoticeTarget
+import xyz.robinjoon.agentdocs.workspace.domain.thread.Anchor
 import xyz.robinjoon.agentdocs.workspace.domain.thread.Comment
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentThread
+import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
+import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadLocation
 import java.util.UUID
 
 class CommentExcerptMigrationTest {
@@ -30,7 +34,7 @@ class CommentExcerptMigrationTest {
     @Test
     fun `migration scrubs deleted inbox and activity excerpts including legacy links while keeping rows and metadata`() {
         val fixture = TransferPersistenceFixtures(database)
-        val root = fixture.comment(legacyDocument(fixture), "Old private opening", null)
+        val root = legacyThread(legacyDocument(fixture))
         val opened = root.comments.single()
         val deletedReply = Comment.write(CommentId(UUID.randomUUID()), person, "Old private reply", at.plusSeconds(10))
         val liveReply = Comment.write(CommentId(UUID.randomUUID()), person, "Live reply", at.plusSeconds(20))
@@ -42,7 +46,7 @@ class CommentExcerptMigrationTest {
                     person,
                     at.plusSeconds(30),
                 ).deleteComment(deletedReply.id, person, at.plusSeconds(30))
-        database.inTransaction { threads.update(deleted) }
+        insertLegacyThread(deleted)
         insertActivity(root, opened, "thread.opened", linked = false)
         insertActivity(root, deletedReply, "comment.added", linked = true)
         insertActivity(root, liveReply, "comment.added", linked = true)
@@ -63,6 +67,32 @@ class CommentExcerptMigrationTest {
         assertThat(notices.map { it.notice.target }).containsExactlyElementsOf(items.map { it.notice.target })
         assertThat(notices.map { it.delivery }).containsExactlyElementsOf(items.map { it.delivery })
         assertThat(database.inTransaction { threads.findById(root.id) }).isEqualTo(deleted)
+    }
+
+    private fun legacyThread(doc: Document): CommentThread {
+        val opened = Comment.write(CommentId(UUID.randomUUID()), person, "Old private opening", at)
+        return CommentThread.open(ThreadId(UUID.randomUUID()), ThreadLocation(doc.spaceId, doc.id, Anchor.Document, 1), opened, at)
+    }
+
+    private fun insertLegacyThread(thread: CommentThread) {
+        val location = thread.location
+        val timeline = thread.progress.timeline
+        // The seed represents V24, so it must not write columns added by a later migration.
+        database.execute(
+            "INSERT INTO threads (id, space_id, document_id, anchor_kind, anchored_revision, " +
+                "status, author_kind, created_at, updated_at) " +
+                "VALUES ('${thread.id.value}', '${location.spaceId}', '${location.documentId}', 'DOCUMENT', 1, 'OPEN', 'HUMAN', " +
+                "TIMESTAMP WITH TIME ZONE '${timeline.createdAt}', TIMESTAMP WITH TIME ZONE '${timeline.updatedAt}')",
+        )
+        thread.comments.forEachIndexed { i, c ->
+            val deleted = c.history.deletedAt?.let { "TIMESTAMP WITH TIME ZONE '$it'" } ?: "NULL"
+            val body = c.body.replace("'", "''")
+            database.execute(
+                "INSERT INTO thread_comments (id, thread_id, comment_position, author_kind, author_user_id, author_login, " +
+                    "body, created_at, deleted_at) VALUES ('${c.id.value}', '${thread.id.value}', $i, 'HUMAN', '${person.userId}', " +
+                    "'${person.login}', '$body', TIMESTAMP WITH TIME ZONE '${c.history.createdAt}', $deleted)",
+            )
+        }
     }
 
     @Test

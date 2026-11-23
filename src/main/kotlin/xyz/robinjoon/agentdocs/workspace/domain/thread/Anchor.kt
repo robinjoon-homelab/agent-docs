@@ -31,6 +31,7 @@ sealed interface Anchor {
     data class Whole(
         val blockId: BlockId,
         val quote: String,
+        val viewedStateId: BlockId? = null,
     ) : Anchor {
         init {
             if (quote.length >

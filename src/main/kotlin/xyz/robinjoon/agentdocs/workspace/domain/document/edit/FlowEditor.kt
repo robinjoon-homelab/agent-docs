@@ -16,6 +16,7 @@ internal object FlowEditor {
     ): List<Block> {
         val result =
             when (operation) {
+                is EditOperation.DesignField -> throw InvalidEditException("a design field patch requires a v4 design")
                 is EditOperation.Delete -> delete(blocks, operation.target)
                 is EditOperation.Move -> move(blocks, operation)
                 is EditOperation.Insert -> insert(blocks, operation, index)

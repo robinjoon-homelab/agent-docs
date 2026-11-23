@@ -19,6 +19,7 @@ sealed interface AnchorRequest {
 
     data class Whole(
         val blockId: BlockId,
+        val viewedStateId: BlockId? = null,
     ) : AnchorRequest
 
     data object Document : AnchorRequest

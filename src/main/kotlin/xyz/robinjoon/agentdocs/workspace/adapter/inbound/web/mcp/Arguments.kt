@@ -44,6 +44,24 @@ class Arguments(
         }
     }
 
+    // A nested object argument, read with the same typed accessors. Names outside allowed are rejected so a misspelt
+    // filter is not silently ignored.
+    fun optionalObject(
+        name: String,
+        allowed: Set<String>,
+    ): Arguments? {
+        val value = node.get(name)?.takeUnless(JsonNode::isNull) ?: return null
+        if (!value.isObject) throw InvalidRequestException("argument $name must be an object")
+        val unknown = value.propertyNames().filterNot { it in allowed }
+        if (unknown.isNotEmpty()) {
+            throw InvalidRequestException(
+                "argument $name has unknown fields: ${unknown.joinToString(", ")}",
+                "use ${allowed.joinToString(", ")}",
+            )
+        }
+        return Arguments(value)
+    }
+
     fun optionalInstant(name: String): Instant? =
         optionalString(name)?.let { value ->
             try {

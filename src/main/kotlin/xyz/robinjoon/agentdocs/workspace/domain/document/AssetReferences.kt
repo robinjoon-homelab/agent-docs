@@ -5,7 +5,15 @@ import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
 
 // Current and historical callers supply their own blocks; this function never loads or changes assets.
 object AssetReferences {
-    fun of(blocks: List<Block>): Set<AssetId> = blocks.flatMap { of(it) }.toSet()
+    fun of(blocks: List<Block>): Set<AssetId> = of(blocks, designTypes(blocks).keys)
+
+    fun of(
+        blocks: List<Block>,
+        designAssets: Set<AssetId>,
+    ): Set<AssetId> = blocks.flatMap { of(it) }.toSet() + designAssets
+
+    fun designTypes(blocks: List<Block>): Map<AssetId, Set<AssetMediaType>> =
+        FlowDesignAssets(blocks.filterIsInstance<FlowDesignBlock>()).requirements()
 
     // The stored type each drawing reference must have. One id cannot be both a drawing's SVG and another drawing's
     // scene, because the stored file has exactly one type and the write would then pass a check it cannot satisfy.
@@ -40,6 +48,6 @@ object AssetReferences {
             is Callout -> InlineMarkdown.assetIds(block.text.markdown)
             is TableBlock -> block.rows.flatMap { row -> row.cells.flatMap { InlineMarkdown.assetIds(it.markdown) } }.toSet()
             is FlowElement -> setOfNotNull(FlowAppearance.imageAsset(block))
-            is CodeBlock, is Divider, is FlowSettings, is FlowScreen -> emptySet()
+            is CodeBlock, is Divider, is FlowSettings, is FlowScreen, is FlowDesignBlock -> emptySet()
         }
 }

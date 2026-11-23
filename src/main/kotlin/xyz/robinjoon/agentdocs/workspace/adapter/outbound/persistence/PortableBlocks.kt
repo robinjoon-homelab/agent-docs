@@ -6,6 +6,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.Callout
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
@@ -23,7 +24,7 @@ internal object PortableBlocks {
 
     private fun fieldsOf(block: Block): Map<String, Any?> =
         when (block) {
-            is FlowSettings, is FlowScreen, is FlowElement -> {
+            is FlowDesignBlock, is FlowSettings, is FlowScreen, is FlowElement -> {
                 FlowBlockData.fields(block)
             }
 
@@ -104,7 +105,7 @@ internal object PortableBlocks {
             is ImageBlock -> "image"
             is DrawingBlock -> "drawing"
             is Divider -> "divider"
-            is FlowSettings, is FlowScreen, is FlowElement -> FlowBlockData.type(block)
+            is FlowDesignBlock, is FlowSettings, is FlowScreen, is FlowElement -> FlowBlockData.type(block)
         }
 
     private fun Enum<*>.wire(): String = name.lowercase()

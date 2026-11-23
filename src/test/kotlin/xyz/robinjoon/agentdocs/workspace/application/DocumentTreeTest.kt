@@ -48,7 +48,7 @@ class DocumentTreeTest {
     private val activity = mockk<ActivityReporter>()
     private val operations = mockk<OperationStore>()
     private val service =
-        DocumentService(documents, revisions, spaces, threads, WriteJournal(activity, operations, WorkspaceFixtures.clock))
+        DocumentService(documents, revisions, spaces, threads, WriteJournal(activity, operations, WorkspaceFixtures.clock), mockk())
 
     init {
         every { activity.record(any()) } just runs

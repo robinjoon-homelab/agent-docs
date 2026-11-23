@@ -55,7 +55,7 @@ function AttachmentLink({ href, children }: { href: string; children: ReactNode 
   );
 }
 
-function wrap(run: Extract<InlineRun, { kind: 'text' }>, key: number) {
+function wrap(run: Extract<InlineRun, { kind: 'text' }>, key: number, assetUrl?: (id: string) => string) {
   let node: ReactNode = run.marks.code || run.href !== null ? run.text : mathText(run.text);
   if (run.marks.code) node = <code>{node}</code>;
   if (run.marks.strike) node = <s>{node}</s>;
@@ -64,7 +64,13 @@ function wrap(run: Extract<InlineRun, { kind: 'text' }>, key: number) {
   if (run.href !== null) {
     const internal = docLinkHref(run.href);
     node = run.href.startsWith('asset:') ? (
-      <AttachmentLink href={run.href}>{node}</AttachmentLink>
+      assetUrl ? (
+        <a href={assetUrl(run.href.slice(6))} download rel="noreferrer noopener">
+          {node}
+        </a>
+      ) : (
+        <AttachmentLink href={run.href}>{node}</AttachmentLink>
+      )
     ) : internal === null ? (
       <a href={run.href} target="_blank" rel="noreferrer noopener">
         {node}
@@ -76,13 +82,17 @@ function wrap(run: Extract<InlineRun, { kind: 'text' }>, key: number) {
   return <Fragment key={key}>{node}</Fragment>;
 }
 
-export function InlineRuns({ inline }: { inline: Inline }) {
-  return <>{inline.map((run, index) => (run.kind === 'break' ? <br key={index} /> : wrap(run, index)))}</>;
+export function InlineRuns({ inline, assetUrl }: { inline: Inline; assetUrl?: (id: string) => string }) {
+  return (
+    <>
+      {inline.map((run, index) => (run.kind === 'break' ? <br key={index} /> : wrap(run, index, assetUrl)))}
+    </>
+  );
 }
 
 /** Read-only rendering of an inline markdown string. */
-export function InlineText({ markdown }: { markdown: string }) {
-  return <InlineRuns inline={parseInline(markdown)} />;
+export function InlineText({ markdown, assetUrl }: { markdown: string; assetUrl?: (id: string) => string }) {
+  return <InlineRuns inline={parseInline(markdown)} assetUrl={assetUrl} />;
 }
 
 /** Comment bodies: fenced code blocks, otherwise one paragraph per line with inline markdown. */

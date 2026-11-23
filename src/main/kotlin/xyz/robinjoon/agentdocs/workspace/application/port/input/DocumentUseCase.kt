@@ -16,6 +16,12 @@ import xyz.robinjoon.agentdocs.workspace.domain.thread.ThreadId
 
 // Writes lock the document and require edit permission. Content versions and immutable history advance separately.
 interface DocumentUseCase {
+    fun upgradeFlow(
+        context: WriteContext,
+        id: DocumentId,
+        baseVersion: Int,
+    ): DocumentWrite
+
     fun create(
         context: WriteContext,
         space: SpaceSlug,

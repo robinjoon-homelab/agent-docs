@@ -16,7 +16,7 @@ data class Document private constructor(
 ) {
     init {
         FlowRules.validate(header.type, blocks)
-        if (blocks.size > MAX_BLOCKS) {
+        if (blocks.size > MAX_BLOCKS && blocks.firstOrNull() !is FlowDesignBlock) {
             throw InvalidDocumentException("a document has at most $MAX_BLOCKS blocks")
         }
         val repeated =

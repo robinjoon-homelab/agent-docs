@@ -250,9 +250,13 @@ class ThreadService(
     override fun forDocument(
         access: Access,
         document: DocumentId,
+        flowTargets: Boolean,
     ): List<ThreadView> {
         val target = documents.findById(document)?.takeIf { access.sees(it.spaceId) } ?: throw DocumentNotFoundException(document)
-        return threads.findByDocument(target.id).map { viewOf(it, target) }
+        val views = threads.findByDocument(target.id).map { viewOf(it, target) }
+        if (!flowTargets || target.header.type != "flow") return views
+        val cache = HashMap<Pair<DocumentId, Int>, List<Block>>()
+        return views.map { withFlowTarget(it, target, cache) }
     }
 
     override fun query(
@@ -424,7 +428,7 @@ class ThreadService(
                 earlier,
                 document.blocks,
             )
-        return view.copy(target = target)
+        return view.copy(target = target, targetVersion = document.version)
     }
 
     private fun contextualView(

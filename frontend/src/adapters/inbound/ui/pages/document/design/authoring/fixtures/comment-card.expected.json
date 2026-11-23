@@ -1,0 +1,111 @@
+{
+  "id": "comment-card",
+  "blocks": [
+    {
+      "kind": "settings",
+      "id": "settings",
+      "modelVersion": 4,
+      "frame": "desktop",
+      "idPrefix": "F",
+      "nextScreen": 2
+    },
+    {
+      "id": "theme",
+      "kind": "tokens",
+      "entries": [
+        {
+          "id": "ink",
+          "name": "ink",
+          "type": "color",
+          "value": "#334455"
+        }
+      ],
+      "styles": [
+        {
+          "id": "body",
+          "name": "body",
+          "value": {
+            "text": {
+              "color": {
+                "token": "ink"
+              },
+              "size": 14
+            }
+          }
+        }
+      ]
+    },
+    {
+      "kind": "screen",
+      "id": "screen",
+      "code": "F-01",
+      "name": "댓글 카드",
+      "root": {
+        "id": "n1",
+        "kind": "box",
+        "alias": "comment",
+        "layout": {
+          "mode": "column",
+          "padding": {
+            "top": 8,
+            "right": 8,
+            "bottom": 8,
+            "left": 8
+          }
+        },
+        "children": [
+          {
+            "id": "n2",
+            "kind": "text",
+            "text": {
+              "runs": [
+                {
+                  "id": "r1",
+                  "text": "수정 제안: "
+                },
+                {
+                  "id": "r2",
+                  "text": "기존 문구",
+                  "style": {
+                    "strike": true,
+                    "color": "#912929"
+                  }
+                },
+                {
+                  "id": "r3",
+                  "text": " "
+                },
+                {
+                  "id": "new",
+                  "text": "새 문구",
+                  "style": {
+                    "weight": 700
+                  }
+                },
+                {
+                  "id": "r4",
+                  "text": "입니다."
+                }
+              ]
+            },
+            "alias": "proposal",
+            "sharedStyle": "body"
+          },
+          {
+            "id": "n3",
+            "kind": "text",
+            "text": "같은 글꼴과 색을 씁니다.",
+            "sharedStyle": "body"
+          }
+        ],
+        "size": {
+          "x": {
+            "mode": "fixed",
+            "px": 320
+          }
+        },
+        "boxSizing": "content-box"
+      }
+    }
+  ]
+}

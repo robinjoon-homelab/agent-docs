@@ -1,4 +1,7 @@
-import { readFlow, flowTarget } from '../../../../../domain/flow/flow';
+import { flowAnchorTarget } from '../../../../../domain/flow/flowAnchorComparison';
+import { flowAnchorLocation, flowAnchorSearch } from '../../../../../domain/flow/flowAnchorLocation';
+import { isDesignFlow } from '../../../../../domain/flow/newDesignFlow';
+import { DesignFlowDocument } from './design/DesignFlowDocument';
 import { flowPreview } from './flowPreview';
 import type { Block } from '../../../../../domain/document/block';
 import { FlowThreadHistory, FlowSnapshot } from './FlowThreadHistory';
@@ -62,7 +65,7 @@ export function DocumentPage() {
   const loaded = useLoad(`document:${docId}`, async () => {
     const [document, threads] = await Promise.all([
       services.documents.get(docId),
-      services.threads.list(docId),
+      services.threads.list(docId, true),
     ]);
     return { document, threads };
   });
@@ -78,7 +81,12 @@ export function DocumentPage() {
   }
   const { document, threads } = loaded.data;
   if (document.space.slug !== slug) {
-    return <Navigate to={`${documentHref(document.space.slug, document.id)}${location.hash}`} replace />;
+    return (
+      <Navigate
+        to={`${documentHref(document.space.slug, document.id)}${location.search}${location.hash}`}
+        replace
+      />
+    );
   }
   return (
     <DocumentAssetScope key={document.id} documentId={document.id}>
@@ -178,17 +186,22 @@ function DocumentWorkspace({
   );
   const [transferSpaces, setTransferSpaces] = useState<readonly Space[] | null>(null);
   const [transferring, setTransferring] = useState(false);
+  const [upgradeRequest, setUpgradeRequest] = useState<string | null>(null);
+  const [upgrading, setUpgrading] = useState(false);
   const state = useSyncExternalStore(session.subscribe, session.getState);
+  const design = document.type === 'flow' && isDesignFlow(session.currentBlocks());
   const editorRef = useRef<DocumentEditorHandle>(null);
   const flowRef = useRef<FlowHandle>(null);
   const [flowModeTarget, setFlowModeTarget] = useState<HTMLDivElement | null>(null);
   const [flowStatsTarget, setFlowStatsTarget] = useState<HTMLSpanElement | null>(null);
-  const [flowSnapshot, setFlowSnapshot] = useState<{
+  const [snapshot, setFlowSnapshot] = useState<{
     blocks: readonly Block[];
     blockId: string;
     revision: number;
     threadId: string;
+    route: string;
   } | null>(null);
+  const flowSnapshot = snapshot?.route === location.key ? snapshot : null;
   const layoutRef = useRef<HTMLDivElement>(null);
   const {
     threads,
@@ -230,6 +243,7 @@ function DocumentWorkspace({
             blockId,
             revision: snapshot.revision,
             threadId: thread.id,
+            route: location.key,
           });
         }
       });
@@ -237,7 +251,7 @@ function DocumentWorkspace({
     return () => {
       active = false;
     };
-  }, [document.id, initialThreads, services.documents]);
+  }, [document.id, initialThreads, services.documents, location.key]);
   const [reanchorThread, setReanchorThread] = useState<Thread | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
   const wide = useMediaQuery('(min-width: 1280px)');
@@ -249,7 +263,7 @@ function DocumentWorkspace({
     setRailOpen(true);
     setRailCollapsed(false);
   }, [setRailCollapsed]);
-  const editable = access.writable && !transferring;
+  const editable = access.writable && !transferring && !upgrading;
   const frame = useRef<number | null>(null);
   const spaceSlug = document.space.slug;
   const siblings = useDocumentLookup(
@@ -319,19 +333,37 @@ function DocumentWorkspace({
   // Deep links: #thread-<id> opens the thread at its anchor, #block-<id> scrolls to the block.
   const hash = location.hash;
   useEffect(() => {
+    if (!hash.startsWith('#thread-') && !hash.startsWith('#block-')) return;
+    let id: string;
+    try {
+      id = decodeURIComponent(hash.slice(hash.indexOf('-') + 1));
+    } catch {
+      return;
+    }
     const timer = setTimeout(() => {
+      const thread = hash.startsWith('#thread-') ? threads.find((item) => item.id === id) : undefined;
       if (hash.startsWith('#thread-')) {
-        const threadId = decodeURIComponent(hash.slice('#thread-'.length));
-        setActiveThreadId(threadId);
+        setActiveThreadId(id);
         setFilter('all');
         showRail();
-        editorRef.current?.scrollToThread(threadId);
-      } else if (hash.startsWith('#block-')) {
-        editorRef.current?.scrollToBlock(decodeURIComponent(hash.slice('#block-'.length)));
-      }
+        editorRef.current?.scrollToThread(id);
+      } else editorRef.current?.scrollToBlock(id);
+      if (document.type !== 'flow') return;
+      const block = hash.startsWith('#block-')
+        ? id
+        : thread && thread.anchor.kind !== 'document'
+          ? thread.anchor.blockId
+          : undefined;
+      if (!block) return;
+      if (design) {
+        const viewedState = thread?.anchor.kind === 'block' ? thread.anchor.viewedStateId : undefined;
+        const search = flowAnchorSearch(session.currentBlocks(), block, location.search, viewedState);
+        if (search && search !== location.search)
+          void navigate({ pathname: location.pathname, search, hash }, { replace: true });
+      } else flowRef.current?.selectBlock(block);
     }, 50);
     return () => clearTimeout(timer);
-  }, [hash, showRail]);
+  }, [hash, showRail, threads, design, session, location.pathname, location.search, navigate, document.type]);
 
   const measure = useMemo(
     () => ({
@@ -406,6 +438,10 @@ function DocumentWorkspace({
   const reanchor = async (anchor: Anchor): Promise<void> => {
     if (reanchorThread === null) return;
     if (!(await prepareCommentAnchor())) return;
+    if (document.type === 'flow' && session.hasPendingRevision() && canEdit(currentAccess().permission)) {
+      await session.finalize();
+      if (session.getState().status !== 'saved') return;
+    }
     const done = await update(() => services.threads.reanchor(reanchorThread.id, anchor));
     if (done) {
       toast('댓글을 새 위치에 달았습니다');
@@ -488,6 +524,23 @@ function DocumentWorkspace({
     }
   };
 
+  const upgradeFlow = async (): Promise<void> => {
+    if (!upgradeRequest || !editable || !services.documents.upgradeFlow) return;
+    setUpgrading(true);
+    try {
+      if (!(await saveFirst())) return;
+      await session.finalize();
+      if (session.getState().status !== 'saved') return;
+      await services.documents.upgradeFlow(document.id, session.getState().version, upgradeRequest);
+      await session.refreshRemote();
+      setUpgradeRequest(null);
+    } catch (error) {
+      if (!access.error(error)) toast(errorMessage(error));
+    } finally {
+      setUpgrading(false);
+    }
+  };
+
   const resolveConflicts = async (
     choices: ReadonlyMap<string, ConflictChoice>,
     orderChoice?: ConflictChoice,
@@ -506,6 +559,12 @@ function DocumentWorkspace({
   };
 
   const openCount = threads.filter((thread) => thread.status !== 'resolved').length;
+  const focusFlowBlock = (blockId: string, viewedStateId?: string) => {
+    if (design) {
+      const search = flowAnchorSearch(session.currentBlocks(), blockId, location.search, viewedStateId);
+      if (search) void navigate({ pathname: location.pathname, search });
+    } else flowRef.current?.selectBlock(blockId);
+  };
   const mentionLogins = mentionCandidates(me.login, document, threads);
   const highlightedThreadId = filterThreads(threads, filter).some((thread) => thread.id === activeThreadId)
     ? activeThreadId
@@ -513,23 +572,25 @@ function DocumentWorkspace({
   const rail = (flowScope?: string, onlyThreadId?: string) => (
     <CommentRail
       flowBlocks={document.type === 'flow' ? session.currentBlocks() : undefined}
+      flowTargetVersion={state.status === 'saved' ? state.version : undefined}
       flowScope={flowScope}
       threadHeading={
         document.type === 'flow'
-          ? (thread) => (
+          ? (thread, past, target) => (
               <FlowThreadHistory
-                onSelect={(blockId) => {
+                past={past}
+                target={target}
+                currentVersion={state.status === 'saved' ? state.version : undefined}
+                onSelect={(blockId, viewedStateId) => {
                   setActiveThreadId(thread.id);
-                  flowRef.current?.selectBlock(blockId);
+                  focusFlowBlock(blockId, viewedStateId);
                 }}
                 thread={thread}
                 blocks={session.currentBlocks()}
                 onSnapshot={(blocks, blockId, revision) => {
-                  const parent = readFlow(blocks).screens.find(
-                    (s) => s.screen.id === blockId || s.elements.some((e) => e.id === blockId),
-                  );
-                  if (parent) flowRef.current?.openHistorical(parent.screen.id);
-                  setFlowSnapshot({ blocks, blockId, revision, threadId: thread.id });
+                  const parent = flowAnchorLocation(blocks, blockId);
+                  if (parent) flowRef.current?.openHistorical(parent.screenBlockId);
+                  setFlowSnapshot({ blocks, blockId, revision, threadId: thread.id, route: location.key });
                   setActiveThreadId(thread.id);
                   setPending(null);
                 }}
@@ -547,7 +608,11 @@ function DocumentWorkspace({
       spaceSlug={document.space.slug}
       actions={actions((thread) => {
         setReanchorThread(thread);
-        toast('본문에서 새 위치의 텍스트를 선택한 뒤 "여기에 다시 달기"를 누르세요');
+        toast(
+          document.type === 'flow'
+            ? '다시 달 화면이나 요소를 선택하세요.'
+            : '본문에서 새 위치의 텍스트를 선택한 뒤 "여기에 다시 달기"를 누르세요',
+        );
         if (!wide) setRailOpen(false);
       })}
       aligned={document.type !== 'flow' && wide}
@@ -617,6 +682,11 @@ function DocumentWorkspace({
                   inputTime.discard(key);
                 }}
                 onTransfer={() => void openTransfer()}
+                onUpgradeFlow={
+                  editable && !design && document.type === 'flow' && services.documents.upgradeFlow
+                    ? () => setUpgradeRequest(crypto.randomUUID())
+                    : undefined
+                }
                 onTrash={() => void previewTrash()}
                 onRetrySave={() => {
                   void saveFirst().then((saved) => {
@@ -624,6 +694,37 @@ function DocumentWorkspace({
                   });
                 }}
               />
+              {upgradeRequest && (
+                <Dialog
+                  open
+                  title="레이어 디자인으로 전환"
+                  onClose={() => {
+                    if (!upgrading) setUpgradeRequest(null);
+                  }}
+                  footer={
+                    <>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={upgrading}
+                        onClick={() => setUpgradeRequest(null)}
+                      >
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={upgrading}
+                        onClick={() => void upgradeFlow()}
+                      >
+                        전환
+                      </button>
+                    </>
+                  }
+                >
+                  기존 화면과 요소를 편집 가능한 레이어로 옮깁니다. 댓글과 이전 리비전은 보존됩니다.
+                </Dialog>
+              )}
               {document.trashedAt === null ? null : (
                 <div className="warning-box doc-banner">
                   휴지통에 있는 문서입니다. 읽기만 할 수 있습니다.{' '}
@@ -643,7 +744,7 @@ function DocumentWorkspace({
                   {reanchorThread.anchor.kind === 'text' || reanchorThread.anchor.kind === 'cell'
                     ? reanchorThread.anchor.quote
                     : '댓글'}
-                  ”을(를) 다시 달 위치의 텍스트를 선택하세요.{' '}
+                  ”을 다시 달 {document.type === 'flow' ? '화면이나 요소' : '텍스트'}를 선택하세요.{' '}
                   <button type="button" className="btn btn-small" onClick={() => setReanchorThread(null)}>
                     취소
                   </button>
@@ -712,28 +813,47 @@ function DocumentWorkspace({
               {document.type === 'flow' ? (
                 <>
                   <div hidden={flowSnapshot !== null}>
-                    <FlowDocument
-                      spaceSlug={document.space.slug}
-                      modeTarget={flowModeTarget}
-                      statsTarget={flowStatsTarget}
-                      ref={flowRef}
-                      session={session}
-                      editable={editable}
-                      onEditMode={() => setFlowSnapshot(null)}
-                      onInput={() => inputTime.mark('body')}
-                      onRequestComment={requestComment}
-                      commentRail={flowSnapshot ? () => null : rail}
-                      reanchoring={reanchorThread !== null}
-                      onReanchor={(anchor) => void reanchor(anchor)}
-                      onStartComment={(anchor, body) => startThread(body, anchor)}
-                      mentionLogins={mentionLogins}
-                      threads={threads}
-                    />
+                    {design ? (
+                      <DesignFlowDocument
+                        session={session}
+                        editable={editable}
+                        modeTarget={flowModeTarget}
+                        onEditMode={() => setFlowSnapshot(null)}
+                        onInput={() => inputTime.mark('body')}
+                        onRequestComment={
+                          canComment(access.permission)
+                            ? (anchor) => (reanchorThread ? void reanchor(anchor) : requestComment(anchor))
+                            : undefined
+                        }
+                        pendingComment={pending}
+                        commentRail={flowSnapshot ? () => null : rail}
+                      />
+                    ) : (
+                      <FlowDocument
+                        spaceSlug={document.space.slug}
+                        modeTarget={flowModeTarget}
+                        statsTarget={flowStatsTarget}
+                        ref={flowRef}
+                        session={session}
+                        editable={editable}
+                        onEditMode={() => setFlowSnapshot(null)}
+                        onInput={() => inputTime.mark('body')}
+                        onRequestComment={requestComment}
+                        commentRail={flowSnapshot ? () => null : rail}
+                        reanchoring={reanchorThread !== null}
+                        onReanchor={(anchor) => void reanchor(anchor)}
+                        onStartComment={(anchor, body) => startThread(body, anchor)}
+                        mentionLogins={mentionLogins}
+                        threads={threads}
+                      />
+                    )}
                   </div>
                   {flowSnapshot && (
                     <>
                       <FlowSnapshot
                         threads={threads}
+                        thread={threads.find((t) => t.id === flowSnapshot.threadId)}
+                        currentVersion={state.status === 'saved' ? state.version : undefined}
                         onComments={() => {
                           flowRef.current?.showComments();
                           setFlowSnapshot(null);
@@ -744,21 +864,30 @@ function DocumentWorkspace({
                         }}
                         onPanelCollapse={(collapsed) => flowRef.current?.setPanelCollapsed(collapsed)}
                         threadCard={rail(flowSnapshot.blockId, flowSnapshot.threadId)}
-                        onSelectScreen={(blockId) => {
-                          flowRef.current?.selectBlock(blockId, false);
+                        onSelectScreen={(blockId, viewedStateId) => {
+                          focusFlowBlock(blockId, viewedStateId);
                           setFlowSnapshot(null);
                         }}
                         {...flowSnapshot}
                         current={session.currentBlocks()}
                         onClose={() => {
-                          if (
-                            flowTarget(flowSnapshot.blocks, session.currentBlocks(), flowSnapshot.blockId) ===
-                              'changed' &&
-                            session
-                              .currentBlocks()
-                              .some((b) => b.id === flowSnapshot.blockId && b.type === 'flowElement')
-                          )
-                            flowRef.current?.selectBlock(flowSnapshot.blockId, false);
+                          const current = session.currentBlocks();
+                          const thread = threads.find((t) => t.id === flowSnapshot.threadId);
+                          const target = flowAnchorTarget(
+                            flowSnapshot.blocks,
+                            current,
+                            flowSnapshot.blockId,
+                            thread,
+                            state.status === 'saved' ? state.version : undefined,
+                          );
+                          if (target === 'changed' && flowAnchorLocation(current, flowSnapshot.blockId)) {
+                            if (design)
+                              focusFlowBlock(
+                                flowSnapshot.blockId,
+                                thread?.anchor.kind === 'block' ? thread.anchor.viewedStateId : undefined,
+                              );
+                            else flowRef.current?.selectBlock(flowSnapshot.blockId, false);
+                          }
                           setFlowSnapshot(null);
                         }}
                       />

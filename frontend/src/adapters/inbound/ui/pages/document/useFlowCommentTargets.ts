@@ -2,13 +2,27 @@ import { useEffect, useState } from 'react';
 import { useServices } from '../../../../../config/ServicesContext';
 import type { Block, StoredBlock } from '../../../../../domain/document/block';
 import type { Thread } from '../../../../../domain/thread/thread';
-import { flowTarget, readFlow } from '../../../../../domain/flow/flow';
-export function useFlowCommentTargets(threads: readonly Thread[], blocks: readonly Block[] | undefined) {
+import { flowAnchorTarget } from '../../../../../domain/flow/flowAnchorComparison';
+import { flowAnchorLocation } from '../../../../../domain/flow/flowAnchorLocation';
+export function useFlowCommentTargets(
+  threads: readonly Thread[],
+  blocks: readonly Block[] | undefined,
+  currentVersion?: number,
+) {
   const { documents } = useServices();
   const [snapshots, setSnapshots] = useState<Record<string, readonly Block[]>>({});
   const revisions = blocks
     ? threads
-        .filter((t) => t.anchoredRevision !== undefined)
+        .filter(
+          (t) =>
+            t.anchor.kind !== 'document' &&
+            t.anchoredRevision !== undefined &&
+            (currentVersion === undefined ||
+              t.targetVersion !== currentVersion ||
+              !t.target ||
+              t.target === 'screenDeleted' ||
+              t.target === 'elementDeleted'),
+        )
         .map((t) => `${t.documentId}:${t.anchoredRevision}`)
         .sort()
         .join(',')
@@ -41,30 +55,28 @@ export function useFlowCommentTargets(threads: readonly Thread[], blocks: readon
     };
   }, [documents, revisions]);
   const targets = new Map(
-    threads.map((t) => {
-      const past = snapshots[`${t.documentId}:${t.anchoredRevision}`];
-      return [
-        t.id,
-        blocks && past && t.anchor.kind !== 'document' ? flowTarget(past, blocks, t.anchor.blockId) : 'ok',
-      ];
+    threads.map((thread) => {
+      const past = snapshots[`${thread.documentId}:${thread.anchoredRevision}`];
+      const saved =
+        currentVersion !== undefined && thread.targetVersion === currentVersion ? thread.target : undefined;
+      const target =
+        saved ??
+        (past && blocks && thread.anchor.kind !== 'document'
+          ? flowAnchorTarget(past, blocks, thread.anchor.blockId, thread)
+          : 'ok');
+      return [thread.id, target] as const;
     }),
   );
   const parents = new Map(
     threads.map((thread) => {
       const past = snapshots[`${thread.documentId}:${thread.anchoredRevision}`];
-      const parent =
+      return [
+        thread.id,
         past && thread.anchor.kind !== 'document'
-          ? readFlow(past).screens.find(
-              (screen) =>
-                thread.anchor.kind !== 'document' &&
-                (screen.screen.id === thread.anchor.blockId ||
-                  screen.elements.some(
-                    (e) => thread.anchor.kind !== 'document' && e.id === thread.anchor.blockId,
-                  )),
-            )
-          : undefined;
-      return [thread.id, parent?.screen.id];
+          ? flowAnchorLocation(past, thread.anchor.blockId)?.screenBlockId
+          : undefined,
+      ] as const;
     }),
   );
-  return Object.assign(targets, { parents });
+  return Object.assign(targets, { parents, snapshots });
 }

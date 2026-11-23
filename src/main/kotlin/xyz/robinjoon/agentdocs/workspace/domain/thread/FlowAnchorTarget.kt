@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.workspace.domain.thread
 
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
 
@@ -11,7 +12,11 @@ object FlowAnchorTarget {
         earlier: List<Block>,
         current: List<Block>,
     ): String {
-        val id = (anchor as? Anchor.Whole)?.blockId ?: return "ok"
+        if (anchor !is Anchor.Whole) return "ok"
+        val id = anchor.blockId
+        if (earlier.firstOrNull() is FlowDesignBlock || current.firstOrNull() is FlowDesignBlock) {
+            return DesignAnchorTarget.of(anchor, earlier, current)
+        }
         val old = earlier.firstOrNull { it.id == id } ?: return "ok"
         val previousScreen = screen(earlier, id) ?: return "ok"
         val currentScreen = current.filterIsInstance<FlowScreen>().firstOrNull { it.id == previousScreen.id } ?: return "screenDeleted"

@@ -2,6 +2,8 @@ import { FlowMultiInspector } from './FlowMultiInspector';
 import { FlowElementInspector } from './FlowElementInspector';
 import { FlowScreenInspector } from './FlowScreenInspector';
 import { flowPreview } from './flowPreview';
+import { useFlowSelection } from './useFlowSelection';
+import { FlowSelectionLink } from './FlowSelectionLink';
 import { createPortal } from 'react-dom';
 import { FlowIcon, FlowCommentBadge, FlowToolIcon } from './FlowIcon';
 import { FlowOverview } from './FlowOverview';
@@ -29,7 +31,7 @@ import { UPLOAD_ERROR_TEXT } from '../../../../../application/asset/assetUseCase
 import { canComment } from '../../../../../domain/space/permission';
 import { useDocumentPermission } from './DocumentPermissionContext';
 import { useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { NavigationType, useLocation, useNavigate, useNavigationType } from 'react-router';
 import type { DocumentEditorSession } from '../../../../../application/document/editorSession';
 import type { Block, FlowElementBlock, FlowKind, FlowFrame } from '../../../../../domain/document/block';
 import { newBlockId } from '../../../../../domain/document/block';
@@ -93,6 +95,7 @@ export function FlowDocument({
 
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const location = useLocation();
+  const navigationType = useNavigationType();
   const routerNavigate = useNavigate();
   useEffect(() => {
     if ((location.state as { flowEdit?: boolean } | null)?.flowEdit)
@@ -128,23 +131,47 @@ export function FlowDocument({
         ]
       : [],
   });
-  const [current, setCurrent] = useState(preview.screen ?? flow.screens[0]?.screen.id ?? '');
+  const {
+    current: { screenId: current, elements: selected },
+    select,
+    link,
+  } = useFlowSelection(flow.screens, preview);
   const active = flow.screens.find((s) => s.screen.id === current) ?? flow.screens[0];
-  const [selected, setSelectedState] = useState<string[]>(preview.selection ?? []);
   const [trail, setTrail] = useState<string[]>(preview.history ?? []);
   const [tab, setTab] = useState<'info' | 'comments'>(preview.tab === 'comments' ? 'comments' : 'info');
   const [collapsed, setCollapsed] = useState(preview.collapsed ?? false);
   const [confirmation, setConfirmation] = useState<'elements' | 'screen' | null>(
     preview.confirm === 'screen' ? 'screen' : preview.confirm ? 'elements' : null,
   );
-  const setSelected = (ids: string[]) => {
+  const setSelected = (ids: string[], record = false) => {
     setConfirmation(null);
-    setSelectedState(ids);
+    select(active?.screen.id ?? current, ids, record);
   };
+  const [lastLocation, setLastLocation] = useState<string>();
+  if (lastLocation !== location.key) {
+    setLastLocation(location.key);
+    if (
+      (lastLocation === undefined || navigationType === NavigationType.Pop) &&
+      link &&
+      !link.error &&
+      !location.hash
+    ) {
+      setTab('info');
+      setCollapsed(false);
+      setConfirmation(null);
+    }
+  }
   const [markers, setMarkers] = useState(preview.markers ?? false);
   const [zoom, setZoom] = useState<'fit' | number>(preview.zoom === '100' ? 1 : 'fit');
   const services = useServices();
   const stageRef = useRef<HTMLDivElement>(null);
+  const linkedElement = link?.elementId;
+  useEffect(() => {
+    if (linkedElement && !location.hash)
+      stageRef.current
+        ?.querySelector('[data-linked-element]')
+        ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [linkedElement, location.key, location.hash]);
   const [expanded, setExpanded] = useState<string[]>(preview.expanded ?? []);
   const [dragging, setDragging] = useState<string | null>(preview.drag ?? null);
   const [hover, setHover] = useState<string | null>(preview.hover ?? null);
@@ -173,8 +200,8 @@ export function FlowDocument({
       if (parent) {
         if (active && parent.screen.id !== active.screen.id)
           setTrail([...trail, active.screen.screenId].slice(-7));
-        setCurrent(parent.screen.id);
-        setSelected(parent.screen.id === blockId ? [] : [blockId]);
+        setConfirmation(null);
+        select(parent.screen.id, parent.screen.id === blockId ? [] : [blockId]);
         setTab('info');
         if (reveal) setCollapsed(false);
       }
@@ -183,8 +210,7 @@ export function FlowDocument({
       const parent = flow.screens.find((s) => s.screen.id === screenBlockId);
       if (parent && parent.screen.id !== active?.screen.id) {
         if (active) setTrail([...trail, active.screen.screenId].slice(-7));
-        setCurrent(parent.screen.id);
-        setSelected([]);
+        select(parent.screen.id, []);
       }
       setHover(null);
       setConfirmation(null);
@@ -198,7 +224,11 @@ export function FlowDocument({
     },
     setPanelCollapsed: setCollapsed,
   }));
-  const targets = useFlowCommentTargets(threads, session.currentBlocks());
+  const targets = useFlowCommentTargets(
+    threads,
+    session.currentBlocks(),
+    state.status === 'saved' ? state.version : undefined,
+  );
   if (!active) throw new Error('화면이 없습니다.');
   const screen = active.screen;
   const element = selected.length === 1 ? active.elements.find((e) => e.id === selected[0]) : undefined;
@@ -306,13 +336,13 @@ export function FlowDocument({
   const navigate = (target: string) => {
     const found = flow.screens.find((s) => s.screen.screenId === target);
     if (found?.screen.id === screen.id) {
-      setSelected([]);
+      setSelected([], true);
       return;
     }
     if (found && found.screen.id !== screen.id) {
       setTrail([...trail, screen.screenId].slice(-7));
-      setCurrent(found.screen.id);
-      setSelected([]);
+      setConfirmation(null);
+      select(found.screen.id, [], true);
     }
   };
   const travel = (back: boolean) => {
@@ -322,8 +352,12 @@ export function FlowDocument({
       const restoredScreen = restored.screens.find((s) => s.screen.id === current) ?? restored.screens[0];
       onCommit({ ...restored, settings: flow.settings }, false);
       if (restoredScreen) {
-        setCurrent(restoredScreen.screen.id);
-        setSelected(selected.filter((id) => restoredScreen.elements.some((e) => e.id === id)));
+        setConfirmation(null);
+        select(
+          restoredScreen.screen.id,
+          selected.filter((id) => restoredScreen.elements.some((e) => e.id === id)),
+          true,
+        );
       }
     }
   };
@@ -335,7 +369,10 @@ export function FlowDocument({
       { id, offset: 16, copyName: !paste, width },
     );
     replaceElements([...active.elements, ...copies]);
-    setSelected(copies.map((e) => e.id));
+    setSelected(
+      copies.map((e) => e.id),
+      true,
+    );
     if (paste) clipboard.current = copies;
   };
   const addScreen = (copy = false) => {
@@ -353,8 +390,8 @@ export function FlowDocument({
     const screens = [...flow.screens];
     screens.splice(screens.indexOf(active) + 1, 0, fresh);
     onCommit({ settings: { ...flow.settings, nextScreen: flow.settings.nextScreen + 1 }, screens });
-    setCurrent(fresh.screen.id);
-    setSelected([]);
+    setConfirmation(null);
+    select(fresh.screen.id, [], true);
   };
   return (
     <section
@@ -411,7 +448,11 @@ export function FlowDocument({
         </button>
         <div className="flow-screen-buttons">
           {flow.screens.map((s) => (
-            <button key={s.screen.id} aria-pressed={s === active} onClick={() => navigate(s.screen.screenId)}>
+            <button
+              key={s.screen.id}
+              aria-pressed={s === active && !link?.error}
+              onClick={() => navigate(s.screen.screenId)}
+            >
               <span>{s.screen.screenId}</span>
               {s.screen.name}
               <FlowCommentBadge
@@ -429,7 +470,7 @@ export function FlowDocument({
               />
             </button>
           ))}
-          {edit && (
+          {edit && !link?.error && (
             <button className="flow-add-screen" onClick={() => addScreen()}>
               <FlowIcon name="plus" size={14} />
               화면 추가
@@ -448,7 +489,15 @@ export function FlowDocument({
           <FlowIcon name="right" />
         </button>
       </nav>
-      <div className="flow-layout">
+      {link?.error && (
+        <div role="status" className="flow-delete-confirm">
+          <span>{link.error}</span>
+          <button type="button" onClick={() => select(screen.id, [], true)}>
+            {link.screenId ? '화면 보기' : '첫 화면 보기'}
+          </button>
+        </div>
+      )}
+      <div className="flow-layout" style={link?.error ? { display: 'none' } : undefined}>
         <section className="flow-preview">
           <div className={edit ? 'flow-toolbar' : 'flow-toolbar is-view'}>
             <button
@@ -547,7 +596,7 @@ export function FlowDocument({
                       onClick={() => {
                         const e = newElement(id(), kind as FlowKind, width, height, element);
                         replaceElements([...active.elements, e]);
-                        setSelected([e.id]);
+                        setSelected([e.id], true);
                       }}
                     >
                       <FlowIcon name="plus" size={13} />
@@ -748,7 +797,7 @@ export function FlowDocument({
                           setMarquee(null);
                           setGuides([]);
                           if (gesture.current && !gesture.current.moved && gesture.current.clickSelection)
-                            setSelected(gesture.current.clickSelection);
+                            setSelected(gesture.current.clickSelection, true);
                           if (gesture.current?.moved) {
                             history.record(gesture.current.before);
                           }
@@ -797,6 +846,9 @@ export function FlowDocument({
                         {active.elements.map((e) => (
                           <div
                             key={e.id}
+                            data-linked-element={
+                              linkedElement === e.id && selected.includes(e.id) ? '' : undefined
+                            }
                             className={`flow-element kind-${e.kind} look-${e.look ?? 'normal'} ${selected.includes(e.id) || hover === e.id ? 'selected' : ''}`}
                             style={{
                               left: e.x,
@@ -849,7 +901,7 @@ export function FlowDocument({
                                 );
                               else if (!selected.includes(e.id)) setSelected(ids);
                               if (e.pinned) {
-                                if (!event.shiftKey) setSelected(ids);
+                                if (!event.shiftKey) setSelected(ids, true);
                                 gesture.current = null;
                                 return;
                               }
@@ -875,7 +927,7 @@ export function FlowDocument({
                               )
                                 navigate(to);
                               else {
-                                setSelected([e.id]);
+                                setSelected([e.id], true);
                                 setCollapsed(false);
                                 setTab('info');
                               }
@@ -934,7 +986,7 @@ export function FlowDocument({
                                   onPointerDown={(event) => event.stopPropagation()}
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    setSelected([e.id]);
+                                    setSelected([e.id], true);
                                     setCollapsed(false);
                                     setTab('info');
                                   }}
@@ -1054,8 +1106,10 @@ export function FlowDocument({
             </div>
             <div className="flow-panel-body">
               <div hidden={tab !== 'info'}>
+                <FlowSelectionLink screenId={screen.id} />
+                {element && <FlowSelectionLink screenId={screen.id} elementId={element.id} />}
                 {selected.length > 0 && (
-                  <button className="flow-back-detail" onClick={() => setSelected([])}>
+                  <button className="flow-back-detail" onClick={() => setSelected([], true)}>
                     <FlowIcon name="left" size={14} />
                     {selected.length > 1 ? '선택 풀고 ' : ''}
                     {screen.screenId} {screen.name} 화면 {edit ? '속성' : '설명으로'}
@@ -1114,9 +1168,11 @@ export function FlowDocument({
                   <>
                     <div className="flow-detail">
                       <div className="flow-detail-title">
-                        <span className="flow-number">
-                          {numbers.findIndex((e) => e.id === element.id) + 1}
-                        </span>
+                        {element.annotated && (
+                          <span className="flow-number">
+                            {numbers.findIndex((e) => e.id === element.id) + 1}
+                          </span>
+                        )}
                         <h2>{element.label}</h2>
                         <span className="flow-kind-chip">{KINDS[element.kind]}</span>
                       </div>
@@ -1172,7 +1228,7 @@ export function FlowDocument({
                             : [...expanded, elementId],
                         )
                       }
-                      onSelect={(e) => setSelected([e.id])}
+                      onSelect={(e) => setSelected([e.id], true)}
                       onHover={setHover}
                       onNavigate={navigate}
                     />
@@ -1199,7 +1255,7 @@ export function FlowDocument({
                               remaining[Math.min(flow.screens.indexOf(active), remaining.length - 1)];
                             onCommit({ ...flow, screens: remaining });
                             if (fallback) {
-                              setCurrent(fallback.screen.id);
+                              select(fallback.screen.id, [], true);
                               const past = trail.filter((id) => id !== screen.screenId);
                               setTrail(
                                 (past.at(-1) === fallback.screen.screenId ? past.slice(0, -1) : past).slice(
@@ -1208,8 +1264,10 @@ export function FlowDocument({
                               );
                             }
                             setHover(null);
-                          } else replaceElements(active.elements.filter((e) => !selected.includes(e.id)));
-                          setSelected([]);
+                          } else {
+                            replaceElements(active.elements.filter((e) => !selected.includes(e.id)));
+                            setSelected([], true);
+                          }
                           setConfirmation(null);
                         }}
                       >

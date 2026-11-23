@@ -12,7 +12,9 @@ import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetMediaType
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetOrigin
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.InvalidDocumentException
 import xyz.robinjoon.agentdocs.workspace.domain.document.history.RevisionKind
 import xyz.robinjoon.agentdocs.workspace.domain.space.Space
@@ -48,6 +50,33 @@ class DrawingAssetGuardTest {
     ) {
         val document = PersistenceFixtures.document(space.id, "drawing-${UUID.randomUUID()}", listOf(drawing))
         database.inTransaction { documents.add(document, PersistenceFixtures.revisionOf(document)) }
+    }
+
+    @Test
+    fun `design icons must be uploaded SVGs within the document space`() {
+        val svg = uploaded(fixture.source, AssetMediaType.SVG)
+        val png = uploaded(fixture.source, AssetMediaType.PNG)
+        val foreign = uploaded(fixture.target, AssetMediaType.SVG)
+        val saved = saveDesign(svg.id)
+        assertThat(saved.blocks).hasSize(2)
+        val retained = database.inTransaction { ExposedDocumentAssetStore().references(saved.id) }
+        assertThat(retained).containsExactly(svg.id)
+        for (id in listOf(png.id, foreign.id, AssetId(UUID.randomUUID()))) {
+            assertThatThrownBy { saveDesign(id) }.isInstanceOf(InvalidDocumentException::class.java)
+        }
+    }
+
+    private fun saveDesign(icon: AssetId): Document {
+        val draft = PersistenceFixtures.document(fixture.source.id, "icons-$icon", emptyList())
+        val settings = FlowDesignBlock.parse(BlockId("settings"), """{"kind":"settings","id":"defaults","modelVersion":4}""")
+        val screen =
+            FlowDesignBlock.parse(
+                BlockId("screen01"),
+                """{"kind":"screen","id":"home","code":"F-01",
+            "root":{"kind":"icon","id":"search","icon":{"svgAsset":"$icon"}}}""",
+            )
+        val doc = Document.create(draft.id, draft.header.copy(type = "flow"), listOf(settings, screen), PersistenceFixtures.at)
+        return database.inTransaction { documents.add(doc, PersistenceFixtures.revisionOf(doc)) }
     }
 
     @Test

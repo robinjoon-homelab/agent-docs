@@ -12,6 +12,7 @@ internal object ThreadsTable : Table("threads") {
     val documentId = javaUUID("document_id")
     val anchorKind = varchar("anchor_kind", 10)
     val anchorBlock = varchar("anchor_block", 16).nullable()
+    val anchorViewedState = varchar("anchor_viewed_state", 16).nullable()
     val anchorRow = varchar("anchor_row", 16).nullable()
     val anchorColumn = varchar("anchor_column", 16).nullable()
     val anchorStart = integer("anchor_start").nullable()

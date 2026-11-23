@@ -6,6 +6,7 @@ import type {
   FlowScreenBlock,
   FlowSettingsBlock,
 } from '../document/block';
+import { isDesignFlow } from './newDesignFlow';
 export const FRAMES: Record<FlowFrame, readonly [string, number, number]> = {
   phone: ['휴대폰', 390, 844],
   phoneSmall: ['작은 휴대폰', 360, 800],
@@ -189,6 +190,14 @@ export function newElement(
 
 /** The sequence survives undo, deletion, and a stale client attempting to lower it. */
 export function normalizeFlow(blocks: readonly Block[], previous: readonly Block[] = []): Block[] {
+  if (isDesignFlow(blocks)) {
+    if (
+      !blocks.some((b) => b.design.kind === 'screen') ||
+      new Set(blocks.map((b) => b.design.id)).size !== blocks.length
+    )
+      throw new Error('디자인 문서에는 고유한 블록 ID와 화면이 필요합니다.');
+    return [...blocks];
+  }
   const flow = readFlow(blocks);
   const old = previous[0];
   const highest = Math.max(...flow.screens.map((s) => Number(s.screen.screenId.split('-').at(-1))));

@@ -46,6 +46,7 @@ class RevisionCommandsTest {
             spaces,
             mockk<ThreadRepository>(),
             WriteJournal(activity, operations, WorkspaceFixtures.clock),
+            mockk(),
         )
     private val old = paragraph("block1", "Old")
     private val unrelated = paragraph("other1", "Unrelated")

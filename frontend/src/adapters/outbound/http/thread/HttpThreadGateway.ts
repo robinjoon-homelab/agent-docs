@@ -36,7 +36,12 @@ export function toAnchor(value: unknown): Anchor {
         quote: str(source, 'quote'),
       };
     case 'block':
-      return { kind, blockId: str(source, 'blockId'), quote: optStr(source, 'quote') ?? '' };
+      return {
+        kind,
+        blockId: str(source, 'blockId'),
+        quote: optStr(source, 'quote') ?? '',
+        ...(source.viewedStateId == null ? {} : { viewedStateId: str(source, 'viewedStateId') }),
+      };
     case 'document':
       return { kind };
   }
@@ -113,6 +118,12 @@ export function toThread(value: unknown): Thread {
     id: str(source, 'id'),
     documentId: str(source, 'documentId'),
     ...(typeof source.anchoredRevision === 'number' ? { anchoredRevision: source.anchoredRevision } : {}),
+    ...(typeof source.target === 'string' && typeof source.targetVersion === 'number'
+      ? {
+          target: oneOf(source, 'target', ['ok', 'changed', 'elementDeleted', 'screenDeleted'] as const),
+          targetVersion: source.targetVersion,
+        }
+      : {}),
     anchor: toAnchor(source.anchor),
     resolution: toResolution(source.resolution),
     status: oneOf(source, 'status', STATUSES),
@@ -154,9 +165,11 @@ export class HttpThreadGateway implements ThreadGateway {
     );
   }
 
-  async list(documentId: string, status?: ThreadStatus): Promise<Thread[]> {
+  async list(documentId: string, status?: ThreadStatus, flowTargets?: boolean): Promise<Thread[]> {
     return list(
-      await this.http.get(`/api/documents/${segment(documentId)}/threads${query({ status })}`),
+      await this.http.get(
+        `/api/documents/${segment(documentId)}/threads${query({ status, flowTargets: flowTargets || undefined })}`,
+      ),
       toThread,
     );
   }

@@ -4,6 +4,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
 import xyz.robinjoon.agentdocs.workspace.domain.document.Paragraph
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditConflictException
@@ -12,6 +13,17 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.MarkdownReader
 
 class SuggestionPatchTest {
     private val block = Paragraph(BlockId("intro1"), InlineText("hello **world** and world"))
+
+    @Test
+    fun `changing an annotation description preserves drawing identity and requires its viewed state`() {
+        val annotation = FlowDesignBlock.parse(BlockId("annot1"), """{"kind":"annotation","id":"a","screen":"s","description":"old"}""")
+        val state = FlowDesignBlock.parse(BlockId("state1"), """{"kind":"state","id":"on","screen":"s"}""")
+        val basis = SuggestionBasis(Anchor.Whole(annotation.id, "", state.id), BlockMarkdown.hash(annotation), "old", "new")
+        val changed = SuggestionPatch.apply(listOf(annotation, state), basis).filterIsInstance<FlowDesignBlock>()
+        assertThat(changed.first()).isEqualTo(annotation.withFields(annotation.fields + ("description" to "new")))
+        assertThat(changed.last()).isEqualTo(state)
+        assertThatThrownBy { SuggestionPatch.apply(listOf(annotation), basis) }.isInstanceOf(EditConflictException::class.java)
+    }
 
     @Test
     fun `whole table suggestions reject replacement by a paragraph`() {

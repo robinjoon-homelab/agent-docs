@@ -1,0 +1,165 @@
+{
+  "id": "save-button",
+  "blocks": [
+    {
+      "kind": "settings",
+      "id": "settings",
+      "modelVersion": 4,
+      "frame": "desktop",
+      "idPrefix": "F",
+      "nextScreen": 2
+    },
+    {
+      "id": "theme",
+      "kind": "tokens",
+      "entries": [
+        {
+          "id": "accent",
+          "name": "accent",
+          "type": "color",
+          "value": "#6542C1"
+        }
+      ],
+      "styles": [
+        {
+          "id": "action",
+          "name": "action",
+          "value": {
+            "fill": {
+              "token": "accent"
+            },
+            "text": {
+              "color": "#fff"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "button",
+      "kind": "component",
+      "name": "버튼",
+      "props": [
+        {
+          "id": "caption",
+          "name": "caption",
+          "type": "text"
+        }
+      ],
+      "root": {
+        "id": "n1",
+        "kind": "box",
+        "alias": "body",
+        "layout": {
+          "mode": "row",
+          "gap": 6
+        },
+        "children": [
+          {
+            "id": "n2",
+            "alias": "mark",
+            "kind": "group",
+            "viewBox": {
+              "x": 0,
+              "y": 0,
+              "width": 16,
+              "height": 16,
+              "fit": "contain"
+            },
+            "size": {
+              "x": {
+                "mode": "fixed",
+                "px": 16
+              },
+              "y": {
+                "mode": "fixed",
+                "px": 16
+              }
+            },
+            "children": [
+              {
+                "id": "n3",
+                "alias": "check",
+                "kind": "vector",
+                "fillRule": "nonzero",
+                "contours": [
+                  {
+                    "id": "contour",
+                    "closed": false,
+                    "vertices": [
+                      {
+                        "id": "v1",
+                        "x": 2,
+                        "y": 7
+                      },
+                      {
+                        "id": "v2",
+                        "x": 5,
+                        "y": 10
+                      },
+                      {
+                        "id": "v3",
+                        "x": 12,
+                        "y": 3
+                      }
+                    ]
+                  }
+                ],
+                "style": {
+                  "fills": [],
+                  "strokes": [
+                    {
+                      "id": "stroke",
+                      "width": 2,
+                      "cap": "round",
+                      "paint": {
+                        "id": "ink",
+                        "kind": "solid",
+                        "color": "#fff"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "n4",
+            "kind": "text",
+            "text": {
+              "prop": "caption"
+            },
+            "alias": "label"
+          }
+        ],
+        "role": "button",
+        "sharedStyle": "action"
+      }
+    },
+    {
+      "kind": "screen",
+      "id": "screen",
+      "code": "F-01",
+      "name": "메모 작성",
+      "root": {
+        "id": "n1",
+        "kind": "box",
+        "alias": "form",
+        "layout": {
+          "mode": "column"
+        },
+        "children": [
+          {
+            "id": "n2",
+            "alias": "save",
+            "kind": "instance",
+            "component": "button",
+            "inputs": {
+              "caption": "메모 저장"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

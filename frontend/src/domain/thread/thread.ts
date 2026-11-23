@@ -18,7 +18,12 @@ export type CellAnchor = {
  * `quote` is the start of the block's text when the thread was placed, as the server keeps it; a new anchor the
  * client is about to send has none.
  */
-export type BlockAnchor = { readonly kind: 'block'; readonly blockId: string; readonly quote?: string };
+export type BlockAnchor = {
+  readonly kind: 'block';
+  readonly blockId: string;
+  readonly quote?: string;
+  readonly viewedStateId?: string;
+};
 export type DocumentAnchor = { readonly kind: 'document' };
 
 export type Anchor = TextAnchor | CellAnchor | BlockAnchor | DocumentAnchor;
@@ -61,6 +66,8 @@ export type Suggestion = SuggestionInput & {
 };
 
 export type Thread = {
+  readonly target?: 'ok' | 'changed' | 'elementDeleted' | 'screenDeleted';
+  readonly targetVersion?: number;
   readonly anchoredRevision?: number;
   readonly claim?: ThreadClaim | null;
   readonly reactions?: readonly ThreadReaction[];

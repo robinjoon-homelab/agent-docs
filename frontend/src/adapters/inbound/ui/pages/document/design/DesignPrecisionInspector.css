@@ -1,0 +1,24 @@
+.design-precision {
+  border-block-start: 1px solid var(--border);
+  margin-block-start: 12px;
+  padding-block-start: 10px;
+}
+.design-precision > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.design-precision[open] > summary {
+  margin-block-end: 8px;
+}
+.design-precision select {
+  max-width: 100%;
+}
+.design-precision-inputs,
+.design-precision-colors {
+  display: grid;
+  gap: 6px;
+}
+.design-precision-colors {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}

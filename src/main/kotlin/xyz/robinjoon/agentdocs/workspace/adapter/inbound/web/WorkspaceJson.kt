@@ -5,6 +5,7 @@ import xyz.robinjoon.agentdocs.application.model.ActivityActorKind
 import xyz.robinjoon.agentdocs.workspace.application.model.ActivityView
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListing
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentView
+import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceOverview
 import xyz.robinjoon.agentdocs.workspace.domain.Access
@@ -17,6 +18,42 @@ import xyz.robinjoon.agentdocs.workspace.domain.space.Space
 
 // Response shapes shared by the workspace endpoints. Enum values are written in lowercase.
 object WorkspaceJson {
+    fun writeResult(
+        written: DocumentWrite,
+        all: Boolean = false,
+    ): Map<String, Any?> {
+        val changed = written.changedBlocks.toSet()
+        val blocks =
+            written.document.blocks.filter { all || it.id in changed }.map {
+                mapOf(
+                    "id" to it.id.value,
+                    "hash" to BlockJson.write(it)["hash"],
+                )
+            }
+        return mapOf(
+            "documentId" to written.document.id.value,
+            "type" to written.document.header.type,
+            "warnings" to WorkspaceJson.warnings(written),
+            "revision" to written.revision,
+            "version" to written.document.version,
+            "unchanged" to written.unchanged,
+            "changedBlockIds" to written.changedBlocks.map { it.value },
+            "blocks" to blocks,
+            "alsoChanged" to written.related.map(WorkspaceJson::related),
+        )
+    }
+
+    fun warnings(write: xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite): List<Map<String, String>> {
+        val warnings =
+            write.designWarnings +
+                xyz.robinjoon.agentdocs.workspace.domain.document.FlowWarnings
+                    .of(write.document.blocks)
+        return warnings.map { warning ->
+            val fields = mapOf("blockId" to warning.blockId.value, "code" to warning.code)
+            warning.detail?.let { fields + ("detail" to it) } ?: fields
+        }
+    }
+
     fun actor(actor: Actor): Map<String, Any?> =
         mapOf(
             "kind" to actor.kind.name.lowercase(),

@@ -1,6 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.domain.thread
 
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.TableBlock
 import kotlin.math.abs
 
@@ -24,20 +25,26 @@ object AnchorResolver {
             }
 
             is Anchor.Whole -> {
-                if (blocks.any { it.id == anchor.blockId }) {
-                    AnchorResolution.Attached(
-                        null,
-                        null,
-                    )
-                } else {
-                    AnchorResolution.Detached
-                }
+                whole(anchor, blocks)
             }
 
             Anchor.Document -> {
                 AnchorResolution.Attached(null, null)
             }
         }
+
+    private fun whole(
+        anchor: Anchor.Whole,
+        blocks: List<Block>,
+    ): AnchorResolution {
+        val block = blocks.find { it.id == anchor.blockId } ?: return AnchorResolution.Detached
+        val stateId = anchor.viewedStateId ?: return AnchorResolution.Attached(null, null)
+        val state = blocks.find { it.id == stateId } as? FlowDesignBlock ?: return AnchorResolution.Detached
+        if (block !is FlowDesignBlock || block.kind != "annotation" || state.kind != "state") return AnchorResolution.Detached
+        if (block.string("screen") != state.string("screen")) return AnchorResolution.Detached
+        val own = block.string("state")
+        return if (own == null || own == state.designId) AnchorResolution.Attached(null, null) else AnchorResolution.Detached
+    }
 
     private fun text(
         anchor: Anchor.Text,

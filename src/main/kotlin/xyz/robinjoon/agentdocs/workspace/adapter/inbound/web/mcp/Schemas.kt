@@ -29,5 +29,11 @@ internal object Schemas {
 
     fun obj(description: String): Map<String, Any> = mapOf("type" to "object", "description" to description)
 
+    fun obj(
+        description: String,
+        properties: Map<String, Any>,
+    ): Map<String, Any> =
+        mapOf("type" to "object", "properties" to properties, "additionalProperties" to false, "description" to description)
+
     val operationId = string("Optional idempotency key. Retrying with the same opId applies the write once and returns the first result.")
 }

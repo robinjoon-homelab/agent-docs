@@ -10,20 +10,42 @@ import xyz.robinjoon.agentdocs.workspace.application.model.AssetContentMissingEx
 import xyz.robinjoon.agentdocs.workspace.application.model.ExportAsset
 import xyz.robinjoon.agentdocs.workspace.application.model.ExportAssetMissingException
 import xyz.robinjoon.agentdocs.workspace.application.model.ExportDocument
+import xyz.robinjoon.agentdocs.workspace.application.model.FlowDraftContent
 import xyz.robinjoon.agentdocs.workspace.application.model.WorkspaceExport
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
 import xyz.robinjoon.agentdocs.workspace.domain.asset.AssetId
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
 import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.ImageBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineText
 import xyz.robinjoon.agentdocs.workspace.domain.document.Paragraph
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
+import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.MarkdownReader
 import java.io.ByteArrayInputStream
 import java.util.UUID
 import java.util.zip.ZipInputStream
 
 class ZipExportArchiveTest {
+    @Test
+    fun `exported design markdown reimports its original outer and model ids`() {
+        val config =
+            FlowDesignBlock.parse(
+                BlockId("config"),
+                """{"kind":"settings","id":"theme","modelVersion":4,"frame":"desktop","idPrefix":"S","nextScreen":2}""",
+            )
+        val note = FlowDesignBlock.parse(BlockId("note01"), """{"id":"welcome","kind":"screen","code":"S-01","name":"환영","frame":"note"}""")
+        val snapshot = WorkspaceExport(emptyMap(), mapOf("doc" to ExportDocument("흐름", listOf(config, note))), emptyList())
+        val archive = ZipExportArchive(JsonMapper.builder().build(), mockk()).zip(snapshot)
+        val parsed =
+            ZipInputStream(ByteArrayInputStream(archive)).use { zip ->
+                generateSequence { zip.nextEntry }.first { it.name == "markdown/doc.md" }
+                MarkdownReader.read(zip.readBytes().toString(Charsets.UTF_8))
+            }
+        assertThat(parsed.frontMatter.text("type")).isEqualTo("flow")
+        assertThat(FlowDraftContent.markdown(parsed.blocks, "phone", "M")).containsExactly(config, note)
+    }
+
     @Test
     fun `only attachment destinations are rewritten in reading markdown`() {
         val asset = AssetId(UUID.fromString("12345678-abcd-4321-8765-567890abcdef"))

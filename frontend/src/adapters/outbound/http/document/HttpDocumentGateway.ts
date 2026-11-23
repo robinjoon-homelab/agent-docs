@@ -239,6 +239,10 @@ export class HttpDocumentGateway implements DocumentGateway {
     return toDocument(await this.http.get(`/api/documents/${segment(documentId)}`));
   }
 
+  async upgradeFlow(documentId: string, baseVersion: number, opId: string): Promise<void> {
+    await this.http.post(`/api/documents/${segment(documentId)}/flow-design/upgrade`, { baseVersion, opId });
+  }
+
   async saveContent(
     documentId: string,
     baseVersion: number,

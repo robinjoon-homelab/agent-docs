@@ -12,4 +12,5 @@ data class ThreadView(
     val context: ThreadContext?,
     val written: CommentId? = null,
     val target: String? = null,
+    val targetVersion: Int? = null,
 )

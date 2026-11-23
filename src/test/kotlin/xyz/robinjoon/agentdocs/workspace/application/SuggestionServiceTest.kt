@@ -36,7 +36,7 @@ class SuggestionServiceTest {
     private val operations = mockk<OperationStore>()
     private val activity = mockk<ActivityReporter>()
     private val inbox = mockk<InboxRepository>()
-    private val service = SuggestionService(threads, documents, WriteJournal(activity, operations, WorkspaceFixtures.clock), inbox)
+    private val service = SuggestionService(threads, documents, WriteJournal(activity, operations, WorkspaceFixtures.clock), inbox, mockk())
     private val block = WorkspaceFixtures.paragraph("intro1", "hello world")
     private var document = WorkspaceFixtures.document(listOf(block), 3)
     private val now = WorkspaceFixtures.now

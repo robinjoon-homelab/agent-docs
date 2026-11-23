@@ -3,6 +3,8 @@ package xyz.robinjoon.agentdocs.workspace.domain.document.markdown
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 
 // The content version stays stable when pending input is confirmed without changing the body.
@@ -20,6 +22,9 @@ object DocumentMarkdown {
         blocks: List<Block>,
     ): Sequence<String> {
         val header = document.header
+        val settings = document.blocks.firstOrNull()
+        val frame = (settings as? FlowSettings)?.frame ?: (settings as? FlowDesignBlock)?.string("frame")
+        val prefix = (settings as? FlowSettings)?.idPrefix ?: (settings as? FlowDesignBlock)?.string("idPrefix")
         val entries =
             listOfNotNull(
                 "id" to document.id.toString(),
@@ -27,14 +32,8 @@ object DocumentMarkdown {
                 "path" to header.path.value,
                 "title" to FrontMatter.quote(header.title),
                 ("type" to header.type).takeIf { header.type == "flow" },
-                (document.blocks.firstOrNull() as? xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings)?.let {
-                    "frame" to
-                        it.frame
-                },
-                (document.blocks.firstOrNull() as? xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings)?.let {
-                    "idPrefix" to
-                        FrontMatter.quote(it.idPrefix)
-                },
+                frame?.let { "frame" to it },
+                prefix?.let { "idPrefix" to FrontMatter.quote(it) },
                 "status" to
                     header.properties.status.name
                         .lowercase(),

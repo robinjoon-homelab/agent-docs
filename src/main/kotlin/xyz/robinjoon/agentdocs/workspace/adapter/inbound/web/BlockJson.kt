@@ -12,6 +12,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.CodeBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.ColumnAlignment
 import xyz.robinjoon.agentdocs.workspace.domain.document.Divider
 import xyz.robinjoon.agentdocs.workspace.domain.document.DrawingBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
@@ -73,11 +74,12 @@ object BlockJson {
             "flowSettings" to FlowBlockJson::settings,
             "flowScreen" to FlowBlockJson::screen,
             "flowElement" to FlowBlockJson::element,
+            "flowDesign" to { id, node -> FlowDesignBlock.parse(id, node.path("design").toString()) },
         )
 
     private fun fieldsOf(block: Block): Map<String, Any?> =
         when (block) {
-            is FlowSettings, is FlowScreen, is FlowElement -> {
+            is FlowDesignBlock, is FlowSettings, is FlowScreen, is FlowElement -> {
                 FlowBlockData.fields(block)
             }
 
@@ -170,7 +172,7 @@ object BlockJson {
             is ImageBlock -> "image"
             is DrawingBlock -> "drawing"
             is Divider -> "divider"
-            is FlowSettings, is FlowScreen, is FlowElement -> FlowBlockData.type(block)
+            is FlowDesignBlock, is FlowSettings, is FlowScreen, is FlowElement -> FlowBlockData.type(block)
         }
 
     private fun asset(

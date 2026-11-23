@@ -1,6 +1,5 @@
 package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp
 
-import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.BlockJson
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.EditJson
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.EditStatisticsRecorder
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.McpToolResult
@@ -240,30 +239,5 @@ internal object WriteResults {
     fun of(
         written: DocumentWrite,
         all: Boolean,
-    ): McpToolResult {
-        val changed = written.changedBlocks.toSet()
-        val blocks =
-            written.document.blocks.filter { all || it.id in changed }.map {
-                mapOf(
-                    "id" to it.id.value,
-                    "hash" to BlockJson.write(it)["hash"],
-                )
-            }
-        return McpToolResult.data(
-            mapOf(
-                "documentId" to written.document.id.value,
-                "type" to written.document.header.type,
-                "warnings" to
-                    xyz.robinjoon.agentdocs.workspace.domain.document.FlowWarnings.of(written.document.blocks).map {
-                        mapOf("blockId" to it.blockId.value, "code" to it.code)
-                    },
-                "revision" to written.revision,
-                "version" to written.document.version,
-                "unchanged" to written.unchanged,
-                "changedBlockIds" to written.changedBlocks.map { it.value },
-                "blocks" to blocks,
-                "alsoChanged" to written.related.map(WorkspaceJson::related),
-            ),
-        )
-    }
+    ): McpToolResult = McpToolResult.data(WorkspaceJson.writeResult(written, all))
 }

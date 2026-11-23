@@ -7,6 +7,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.ExportDocument
 import xyz.robinjoon.agentdocs.workspace.application.model.WorkspaceExport
 import xyz.robinjoon.agentdocs.workspace.application.port.output.AssetStore
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ExportArchive
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipEntry
@@ -44,6 +45,9 @@ class ZipExportArchive(
         paths: Map<String, String>,
         bindings: List<Map<String, Any?>>,
     ): String {
+        if (document.blocks.firstOrNull() is FlowDesignBlock) {
+            return "---\ntype: flow\n---\n\n" + BlockMarkdown.write(document.blocks, annotated = true)
+        }
         val boundPaths =
             bindings.associate {
                 it.getValue("referenced_asset_id") to

@@ -9,6 +9,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationResultState
+import xyz.robinjoon.agentdocs.workspace.application.model.PatchedDesignTarget
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionLabel
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceReference
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
@@ -21,6 +22,7 @@ import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundExc
 import xyz.robinjoon.agentdocs.workspace.application.port.input.StaleRevisionException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.ThreadNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
+import xyz.robinjoon.agentdocs.workspace.application.port.output.FlowDesignValidator
 import xyz.robinjoon.agentdocs.workspace.application.port.output.RevisionCatalog
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.ThreadRepository
@@ -34,6 +36,9 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentHeader
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowRules
+import xyz.robinjoon.agentdocs.workspace.domain.document.LegacyFlowUpgrade
 import xyz.robinjoon.agentdocs.workspace.domain.document.PathTakenException
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.DocumentEditor
 import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
@@ -59,9 +64,28 @@ class DocumentService(
     private val spaces: SpaceRepository,
     private val threads: ThreadRepository,
     private val journal: WriteJournal,
+    private val designs: FlowDesignValidator,
 ) : DocumentUseCase {
     private val tree = DocumentTree(documents, journal)
     private val pending = PendingEdits(documents, journal)
+
+    @Transactional
+    override fun upgradeFlow(
+        context: WriteContext,
+        id: DocumentId,
+        baseVersion: Int,
+    ): DocumentWrite {
+        journal.replayed(context, UPGRADE_FLOW)?.let { return replay(context.access, it) }
+        val document = lockForEdit(context.access, id)
+        if (document.header.type != "flow") throw InvalidRequestException("only a flow document can be upgraded")
+        if (document.blocks.firstOrNull() is FlowDesignBlock) {
+            return remember(context, UPGRADE_FLOW, unchanged(document))
+        }
+        requireVersion(document, baseVersion)
+        val upgraded = LegacyFlowUpgrade.convert(document.blocks)
+        val written = write(context, document, Content(document.header, upgraded), WriteMode.EDIT)
+        return remember(context, UPGRADE_FLOW, written)
+    }
 
     @Transactional
     override fun create(
@@ -73,10 +97,11 @@ class DocumentService(
         val target = spaces.findBySlug(space)?.takeIf { context.access.sees(it.id) } ?: throw SpaceNotFoundException(space)
         Permissions.require(context.access, target.id, Permission.EDIT, "writing documents")
         requirePathFree(target.id, draft.path, null)
-        val parents = tree.fillParents(context, target.id, draft.path)
         val now = journal.now()
         val header = DocumentHeader(target.id, draft.path, draft.title.trim(), draft.properties, draft.type)
         val document = Document.create(DocumentId(UUID.randomUUID()), header, draft.blocks, now)
+        val warnings = designs.validateContent(document.id, document.blocks)
+        val parents = tree.fillParents(context, target.id, draft.path)
         val change = RevisionChange.of(originOf(context, target.id), context.summary ?: "문서 생성", document.blocks.map { it.id }, now)
         val saved = documents.add(document, Revision.of(document, change))
         journal.confirmed(saved, change)
@@ -90,6 +115,7 @@ class DocumentService(
                 unchanged = false,
                 related = parents,
                 space = SpaceReference(target.id, target.slug, target.profile.name),
+                designWarnings = warnings,
             )
         return remember(context, CREATE, written)
     }
@@ -115,14 +141,17 @@ class DocumentService(
         operations: List<EditOperation>,
         answering: ThreadId?,
     ): DocumentWrite {
-        journal.replayed(context, EDIT)?.let { return replay(context.access, it) }
+        val field = (operations.singleOrNull() as? EditOperation.DesignField)?.patch
+        val kind = if (field == null) EDIT else "document.designField"
+        journal.replayed(context, kind)?.let { return replay(context.access, it) }
         val document = lockForEdit(context.access, id)
         val thread = answering?.let { lockThreadOf(document, it) }
         thread?.requireAvailable(context.access.actor, journal.now())
         val result =
             write(context, document, Content(document.header, DocumentEditor.apply(document.blocks, operations)), WriteMode.EDIT)
         if (thread != null && !result.unchanged) linkAnswer(context, thread, result)
-        return remember(context, EDIT, result)
+        val target = field?.let { PatchedDesignTarget(it.screen, it.state, it.target, it.field.vertex) }
+        return remember(context, kind, result.copy(designPatch = target))
     }
 
     @Transactional
@@ -213,8 +242,22 @@ class DocumentService(
         val target = revisions.find(id, revision) ?: throw RevisionNotFoundException("$id rev $revision")
         val header = document.header.copy(title = target.content.header.title, properties = target.content.header.properties)
         val restoring = context.copy(summary = context.summary ?: "rev $revision 내용으로 복원")
-        return remember(context, RESTORE, write(restoring, document, Content(header, target.content.blocks), WriteMode.RESTORE))
+        val blocks = restoredBlocks(document.blocks, target.content.blocks)
+        return remember(context, RESTORE, write(restoring, document, Content(header, blocks), WriteMode.RESTORE))
     }
+
+    private fun restoredBlocks(
+        current: List<Block>,
+        earlier: List<Block>,
+    ): List<Block> =
+        if (current.firstOrNull() is xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock &&
+            earlier.firstOrNull() is xyz.robinjoon.agentdocs.workspace.domain.document.FlowSettings
+        ) {
+            xyz.robinjoon.agentdocs.workspace.domain.document.LegacyFlowUpgrade
+                .convert(earlier)
+        } else {
+            earlier
+        }
 
     @Transactional
     override fun nameRevision(
@@ -324,17 +367,19 @@ class DocumentService(
     private fun write(
         context: WriteContext,
         document: Document,
-        next: Content,
+        proposed: Content,
         mode: WriteMode,
     ): DocumentWrite {
+        val next = proposed.normalizedDesign(document.blocks)
+        val warnings = designs.validateContent(document.id, next.blocks, document.blocks)
         val now = journal.now()
         val latest = documents.pending(document.id)
         val typing = mode.groupsInput(context)
         val continues = typing && latest != null && pending.continues(latest, context.access.actor, now)
         val current = if (continues || latest == null) document else pending.confirm(document)
-        if (next.blocks == current.blocks && next.header == current.header) return unchanged(current)
+        if (next.blocks == current.blocks && next.header == current.header) return unchanged(current).copy(designWarnings = warnings)
         val changes = BlockDiff.between(current.blocks, next.blocks)
-        if (typing) return type(context, current, next, if (continues) latest else null)
+        if (typing) return type(context, current, next, if (continues) latest else null).copy(designWarnings = warnings)
         val revised = current.revise(next.header, next.blocks, now)
         val summary =
             context.summary ?: ChangeSummary.of(document.header, next.header, changes, BlockDiff.reordered(document.blocks, next.blocks))
@@ -342,7 +387,7 @@ class DocumentService(
         val saved = documents.update(revised, Revision.of(revised, change), amended = false)
         journal.confirmed(saved, change)
         journal.record(context, "document.revised", subjectOf(saved), "${saved.header.title}: ${change.summary}")
-        return DocumentWrite(saved, saved.revision, change.changedBlocks, amended = false, unchanged = false)
+        return DocumentWrite(saved, saved.revision, change.changedBlocks, amended = false, unchanged = false, designWarnings = warnings)
     }
 
     private fun type(
@@ -489,10 +534,21 @@ class DocumentService(
     private data class Content(
         val header: DocumentHeader,
         val blocks: List<Block>,
-    )
+    ) {
+        // Changes to the high-water screen number have their own block hash and must enter the revision diff.
+        fun normalizedDesign(previous: List<Block>): Content =
+            if (blocks === previous ||
+                blocks.firstOrNull() !is FlowDesignBlock
+            ) {
+                this
+            } else {
+                copy(blocks = FlowRules.normalize(blocks, previous))
+            }
+    }
 
     private companion object {
         const val CREATE = "document.create"
+        const val UPGRADE_FLOW = "document.upgrade_flow"
         const val SAVE = "document.save"
         const val EDIT = "document.edit"
         const val HEADER = "document.header"

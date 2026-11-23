@@ -5,12 +5,14 @@ import tools.jackson.databind.json.JsonMapper
 import xyz.robinjoon.agentdocs.workspace.application.model.BlockMark
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.OperationRecord
+import xyz.robinjoon.agentdocs.workspace.application.model.PatchedDesignTarget
 import xyz.robinjoon.agentdocs.workspace.application.model.RelatedChange
 import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.RevisionLabel
 import xyz.robinjoon.agentdocs.workspace.application.model.SpaceReference
 import xyz.robinjoon.agentdocs.workspace.domain.SpaceId
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.DesignJsonReader
 import xyz.robinjoon.agentdocs.workspace.domain.document.Document
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentHeader
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentId
@@ -18,6 +20,8 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentLifecycle
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentPath
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentProperties
 import xyz.robinjoon.agentdocs.workspace.domain.document.DocumentStatus
+import xyz.robinjoon.agentdocs.workspace.domain.document.design.DesignAddress
+import xyz.robinjoon.agentdocs.workspace.domain.document.design.DesignVertexPath
 import xyz.robinjoon.agentdocs.workspace.domain.space.SpaceSlug
 import xyz.robinjoon.agentdocs.workspace.domain.thread.CommentId
 import java.time.Instant
@@ -106,6 +110,23 @@ internal object OperationSnapshotCodec {
             "amended" to write.amended,
             "unchanged" to write.unchanged,
             "merged" to write.merged,
+            "designPatch" to
+                write.designPatch?.let {
+                    mapOf(
+                        "screen" to it.screen.value,
+                        "state" to it.state.value,
+                        "target" to it.address.fields(),
+                        "parts" to it.vertex?.parts(),
+                    )
+                },
+            "designWarnings" to
+                write.designWarnings.map {
+                    mapOf(
+                        "blockId" to it.blockId.value,
+                        "code" to it.code,
+                        "detail" to it.detail,
+                    )
+                },
             "marks" to write.marks.map(::mark),
             "space" to write.space?.let { mapOf("id" to it.id.value.toString(), "slug" to it.slug.value, "name" to it.name) },
             "related" to write.related.map { mapOf("document" to document(it.document), "change" to it.change.name) },
@@ -125,7 +146,26 @@ internal object OperationSnapshotCodec {
                 .fieldNode(
                     "space",
                 )?.let { SpaceReference(SpaceId(UUID.fromString(it.text("id"))), SpaceSlug(it.text("slug")), it.text("name")) },
+            node.path("designWarnings").values().map {
+                xyz.robinjoon.agentdocs.workspace.domain.document.FlowWarning(
+                    BlockId(it.text("blockId")),
+                    it.text("code"),
+                    it.optionalText("detail"),
+                )
+            },
+            node.fieldNode("designPatch")?.let(::readPatch),
         )
+
+    private fun readPatch(node: JsonNode): PatchedDesignTarget {
+        val fields = DesignJsonReader(node.toString()).read()
+        val address = DesignAddress.from(requireNotNull(fields["target"] as? Map<*, *>))
+        return PatchedDesignTarget(
+            BlockId(node.text("screen")),
+            BlockId(node.text("state")),
+            address,
+            fields["parts"]?.let(DesignVertexPath::from),
+        )
+    }
 
     private fun mark(mark: BlockMark): Map<String, Any?> =
         mapOf(

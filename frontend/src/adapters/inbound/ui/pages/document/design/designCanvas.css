@@ -1,0 +1,49 @@
+@import '../../../../../../assets/design-fonts/fonts.css';
+
+.design-canvas {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  box-sizing: border-box;
+  background: white;
+  color: #1f1f1d;
+  font:
+    400 14px/1.5 'Agent Docs Design Sans',
+    sans-serif;
+  text-align: start;
+}
+.design-canvas-viewport {
+  overflow: auto;
+}
+.design-canvas-full {
+  overflow: visible;
+}
+.design-canvas-layer {
+  min-width: auto;
+}
+.design-canvas-layer.is-selected {
+  outline: 2px solid #2f6feb;
+  outline-offset: -2px;
+}
+.design-canvas-layer:focus-visible {
+  outline: 2px solid #2f6feb;
+}
+.design-canvas-media,
+.design-canvas-graphic {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.design-canvas-graphic {
+  overflow: visible;
+}
+.design-canvas-defs {
+  position: absolute;
+  pointer-events: none;
+}
+.design-canvas-fallback {
+  color: #656565;
+}
+.design-canvas-warnings {
+  font-size: 12px;
+}

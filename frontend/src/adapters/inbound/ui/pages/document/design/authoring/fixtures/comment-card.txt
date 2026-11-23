@@ -1,0 +1,5 @@
+<style>:root{--ink:#334455}.body{color:var(--ink);font-size:14px}</style>
+<section id="comment" style="width:320px;padding:8px;box-sizing:content-box">
+  <p id="proposal" class="body">수정 제안: <del style="color:#912929">기존 문구</del> <strong data-run-key="new">새 문구</strong>입니다.</p>
+  <p class="body">같은 글꼴과 색을 씁니다.</p>
+</section>

@@ -18,6 +18,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListPosition
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentListingPage
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentView
 import xyz.robinjoon.agentdocs.workspace.application.model.DocumentWrite
+import xyz.robinjoon.agentdocs.workspace.application.model.FlowQuery
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
@@ -148,15 +149,18 @@ class DocumentController(
     fun markdown(
         @PathVariable id: UUID,
         query: MarkdownQuery,
+        flow: FlowQueryParameters,
         principal: Principal?,
     ): Map<String, Any?> {
+        val flowQuery = flow.flowQuery()
         val request =
             MarkdownRequest(
-                Wire.markdownFormat(query.format),
+                Wire.markdownFormat(query.format, flowQuery),
                 query.section?.let(::BlockId),
                 query.blocks?.map(::BlockId),
                 query.cursor ?: 0,
                 query.revision,
+                flowQuery,
             )
         val chunk = queries.markdown(CallerAccess.of(principal), DocumentId(id), request)
         return mapOf(
@@ -310,7 +314,7 @@ class DocumentController(
         val view =
             WorkspaceJson.view(DocumentView(written.document, space, written.marks)) +
                 WorkspaceJson.permission(access, space.id) +
-                mapOf("alsoChanged" to written.related.map(WorkspaceJson::related))
+                mapOf("alsoChanged" to written.related.map(WorkspaceJson::related)) + flowWarnings(written)
         val captured = written.space ?: return view
         return view + mapOf("space" to mapOf("id" to captured.id.value, "slug" to captured.slug.value, "name" to captured.name))
     }
@@ -335,7 +339,10 @@ class DocumentController(
             "merged" to written.merged,
             "changedBlockIds" to written.changedBlocks.map { it.value },
             "blocks" to written.document.blocks.map(BlockJson::write),
-        )
+        ) + flowWarnings(written)
+
+    private fun flowWarnings(written: DocumentWrite): Map<String, Any?> =
+        if (written.document.header.type == "flow") mapOf("warnings" to WorkspaceJson.warnings(written)) else emptyMap()
 }
 
 // What part of a document to read as markdown, bound from query parameters.
@@ -346,6 +353,23 @@ data class MarkdownQuery(
     val cursor: Int?,
     val revision: Int?,
 )
+
+// docs_read's flowQuery as query parameters: any of them lists matching screens and elements of a flow document
+// instead of its body.
+data class FlowQueryParameters(
+    val flowText: String?,
+    val flowKind: String?,
+    val flowScreen: String?,
+    val flowLimit: Int?,
+    val flowOffset: Int?,
+) {
+    fun flowQuery(): FlowQuery? =
+        if (listOf(flowText, flowKind, flowScreen, flowLimit, flowOffset).all { it == null }) {
+            null
+        } else {
+            FlowQuery(flowText, flowKind, flowScreen, flowLimit ?: FlowQuery.DEFAULT_LIMIT, flowOffset ?: 0)
+        }
+}
 
 // Optional filters of the document list, bound from query parameters.
 data class DocumentListQuery(

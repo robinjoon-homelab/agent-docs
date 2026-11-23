@@ -1,7 +1,7 @@
 package xyz.robinjoon.agentdocs.workspace.domain.document
 
 object FlowRules {
-    fun isFlow(block: Block): Boolean = block is FlowSettings || block is FlowScreen || block is FlowElement
+    fun isFlow(block: Block): Boolean = block is FlowSettings || block is FlowScreen || block is FlowElement || block is FlowDesignBlock
 
     fun validate(
         type: String,
@@ -11,7 +11,16 @@ object FlowRules {
             if (blocks.any(::isFlow)) throw InvalidDocumentException("ordinary documents cannot contain flow blocks")
             return
         }
-        if (type != "flow" || blocks.firstOrNull() !is FlowSettings || blocks.count { it is FlowSettings } != 1 ||
+        if (type == "flow" && blocks.any { it is FlowDesignBlock }) {
+            FlowDesignRules.validate(blocks)
+            return
+        }
+        if (type != "flow") throw InvalidDocumentException("unknown document type $type")
+        validateLegacy(blocks)
+    }
+
+    private fun validateLegacy(blocks: List<Block>) {
+        if (blocks.firstOrNull() !is FlowSettings || blocks.count { it is FlowSettings } != 1 ||
             blocks.any { !isFlow(it) } || blocks.getOrNull(1) !is FlowScreen
         ) {
             throw InvalidDocumentException("a flow needs settings first, then one or more screens and their elements")
@@ -29,6 +38,8 @@ object FlowRules {
         blocks: List<Block>,
         previous: List<Block> = emptyList(),
     ): List<Block> {
+        if (blocks.firstOrNull() is FlowDesignBlock) return FlowDesignRules.preserveIdentity(blocks, previous)
+        if (previous.firstOrNull() is FlowDesignBlock) throw InvalidDocumentException("a v4 document must retain its design model")
         val settings = blocks.firstOrNull() as? FlowSettings ?: return blocks
         val highest = blocks.filterIsInstance<FlowScreen>().maxOfOrNull { it.screenId.substringAfter('-').toBigInteger() }
         val next = (highest ?: java.math.BigInteger.ZERO) + java.math.BigInteger.ONE

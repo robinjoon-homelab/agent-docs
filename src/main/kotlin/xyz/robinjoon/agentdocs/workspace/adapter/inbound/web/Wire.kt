@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.workspace.adapter.inbound.web
 
 import tools.jackson.databind.JsonNode
 import xyz.robinjoon.agentdocs.workspace.application.model.AssigneeChange
+import xyz.robinjoon.agentdocs.workspace.application.model.FlowQuery
 import xyz.robinjoon.agentdocs.workspace.application.model.HeaderChange
 import xyz.robinjoon.agentdocs.workspace.application.model.InvalidRequestException
 import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownFormat
@@ -20,6 +21,21 @@ internal object Wire {
             "outline" -> MarkdownFormat.OUTLINE
             else -> throw InvalidRequestException("format must be markdown, plain, or outline")
         }
+
+    // A flow query lists candidates in its own outline-like form, so only an omitted format or outline goes with it.
+    fun markdownFormat(
+        value: String?,
+        flowQuery: FlowQuery?,
+    ): MarkdownFormat {
+        if (flowQuery == null) return markdownFormat(value)
+        if (value != null && value != "outline") {
+            throw InvalidRequestException(
+                "a flow query lists candidates; omit format or use outline",
+                "read a candidate with blocks or section afterwards",
+            )
+        }
+        return MarkdownFormat.OUTLINE
+    }
 
     fun actorKind(
         value: String?,

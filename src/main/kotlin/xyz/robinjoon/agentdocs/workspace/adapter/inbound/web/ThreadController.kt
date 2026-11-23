@@ -31,9 +31,13 @@ class ThreadController(
     fun forDocument(
         @PathVariable id: UUID,
         principal: Principal?,
+        @RequestParam(defaultValue = "false") flowTargets: Boolean,
     ): List<Map<String, Any?>> {
         val access = CallerAccess.of(principal)
-        return threads.forDocument(access, DocumentId(id)).map { ThreadJson.thread(it, access) }
+        return threads.forDocument(access, DocumentId(id), flowTargets).map { view ->
+            val row = ThreadJson.thread(view, access)
+            if (view.target == null) row else row + mapOf("target" to view.target, "targetVersion" to view.targetVersion)
+        }
     }
 
     @PostMapping("/api/documents/{id}/threads")

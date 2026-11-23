@@ -5,99 +5,115 @@ import { FlowDeviceFrame } from './FlowDeviceFrame';
 import { FlowRichText } from './FlowRichText';
 import { FlowIcon, FlowCommentBadge } from './FlowIcon';
 import { flowPreview } from './flowPreview';
-import type { ReactNode } from 'react';
 import { FlowElementVisual } from './FlowElementVisual';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStageArea } from './useStageArea';
 import type { Block } from '../../../../../domain/document/block';
 import type { Thread } from '../../../../../domain/thread/thread';
-import {
-  readFlow,
-  frameSize,
-  flowTarget,
-  flowDifferences,
-  numbered,
-  anchoredScreenId,
-} from '../../../../../domain/flow/flow';
+import { readFlow, frameSize, numbered } from '../../../../../domain/flow/flow';
 import { useServices } from '../../../../../config/ServicesContext';
 import { errorMessage } from '../../common/States';
-const TARGET_LABEL = { ok: '', changed: '바뀜', elementDeleted: '요소 삭제됨', screenDeleted: '화면 삭제됨' };
+import {
+  flowAnchorTarget,
+  flowAnchorDifferences,
+  type FlowAnchorTarget,
+} from '../../../../../domain/flow/flowAnchorComparison';
+import { flowAnchorLocation } from '../../../../../domain/flow/flowAnchorLocation';
+import { DesignHistoricalSnapshot, type HistoricalSnapshotProps } from './design/DesignHistoricalSnapshot';
+
 export function FlowThreadHistory({
   thread,
   blocks,
-  onSnapshot,
+  past,
+  target: status,
+  currentVersion,
   onSelect,
+  onSnapshot,
 }: {
   thread: Thread;
   blocks: readonly Block[];
-  onSelect: (blockId: string) => void;
+  past?: readonly Block[];
+  target?: FlowAnchorTarget;
+  currentVersion?: number;
+  onSelect: (id: string, viewedStateId?: string) => void;
   onSnapshot: (blocks: readonly Block[], blockId: string, revision: number) => void;
 }) {
   const { documents } = useServices();
-  const [past, setPast] = useState<readonly Block[] | null>(null);
   const [error, setError] = useState('');
-  const revision = thread.anchoredRevision;
-  useEffect(() => {
-    let active = true;
-    if (revision !== undefined)
-      void documents
-        .revision(thread.documentId, revision)
-        .then((s) => {
-          if (active) setPast(s.blocks);
-        })
-        .catch((e: unknown) => {
-          if (active) setError(errorMessage(e));
-        });
-    return () => {
-      active = false;
-    };
-  }, [documents, thread.documentId, revision]);
   if (thread.anchor.kind === 'document') return <span>문서 전체</span>;
-  const blockId = thread.anchor.blockId;
-  const current = readFlow(blocks),
-    old = past ? readFlow(past) : null;
-  const target = past ? flowTarget(past, blocks, blockId) : 'ok';
-  const currentScreen = current.screens.find(
-    (s) => s.screen.id === blockId || s.elements.some((e) => e.id === blockId),
-  );
-  const originalScreen = old?.screens.find(
-    (s) => s.screen.id === blockId || s.elements.some((e) => e.id === blockId),
-  );
-  const screen =
-    target === 'elementDeleted' || target === 'screenDeleted'
-      ? (originalScreen ?? currentScreen)
-      : (currentScreen ?? originalScreen);
-  const element = screen?.elements.find((e) => e.id === blockId);
+  const id = thread.anchor.blockId,
+    revision = thread.anchoredRevision;
+  const target = status ?? (past ? flowAnchorTarget(past, blocks, id, thread, currentVersion) : 'ok');
+  const deleted = target === 'screenDeleted' || target === 'elementDeleted';
+  const viewedStateId = thread.anchor.kind === 'block' ? thread.anchor.viewedStateId : undefined;
+  const current = flowAnchorLocation(blocks, id, viewedStateId);
+  const original = past && flowAnchorLocation(past, id, viewedStateId);
+  const context = deleted ? (original ?? current) : (current ?? original);
+  const removedState =
+    target === 'elementDeleted' &&
+    original?.stateBlockId &&
+    flowAnchorLocation(blocks, original.stateBlockId)?.screenBlockId !== original.screenBlockId;
+  const kind =
+    removedState || context?.kind === 'state' ? '상태' : context?.kind === 'screen' ? '화면' : '요소';
+  const flag =
+    target === 'changed'
+      ? '바뀜'
+      : target === 'screenDeleted'
+        ? '화면 삭제됨'
+        : target === 'elementDeleted'
+          ? `${kind} 삭제됨`
+          : '';
+  const openHistory = async () => {
+    if (revision === undefined) return;
+    try {
+      const snapshot = past ?? (await documents.revision(thread.documentId, revision)).blocks;
+      setError('');
+      onSnapshot(snapshot, id, revision);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
   return (
     <div className="flow-thread-target">
-      <button
-        onClick={() => {
-          if ((target === 'elementDeleted' || target === 'screenDeleted') && past && revision !== undefined)
-            onSnapshot(past, blockId, revision);
-          else onSelect(blockId);
-        }}
-      >
-        {screen?.screen.screenId} · {element?.label ?? `${screen?.screen.name ?? ''} · 화면 전체`}
+      <button onClick={() => (deleted ? void openHistory() : onSelect(id, viewedStateId))}>
+        {context
+          ? `${context.code}${context.kind === 'element' && context.stateName ? ' · ' + context.stateName : ''} · ${context.name}${kind === '화면' ? ' · 화면 전체' : ''}`
+          : '댓글 위치'}
       </button>
-      <span className={`flow-target-flag kind-${target}`}>{TARGET_LABEL[target]}</span>
-      {target === 'changed' && <p>댓글을 단 뒤 이 {element ? '요소' : '화면'}가 바뀌었습니다.</p>}
-      {target === 'elementDeleted' && <p>이 요소는 삭제됐습니다. 이 댓글은 댓글 사이드바에만 남습니다.</p>}
+      <span className={`flow-target-flag kind-${target}`}>{flag}</span>
+      {target === 'changed' && (
+        <p>
+          댓글을 단 뒤 이 {kind}
+          {kind === '화면' ? '이' : '가'} 바뀌었습니다.
+        </p>
+      )}
+      {target === 'elementDeleted' && <p>이 {kind}는 삭제됐습니다. 이 댓글은 댓글 사이드바에만 남습니다.</p>}
       {target === 'screenDeleted' && <p>이 화면은 삭제됐습니다. 삭제된 화면 탭에서만 보입니다.</p>}
-      {target !== 'ok' && past && revision !== undefined && (
-        <button onClick={() => onSnapshot(past, blockId, revision)}>
-          {target === 'elementDeleted'
-            ? '삭제된 요소 보기'
-            : target === 'screenDeleted'
-              ? '삭제된 화면 보기'
-              : '댓글 단 시점 보기'}{' '}
-          · rev {revision}
+      {target !== 'ok' && revision !== undefined && (
+        <button onClick={() => void openHistory()}>
+          {deleted ? `삭제된 ${target === 'screenDeleted' ? '화면' : kind} 보기` : '댓글 단 시점 보기'} · rev{' '}
+          {revision}
         </button>
       )}
       {error && <p role="alert">{error}</p>}
     </div>
   );
 }
-export function FlowSnapshot({
+
+type FlowSnapshotProps = HistoricalSnapshotProps & {
+  threads: readonly Thread[];
+  onComments: () => void;
+  onInfo: () => void;
+  onPanelCollapse: (collapsed: boolean) => void;
+};
+export function FlowSnapshot(props: FlowSnapshotProps) {
+  return props.blocks[0]?.type === 'flowDesign' ? (
+    <DesignHistoricalSnapshot {...props} />
+  ) : (
+    <LegacyFlowSnapshot {...props} />
+  );
+}
+function LegacyFlowSnapshot({
   blocks,
   current,
   blockId,
@@ -109,22 +125,17 @@ export function FlowSnapshot({
   onComments,
   onInfo,
   onPanelCollapse,
-}: {
-  blocks: readonly Block[];
-  current: readonly Block[];
-  blockId: string;
-  revision: number;
-  onClose: () => void;
-  onSelectScreen: (blockId: string) => void;
-  threadCard: ReactNode;
-  threads: readonly Thread[];
-  onComments: () => void;
-  onInfo: () => void;
-  onPanelCollapse: (collapsed: boolean) => void;
-}) {
-  const flow = readFlow(blocks),
-    now = readFlow(current);
-  const targets = useFlowCommentTargets(threads, current);
+  thread,
+  currentVersion,
+}: FlowSnapshotProps) {
+  const flow = readFlow(blocks);
+  const currentScreens = current
+    .filter((b) => b.type === 'flowScreen' || (b.type === 'flowDesign' && b.design.kind === 'screen'))
+    .flatMap((b) => {
+      const location = flowAnchorLocation(current, b.id);
+      return location ? [location] : [];
+    });
+  const targets = useFlowCommentTargets(threads, current, currentVersion);
   const commentable = canComment(useDocumentPermission());
   const [collapsed, setCollapsed] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -137,9 +148,9 @@ export function FlowSnapshot({
   );
   if (!screen) return <p>댓글 당시 화면을 찾을 수 없습니다.</p>;
   const [name, width, height] = frameSize(flow, screen.screen);
-  const target = flowTarget(blocks, current, blockId);
+  const target = flowAnchorTarget(blocks, current, blockId, thread, currentVersion);
   const before = blocks.find((b) => b.id === blockId);
-  const differences = flowDifferences(blocks, current, blockId);
+  const differences = flowAnchorDifferences(blocks, current, blockId, target);
   const numberedElements = numbered(screen.elements);
   const frame = screen.screen.frame ?? flow.settings.frame;
   const pad = frame.startsWith('phone') ? 8 : frame.startsWith('tablet') ? 12 : frame === 'modal' ? 0 : 1;
@@ -157,24 +168,22 @@ export function FlowSnapshot({
           <FlowIcon name="left" />
         </button>
         <div className="flow-screen-buttons">
-          {now.screens.map((s) => (
+          {currentScreens.map((s) => (
             <button
-              key={s.screen.id}
-              aria-pressed={s.screen.id === screen.screen.id}
-              onClick={() => onSelectScreen(s.screen.id)}
+              key={s.screenBlockId}
+              aria-pressed={s.screenBlockId === screen.screen.id}
+              onClick={() => onSelectScreen(s.screenBlockId)}
             >
-              <span>{s.screen.screenId}</span>
-              {s.screen.name}
+              <span>{s.code}</span>
+              {s.screenName}
               <FlowCommentBadge
                 count={
                   threads.filter(
                     (t) =>
                       t.status !== 'resolved' &&
-                      anchoredScreenId(
-                        t.anchor.kind === 'document' ? null : t.anchor.blockId,
-                        now.screens,
-                        targets.parents.get(t.id),
-                      ) === s.screen.id,
+                      (t.anchor.kind !== 'document' &&
+                        (flowAnchorLocation(current, t.anchor.blockId)?.screenBlockId ??
+                          targets.parents.get(t.id))) === s.screenBlockId,
                   ).length
                 }
               />
@@ -223,7 +232,7 @@ export function FlowSnapshot({
                     style={{ width, minHeight: Math.max(height, ...screen.elements.map((e) => e.y + e.h)) }}
                   >
                     {screen.elements.map((e) => {
-                      const state = flowTarget(blocks, current, e.id);
+                      const state = e.id === blockId ? target : flowAnchorTarget(blocks, current, e.id);
                       return (
                         <div
                           key={e.id}
@@ -345,7 +354,7 @@ export function FlowSnapshot({
                   </div>
                 ))
               ) : (
-                <p>차이가 없습니다.</p>
+                <p>{target === 'changed' ? '디자인이 바뀌었습니다.' : '차이가 없습니다.'}</p>
               )}
               <section className="flow-context-comments">
                 <h3>이 댓글</h3>

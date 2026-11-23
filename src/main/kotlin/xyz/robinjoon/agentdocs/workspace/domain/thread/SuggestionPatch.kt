@@ -2,6 +2,7 @@ package xyz.robinjoon.agentdocs.workspace.domain.thread
 
 import xyz.robinjoon.agentdocs.workspace.domain.document.Block
 import xyz.robinjoon.agentdocs.workspace.domain.document.BlockId
+import xyz.robinjoon.agentdocs.workspace.domain.document.FlowDesignBlock
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowElement
 import xyz.robinjoon.agentdocs.workspace.domain.document.FlowScreen
 import xyz.robinjoon.agentdocs.workspace.domain.document.InlineMarkdown
@@ -21,8 +22,12 @@ object SuggestionPatch {
         val id = blockId(basis.anchor)
         val block = blocks.firstOrNull { it.id == id }
         if (block == null || BlockMarkdown.hash(block) != basis.hash) conflict(block, id)
+        val anchor = basis.anchor
+        if (anchor is Anchor.Whole && anchor.viewedStateId != null && AnchorResolver.resolve(anchor, blocks) == AnchorResolution.Detached) {
+            conflict(block, id)
+        }
         val changed =
-            when (val anchor = basis.anchor) {
+            when (anchor) {
                 is Anchor.Whole -> whole(block, basis)
                 is Anchor.Cell -> cell(block, anchor, basis)
                 is Anchor.Text -> text(block, anchor, basis)
@@ -62,6 +67,7 @@ object SuggestionPatch {
         block: Block,
         basis: SuggestionBasis,
     ): Block? {
+        if (block is FlowDesignBlock) return designDescription(block, basis)
         if (block is FlowScreen) {
             if (block.desc != basis.before) conflict(block, block.id)
             return block.copy(desc = basis.after)
@@ -71,6 +77,15 @@ object SuggestionPatch {
             return block.copy(text = block.text.copy(desc = basis.after))
         }
         return null
+    }
+
+    private fun designDescription(
+        block: FlowDesignBlock,
+        basis: SuggestionBasis,
+    ): FlowDesignBlock {
+        if (block.kind !in setOf("screen", "state", "annotation")) throw InvalidThreadException("design suggestion needs a description")
+        if (block.string("description").orEmpty() != basis.before) conflict(block, block.id)
+        return block.withFields(block.fields + ("description" to basis.after))
     }
 
     private fun cell(
@@ -116,5 +131,8 @@ object SuggestionPatch {
     private fun conflict(
         block: Block?,
         id: BlockId,
-    ): Nothing = throw EditConflictException(listOf(BlockConflict(id, block?.let(BlockMarkdown::hash), block?.let(BlockMarkdown::of))))
+    ): Nothing {
+        val latest = BlockConflict(id, block?.let(BlockMarkdown::hash), block?.let(BlockMarkdown::of), block as? FlowDesignBlock)
+        throw EditConflictException(listOf(latest))
+    }
 }

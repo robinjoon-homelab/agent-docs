@@ -1,6 +1,8 @@
 import './newDocument.css';
 import type { FlowFrame } from '../../../../domain/document/block';
 import { FRAMES } from '../../../../domain/flow/flow';
+import { newDesignFlow } from '../../../../domain/flow/newDesignFlow';
+import { randomBlockId } from '../editor/ids';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { NEW_DOCUMENT_ERROR_TEXT } from '../../../../application/document/documentUseCases';
@@ -26,6 +28,7 @@ export function NewDocumentDialog({
   const [title, setTitle] = useState('');
   const [type, setType] = useState<'doc' | 'flow'>('doc');
   const [frame, setFrame] = useState<FlowFrame>('phone');
+  const [design, setDesign] = useState(true);
   const [idPrefix, setPrefix] = useState('M');
   const [errors, setErrors] = useState<readonly string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -33,7 +36,16 @@ export function NewDocumentDialog({
   const submit = async (): Promise<void> => {
     setBusy(true);
     try {
-      const result = await services.documents.create(spaceSlug, path, title, { type, frame, idPrefix });
+      const blocks =
+        type === 'flow' && design
+          ? newDesignFlow(randomBlockId(), randomBlockId(), frame, idPrefix)
+          : undefined;
+      const result = await services.documents.create(spaceSlug, path, title, {
+        type,
+        frame,
+        idPrefix,
+        ...(blocks ? { blocks } : {}),
+      });
       if (!result.ok) {
         setErrors(result.error.map((error) => NEW_DOCUMENT_ERROR_TEXT[error]));
         return;
@@ -121,6 +133,16 @@ export function NewDocumentDialog({
         </div>
         {type === 'flow' && (
           <div className="new-flow-settings">
+            <label>
+              편집 형식
+              <select
+                value={design ? 'design' : 'wireframe'}
+                onChange={(e) => setDesign(e.target.value === 'design')}
+              >
+                <option value="design">레이어 디자인</option>
+                <option value="wireframe">기존 와이어프레임</option>
+              </select>
+            </label>
             <label>
               문서 기본 틀
               <select value={frame} onChange={(e) => setFrame(e.target.value as FlowFrame)}>

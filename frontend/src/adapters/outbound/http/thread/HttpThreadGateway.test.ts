@@ -101,3 +101,41 @@ it('keeps claim timestamps, each actor reaction and the suggestion decision revi
   expect(result.reactions).toEqual([{ actor: human, emoji: '👍', own: true }]);
   expect(result.suggestions?.[0]?.decision).toEqual(decision);
 });
+
+it('places the document version alongside its optional flow target status', async () => {
+  const body = {
+    id: 't',
+    documentId: 'flow',
+    anchor: { kind: 'block', blockId: 'stable', viewedStateId: 'state-block' },
+    status: 'open',
+    author: human,
+    comments: [],
+    createdAt: 'x',
+    updatedAt: 'x',
+  };
+  const requests: string[] = [];
+  const gateway = new HttpThreadGateway(
+    new HttpClient({
+      cookies: () => '',
+      fetch: (url) => {
+        requests.push(url);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              requests.length === 1 ? body : { ...body, target: 'elementDeleted', targetVersion: 7 },
+            ]),
+            { headers: { 'content-type': 'application/json' } },
+          ),
+        );
+      },
+    }),
+  );
+  expect((await gateway.list('flow'))[0]?.target).toBeUndefined();
+  expect((await gateway.list('flow', 'open', true))[0]).toMatchObject({
+    target: 'elementDeleted',
+    targetVersion: 7,
+    anchor: { viewedStateId: 'state-block' },
+  });
+  expect(requests[0]).not.toContain('flowTargets');
+  expect(requests[1]).toContain('flowTargets=true');
+});
