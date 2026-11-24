@@ -55,7 +55,13 @@ export function useDesignCanvasSelection(
   return { addresses, change };
 }
 
+export type DesignSelectionMeasurement = {
+  key: string;
+  rect: Rect & { parent: { width: number; height: number }; contentInset?: { x: number; y: number } };
+  resizable: boolean;
+};
 type Props = EditCommandProps & {
+  onMeasure?: (value: DesignSelectionMeasurement | undefined) => void;
   ref?: Ref<DesignCanvasCommands>;
   children: ReactNode;
   onUndo: () => void;
@@ -73,7 +79,7 @@ const handles = {
   sw: '왼쪽 아래',
   w: '왼쪽',
 };
-export function DesignEditCanvas({ ref, children, onUndo, onRedo, ...props }: Props) {
+export function DesignEditCanvas({ ref, children, onUndo, onRedo, onMeasure, ...props }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const { blocks, scope, selection, rows, editable } = props;
   const annotated = useMemo(
@@ -117,8 +123,17 @@ export function DesignEditCanvas({ ref, children, onUndo, onRedo, ...props }: Pr
             locked: selected.every((b) => b.node.locked === true),
           }
         : undefined;
+    onMeasure?.(
+      first && selected.length === 1 && next
+        ? {
+            key: designAddressKey(first.address),
+            rect: { ...first.rect, parent: first.parent, contentInset: first.contentInset },
+            resizable: next.resizable,
+          }
+        : undefined,
+    );
     setOutline((old) => (JSON.stringify(old) === JSON.stringify(next) ? old : next));
-  }, [selectedRows, selection]);
+  }, [onMeasure, selectedRows, selection]);
   useLayoutEffect(() => {
     const el = host.current;
     if (!el) return;

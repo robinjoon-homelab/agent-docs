@@ -143,3 +143,22 @@
   padding: 0 4px;
   font: 600 11px/16px var(--font-body);
 }
+
+/* Keep the reopen control inside the visible workspace, including windows shorter than the stage. */
+.design-panel-collapsed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.design-panel-collapsed > .flow-preview,
+.design-panel-collapsed > .flow-reopen {
+  grid-area: 1 / 1;
+}
+.design-panel-collapsed > .flow-reopen {
+  position: sticky;
+  align-self: end;
+  justify-self: end;
+  margin: 0 16px 16px 0;
+  bottom: 16px;
+  right: auto;
+  z-index: 2;
+}

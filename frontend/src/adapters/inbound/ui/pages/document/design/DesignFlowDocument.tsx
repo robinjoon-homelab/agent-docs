@@ -5,6 +5,7 @@ import {
   useMemo,
   useEffect,
   useImperativeHandle,
+  useCallback,
   type Ref,
   type ReactNode,
 } from 'react';
@@ -39,7 +40,12 @@ import {
   addNamedDesignScreen,
 } from './DesignScreenProperties';
 import { DesignElementPalette } from './DesignElementPalette';
-import { DesignEditCanvas, useDesignCanvasSelection, type DesignCanvasCommands } from './DesignEditCanvas';
+import {
+  DesignEditCanvas,
+  useDesignCanvasSelection,
+  type DesignCanvasCommands,
+  type DesignSelectionMeasurement,
+} from './DesignEditCanvas';
 import { DesignMultiSelection } from './DesignMultiSelection';
 import { connectedAnnotations } from '../../../../../../domain/flow/editCanvasChildren';
 import { flowAnchorLocation } from '../../../../../../domain/flow/flowAnchorLocation';
@@ -207,6 +213,23 @@ export function DesignFlowDocument({
   const selection = useDesignCanvasSelection(sc, st, address, (next) => {
     if (screen) go({ screen: screen.id, state: state?.id, address: next });
   });
+  const [measurement, setMeasurement] = useState<DesignSelectionMeasurement>();
+  const measureSelection = useCallback((next: DesignSelectionMeasurement | undefined) => {
+    setMeasurement((old) =>
+      old?.key === next?.key &&
+      old?.resizable === next?.resizable &&
+      old?.rect.x === next?.rect.x &&
+      old?.rect.y === next?.rect.y &&
+      old?.rect.w === next?.rect.w &&
+      old?.rect.h === next?.rect.h &&
+      old?.rect.parent.width === next?.rect.parent.width &&
+      old?.rect.parent.height === next?.rect.parent.height &&
+      old?.rect.contentInset?.x === next?.rect.contentInset?.x &&
+      old?.rect.contentInset?.y === next?.rect.contentInset?.y
+        ? old
+        : next,
+    );
+  }, []);
   const canvasCommands = useRef<DesignCanvasCommands>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [highlighted, setHighlighted] = useState<DesignAddress | null>(null);
@@ -439,7 +462,6 @@ export function DesignFlowDocument({
         state={st}
         selection={multi ? undefined : row?.address}
         mode={viewport ? 'full' : 'viewport'}
-        showDiagnostics={!viewport}
         onActivate={edit ? undefined : activate}
       />
     ));
@@ -521,7 +543,9 @@ export function DesignFlowDocument({
               <button onClick={() => go({ screen: screen.id, state: state?.id })}>화면 보기</button>
             </p>
           )}
-          <div className="flow-layout">
+          <div
+            className={collapsed && !pendingComment ? 'flow-layout design-panel-collapsed' : 'flow-layout'}
+          >
             <DesignViewStage
               blocks={blocks}
               scene={scene}
@@ -610,6 +634,7 @@ export function DesignFlowDocument({
               {edit && !showNote ? (
                 <DesignEditCanvas
                   ref={canvasCommands}
+                  onMeasure={measureSelection}
                   blocks={blocks}
                   rows={allRows}
                   scope={scope}
@@ -633,7 +658,13 @@ export function DesignFlowDocument({
               )}
             </DesignViewStage>
             {collapsed && !pendingComment ? (
-              <button type="button" className="flow-reopen" onClick={() => setCollapsed(false)}>
+              <button
+                type="button"
+                className="flow-reopen"
+                aria-label="설명·댓글"
+                title="설명·댓글 패널 펼치기"
+                onClick={() => setCollapsed(false)}
+              >
                 <FlowIcon name="panel" />
                 설명·댓글 <FlowCommentBadge count={openCount} />
               </button>
@@ -713,6 +744,14 @@ export function DesignFlowDocument({
                             mutate={mutate}
                             select={select}
                             annotation={annotation}
+                            measuredRect={
+                              measurement?.key === designAddressKey(row.address)
+                                ? measurement.rect
+                                : undefined
+                            }
+                            canResizeMeasured={
+                              measurement?.key === designAddressKey(row.address) && measurement.resizable
+                            }
                             number={number}
                             frame={scene.frame}
                             uploadImage={uploadImage}

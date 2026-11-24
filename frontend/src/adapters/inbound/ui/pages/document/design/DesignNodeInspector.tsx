@@ -19,9 +19,9 @@ import {
 } from '../../../../../../domain/flow/editDesign';
 import { DesignPrecisionInspector } from './DesignPrecisionInspector';
 import { DesignProperty } from './DesignProperty';
-import { type DesignRow, lookupRow } from './designLocation';
+import { designRows, type DesignRow, lookupRow } from './designLocation';
 import { DesignActions } from './DesignActions';
-import { DesignInspectorGeometry } from './DesignInspectorGeometry';
+import { DesignInspectorGeometry, type MeasuredDesignRect } from './DesignInspectorGeometry';
 import { FlowAppearanceFields } from '../FlowAppearanceFields';
 import { randomBlockId } from '../../../editor/ids';
 import { richPlain } from '../../../../../../domain/flow/richText';
@@ -36,6 +36,10 @@ import {
 import { describeDestination, designKind } from './DesignOverview';
 
 import type { DesignMutation } from './useDesignEditHistory';
+
+import { sameGeometry, writeLayerRect } from '../../../../../../domain/flow/editCanvasGeometry';
+import { resolveDesignScene } from '../../../../../../domain/flow/designScene';
+import type { Rect } from '../../../../../../domain/flow/flow';
 
 export function DesignNodeInspector({
   blocks,
@@ -55,6 +59,8 @@ export function DesignNodeInspector({
   uploadImage,
   onFollow,
   frame,
+  measuredRect,
+  canResizeMeasured = false,
 }: {
   blocks: readonly FlowDesignBlock[];
   screen: string;
@@ -73,6 +79,8 @@ export function DesignNodeInspector({
   uploadImage?: (file: File) => Promise<string>;
   onFollow?: (to: DesignJson | undefined) => void;
   frame?: { width: number; height: number };
+  measuredRect?: MeasuredDesignRect;
+  canResizeMeasured?: boolean;
 }) {
   const [original, setOriginal] = useState(false);
   const [uploadError, setUploadError] = useState(''),
@@ -125,6 +133,30 @@ export function DesignNodeInspector({
         [...bs],
       ),
     );
+  const sourceMismatch = sourceScope && !sameGeometry(geometry, row.occurrence.node);
+  const changeRect = (key: keyof Rect, value: number) =>
+    mutate((bs) => {
+      if (!measuredRect || !canResizeMeasured || sourceMismatch)
+        throw Error('이 배치에서는 측정값을 수정할 수 없습니다.');
+      const current = sourceScope
+        ? findDesignNode(bs, a)
+        : lookupRow(designRows(resolveDesignScene(bs, screen, state).root, bs), a)?.occurrence.node;
+      if (!current || current.locked === true || !sameGeometry(current, geometry))
+        throw Error('요소 배치가 바뀌었습니다. 다시 확인하세요.');
+      return writeLayerRect(
+        bs,
+        scope,
+        {
+          address: a,
+          node: current,
+          rect: measuredRect,
+          parent: measuredRect.parent ?? { width: 0, height: 0 },
+          contentInset: measuredRect.contentInset,
+          parentMode: stringValue(object(parent?.occurrence.node.layout)?.mode),
+        },
+        { ...measuredRect, [key]: value },
+      );
+    });
   const desc = stringValue(annotation?.design.description);
   const enabled = !!annotation && annotation.design.enabled !== false;
   const gone = records(annotation?.design.actions).some(
@@ -291,6 +323,10 @@ export function DesignNodeInspector({
         )}
         <DesignInspectorGeometry
           geometry={geometry}
+          measuredRect={measuredRect}
+          canResizeMeasured={canResizeMeasured}
+          sourceMismatch={sourceMismatch}
+          onRectChange={changeRect}
           frame={frame}
           write={patchFields}
           onLayer={onLayer}

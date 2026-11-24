@@ -109,7 +109,7 @@ export function DesignHistoricalSnapshot({
           </span>
         )}
       </FlowScreenStrip>
-      <div className="flow-layout">
+      <div className={collapsed ? 'flow-layout design-panel-collapsed' : 'flow-layout'}>
         <section className="flow-preview">
           <div className="flow-snapshot-banner">
             <strong>rev {revision} 시점</strong>
@@ -153,7 +153,12 @@ export function DesignHistoricalSnapshot({
           </div>
         </section>
         {collapsed ? (
-          <button className="flow-reopen" onClick={() => fold(false)}>
+          <button
+            className="flow-reopen"
+            aria-label="설명·댓글"
+            title="설명·댓글 패널 펼치기"
+            onClick={() => fold(false)}
+          >
             <FlowIcon name="panel" />
             설명·댓글 <FlowCommentBadge count={openThreads.length} />
           </button>

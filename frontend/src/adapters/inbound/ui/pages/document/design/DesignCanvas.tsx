@@ -21,7 +21,6 @@ import { DesignBoxSurface } from './DesignBoxSurface';
 import { designColor, designNodeStyle } from './designStyle';
 import { validAssetId } from './designStyleValues';
 import { ScrollDiagnostics, useDesignFonts, useInitialScroll } from './DesignCanvasResources';
-import { DesignCanvasDiagnostics } from './DesignCanvasDiagnostics';
 import { DesignCanvasText } from './DesignCanvasText';
 import './designCanvas.css';
 
@@ -31,7 +30,6 @@ export type DesignCanvasProps = {
   screen: string;
   state?: string | null;
   selection?: DesignAddress | null;
-  showDiagnostics?: boolean;
   mode?: 'viewport' | 'full';
   scale?: number;
   onSelect?: (address: DesignAddress) => void;
@@ -251,7 +249,6 @@ export function DesignCanvasView({
   state,
   selection,
   assetUrl,
-  showDiagnostics = false,
   scale = 1,
   mode = 'viewport',
   onSelect,
@@ -296,13 +293,6 @@ export function DesignCanvasView({
   };
   const diagnostics = (
     <>
-      {showDiagnostics && (
-        <DesignCanvasDiagnostics
-          key={JSON.stringify([screen, state, selection])}
-          canvas={canvas}
-          selection={selection}
-        />
-      )}
       {warnings.length > 0 && (
         <details className="design-canvas-warnings">
           <summary>디자인 경고 {warnings.length}건</summary>

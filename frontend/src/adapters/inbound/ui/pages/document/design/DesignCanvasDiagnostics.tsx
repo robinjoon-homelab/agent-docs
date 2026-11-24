@@ -1,6 +1,4 @@
 import { designAssetFontsReady } from './DesignCanvasResources';
-import { useState } from 'react';
-import type { RefObject } from 'react';
 import { designAddressKey, type DesignAddress } from '../../../../../../domain/flow/designAddress';
 
 type Size = { width: number; height: number };
@@ -239,76 +237,4 @@ export async function inspectDesignCanvas(
       ...(key && !layers.length ? ['선택한 레이어가 현재 화면에 표시되지 않습니다.'] : []),
     ],
   };
-}
-const px = (n: number) => Number(n.toFixed(2)).toLocaleString('ko-KR');
-export function DesignCanvasDiagnostics({
-  canvas,
-  selection,
-}: {
-  canvas: RefObject<HTMLDivElement | null>;
-  selection?: DesignAddress | null;
-}) {
-  const [result, setResult] = useState<CanvasMeasurement | null>(null);
-  async function inspect() {
-    const el = canvas.current;
-    if (el) {
-      const value = await inspectDesignCanvas(el, selection);
-      if (el === canvas.current) setResult(value);
-    }
-  }
-  return (
-    <details
-      className="design-canvas-diagnostics"
-      onToggle={(e) => {
-        if (e.currentTarget.open) void inspect();
-      }}
-    >
-      <summary>렌더 검사</summary>
-      <button type="button" onClick={() => void inspect()}>
-        다시 측정
-      </button>
-      {result && (
-        <>
-          <p>
-            뷰포트 {px(result.viewport.width)} × {px(result.viewport.height)}px · 전체{' '}
-            {px(result.natural.width)} × {px(result.natural.height)}px
-          </p>
-          {result.emptySlots.length > 0 && <p>비어 있는 슬롯 {result.emptySlots.length}개</p>}
-          {result.warnings.map((w) => (
-            <p key={w}>{w}</p>
-          ))}
-          <p>
-            레이어 {result.layers.length}개 · 확인할 레이어{' '}
-            {result.layers.filter((l) => l.issues.length > 0).length}개
-          </p>
-          {result.layers
-            .filter((l) => selection || l.issues.length)
-            .map((l) => (
-              <p key={l.address}>
-                <strong>{l.node}</strong> · 위치 {px(l.rect.x)}, {px(l.rect.y)} · 크기 {px(l.rect.width)} ×{' '}
-                {px(l.rect.height)}px · 스크롤 {px(l.scroll.x)}, {px(l.scroll.y)} / 범위{' '}
-                {px(l.content.width - l.client.width)}, {px(l.content.height - l.client.height)}
-                {l.issues.length
-                  ? ' · ' +
-                    l.issues
-                      .map(
-                        (issue) =>
-                          ({
-                            outsideFrame: '화면 경계 밖',
-                            overlapsSibling: '형제 레이어의 경계와 겹침',
-                            clipped: '일부 또는 전체가 잘림',
-                            clippedText: '글자 잘림',
-                            zeroScrollRangeX: '가로 스크롤 범위 0',
-                            zeroScrollRangeY: '세로 스크롤 범위 0',
-                            unavailableAsset: '첨부를 표시할 수 없음',
-                          })[issue] ?? issue,
-                      )
-                      .join(', ')
-                  : ''}
-              </p>
-            ))}
-        </>
-      )}
-    </details>
-  );
 }

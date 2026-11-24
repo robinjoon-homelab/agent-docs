@@ -174,7 +174,7 @@ export function useDesignDrag(
       Handle | undefined;
     if (
       !resize &&
-      (e.target.closest('[data-design-edit-ui],.design-canvas-warnings,.design-canvas-inspection') ||
+      (e.target.closest('[data-design-edit-ui],.design-canvas-warnings') ||
         !e.target.closest('.design-canvas'))
     )
       return;
