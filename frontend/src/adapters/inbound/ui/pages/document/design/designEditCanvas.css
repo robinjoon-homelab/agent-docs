@@ -67,3 +67,10 @@
   font-size: 11px;
   white-space: nowrap;
 }
+
+/* The free placement grid is editor chrome. It sits behind the design layers and follows the device scroll. */
+.design-edit-canvas .design-canvas {
+  background-image: radial-gradient(var(--flow-edit-dot) 1px, transparent 1px);
+  background-size: 8px 8px;
+  background-attachment: local;
+}

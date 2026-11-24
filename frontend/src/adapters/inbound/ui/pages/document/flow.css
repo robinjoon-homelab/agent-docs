@@ -371,7 +371,9 @@
   background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
   background-size: 8px 8px;
 }
-.flow-canvas > .flow-empty {
+.flow-canvas > .flow-empty,
+.design-stage-frame > .flow-empty {
+  pointer-events: none;
   position: absolute;
   left: 24px;
   right: 24px;

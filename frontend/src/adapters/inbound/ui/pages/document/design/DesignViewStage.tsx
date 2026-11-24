@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { FocusEvent, MouseEvent, ReactNode } from 'react';
 import type { FlowDesignBlock } from '../../../../../../domain/document/designBlock';
 import type { FlowFrame } from '../../../../../../domain/document/block';
+import { asObject } from '../../../../../../domain/flow/designValue';
 import { designAddressKey, type DesignAddress } from '../../../../../../domain/flow/designAddress';
 import type { DesignScene } from '../../../../../../domain/flow/designScene';
 import { fitScale, FRAMES } from '../../../../../../domain/flow/flow';
@@ -30,6 +31,8 @@ type Props = {
   trail?: string;
   palette?: ReactNode;
   tools?: ReactNode;
+  framePicker?: ReactNode;
+  diagnosticsTarget?: HTMLElement | null;
   children: ReactNode;
 };
 
@@ -50,13 +53,17 @@ export function DesignViewStage({
   trail,
   palette,
   tools,
+  framePicker,
+  diagnosticsTarget,
   children,
 }: Props) {
   const [zoom, setZoom] = useState<number | 'fit'>('fit');
   const [all, setAll] = useState(false);
   const [localHover, setLocalHover] = useState<DesignAddress | null>(null);
-  const [diagnostics, setDiagnostics] = useState<HTMLDivElement | null>(null);
-  const context = useMemo(() => ({ diagnostics, editing }), [diagnostics, editing]);
+  const context = useMemo(
+    () => ({ diagnostics: diagnosticsTarget ?? null, editing }),
+    [diagnosticsTarget, editing],
+  );
   const frameRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const area = useStageArea(areaRef, editing && palette ? 170 : 0, 30);
@@ -65,6 +72,11 @@ export function DesignViewStage({
   const note = value === 'note';
   const preset: FlowFrame | 'custom' =
     typeof value === 'string' && Object.hasOwn(FRAMES, value) ? (value as FlowFrame) : 'custom';
+  const empty =
+    scene.root?.node.kind === 'box' &&
+    !scene.root.children.length &&
+    !scene.root.mounts.length &&
+    !Object.keys(asObject(scene.root.node.style)).length;
   const { width, height } = scene.frame;
   const box = deviceFrameBox(preset, width, height);
   const scale =
@@ -113,6 +125,7 @@ export function DesignViewStage({
         <span className="flow-stage-hint">
           {editing ? 'Shift+클릭·빈 곳 끌기로 여러 개 선택' : '요소를 누르면 이동 · (i)로 설명'}
         </span>
+        {editing && framePicker}
         {!editing && !note && (
           <button
             type="button"
@@ -168,6 +181,13 @@ export function DesignViewStage({
                 }}
               >
                 <DesignStageContext.Provider value={context}>{children}</DesignStageContext.Provider>
+                {empty && (
+                  <div className="flow-empty">
+                    {editing
+                      ? '요소가 없습니다. 왼쪽 "요소 추가"에서 넣고 끌어서 놓으세요.'
+                      : '아직 요소가 없습니다.'}
+                  </div>
+                )}
                 <DesignStageMarkers
                   container={frameRef}
                   scope={scope}
@@ -191,7 +211,6 @@ export function DesignViewStage({
           </div>
         )}
       </div>
-      <div className="design-preview-diagnostics" ref={setDiagnostics} />
     </section>
   );
 }

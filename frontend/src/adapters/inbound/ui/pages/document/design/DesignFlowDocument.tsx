@@ -212,6 +212,7 @@ export function DesignFlowDocument({
   const [highlighted, setHighlighted] = useState<DesignAddress | null>(null);
   const [layersOpen, setLayersOpen] = useState(false);
   const [composerFocus, setComposerFocus] = useState(0);
+  const [diagnosticsTarget, setDiagnosticsTarget] = useState<HTMLDivElement | null>(null);
   const targets = useFlowCommentTargets(threads, blocks, s.status === 'saved' ? s.version : undefined);
   const currentScope = JSON.stringify([sc, st, address && designAddressKey(address)]);
   const multi = edit && selection.addresses.length > 1;
@@ -527,6 +528,12 @@ export function DesignFlowDocument({
               screen={screen}
               state={state}
               editing={edit}
+              diagnosticsTarget={diagnosticsTarget}
+              framePicker={
+                canWrite && !showNote ? (
+                  <DesignFramePicker blocks={blocks} screen={screen} state={state} mutate={mutate} />
+                ) : undefined
+              }
               markers={markers}
               highlighted={highlighted}
               selection={multi ? undefined : row?.address}
@@ -555,7 +562,6 @@ export function DesignFlowDocument({
                     >
                       ↷
                     </button>
-                    <DesignFramePicker blocks={blocks} screen={screen} state={state} mutate={mutate} />
                   </>
                 ) : undefined
               }
@@ -819,16 +825,7 @@ export function DesignFlowDocument({
                         )}
                       </div>
                     )}
-                    {scene.warnings.length > 0 && (
-                      <details>
-                        <summary>진단 {scene.warnings.length}건</summary>
-                        <ul>
-                          {scene.warnings.map((w) => (
-                            <li key={w}>{w}</li>
-                          ))}
-                        </ul>
-                      </details>
-                    )}
+                    <div className="design-preview-diagnostics" ref={setDiagnosticsTarget} />
                   </>
                 )}
               </DesignSidePanel>
