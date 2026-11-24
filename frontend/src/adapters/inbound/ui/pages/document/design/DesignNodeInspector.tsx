@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import type { DesignObject, FlowDesignBlock } from '../../../../../../domain/document/designBlock';
+import type {
+  DesignJson,
+  DesignObject,
+  FlowDesignBlock,
+} from '../../../../../../domain/document/designBlock';
 import { designAddressKey, type DesignAddress } from '../../../../../../domain/flow/designAddress';
 import {
   editDesignNode,
@@ -16,9 +20,22 @@ import {
 import { DesignPrecisionInspector } from './DesignPrecisionInspector';
 import { DesignProperty } from './DesignProperty';
 import { type DesignRow, lookupRow } from './designLocation';
-export type DesignMutation = (
-  change: (blocks: readonly FlowDesignBlock[]) => FlowDesignBlock[],
-) => string | null;
+import { DesignActions } from './DesignActions';
+import { DesignInspectorGeometry } from './DesignInspectorGeometry';
+import { FlowAppearanceFields } from '../FlowAppearanceFields';
+import { randomBlockId } from '../../../editor/ids';
+import { richPlain } from '../../../../../../domain/flow/richText';
+import { KINDS } from '../../../../../../domain/flow/flow';
+import {
+  wireAppearance,
+  wireKind,
+  editWireAppearance,
+  replaceDesignImageAsset,
+  patchAnnotation,
+} from '../../../../../../domain/flow/editDesignProperties';
+import { describeDestination, designKind } from './DesignOverview';
+
+import type { DesignMutation } from './useDesignEditHistory';
 
 export function DesignNodeInspector({
   blocks,
@@ -29,6 +46,15 @@ export function DesignNodeInspector({
   inputs,
   mutate,
   select,
+  annotation,
+  number,
+  onCreateAnnotation,
+  onDelete,
+  onDuplicate,
+  onLayer,
+  uploadImage,
+  onFollow,
+  frame,
 }: {
   blocks: readonly FlowDesignBlock[];
   screen: string;
@@ -38,8 +64,19 @@ export function DesignNodeInspector({
   inputs: ReadonlyMap<string, DesignObject>;
   mutate: DesignMutation;
   select: (a: DesignAddress) => void;
+  annotation?: FlowDesignBlock;
+  number?: number;
+  onCreateAnnotation?: () => void;
+  onDuplicate?: () => void;
+  onDelete?: () => void;
+  onLayer?: (front: boolean) => void;
+  uploadImage?: (file: File) => Promise<string>;
+  onFollow?: (to: DesignJson | undefined) => void;
+  frame?: { width: number; height: number };
 }) {
   const [original, setOriginal] = useState(false);
+  const [uploadError, setUploadError] = useState(''),
+    [uploading, setUploading] = useState(false);
   const a = row.address,
     owner = sourceBlock(blocks, a.owner),
     source = findDesignNode(blocks, a);
@@ -74,39 +111,78 @@ export function DesignNodeInspector({
     ['row', 'column', 'grid'].includes(stringValue(object(parent.occurrence.node.layout)?.mode)) &&
     (scope.state || sourceScope || (!a.via?.length && a.owner === screen));
   const allowLeafColor = !mounted && !style?.fills && (typeof style?.fill === 'string' || !style?.fill);
-  const layoutValues: { label: string; path: string; value: number; nonnegative: boolean }[] = [];
   const geometry = mounted && !sourceScope ? row.occurrence.node : view;
-  for (const axis of ['x', 'y'] as const) {
-    const size = object(object(geometry.size)?.[axis]);
-    if (size?.mode === 'fixed' && typeof size.px === 'number')
-      layoutValues.push({
-        label: axis === 'x' ? '너비 (px)' : '높이 (px)',
-        path: 'size.' + axis + '.px',
-        value: size.px,
-        nonnegative: true,
-      });
-    const position = object(geometry.position);
-    if (position?.mode === 'absolute' && geometry.locked !== true)
-      for (const edge of ['start', 'end'] as const) {
-        const value = object(position[axis])?.[edge];
-        if (typeof value === 'number')
-          layoutValues.push({
-            label:
-              (axis === 'x' ? (edge === 'start' ? '왼쪽' : '오른쪽') : edge === 'start' ? '위' : '아래') +
-              ' 위치 (px)',
-            path: 'position.' + axis + '.' + edge,
-            value,
-            nonnegative: false,
-          });
-      }
-  }
+  const kind = wireKind(source),
+    appearance = kind ? wireAppearance(kind, values ?? {}, stringValue(source.name, row.label)) : undefined;
   const scopeKey = [designAddressKey(a), state, sourceScope ? 'source' : 'use'].join('/');
+  const baseName = stringValue(view.name, stringValue(view.alias, row.label));
+  const updateAnnotation = (fields: DesignObject) =>
+    annotation && mutate((bs) => patchAnnotation(bs, scope, a, annotation.id, fields, randomBlockId));
+  const patchFields = (fields: readonly (readonly [string, DesignJson])[]) =>
+    mutate((bs) =>
+      fields.reduce<FlowDesignBlock[]>(
+        (next, [path, value]) => editDesignNode(next, scope, a, { kind: 'leaf', path, value }),
+        [...bs],
+      ),
+    );
+  const desc = stringValue(annotation?.design.description);
+  const enabled = !!annotation && annotation.design.enabled !== false;
+  const gone = records(annotation?.design.actions).some(
+    (action) => action.to && !describeDestination(blocks, action.to).valid,
+  );
+  const px = object(object(geometry.position)?.x)?.start,
+    width = object(object(geometry.size)?.x)?.px;
+  const root = object(sourceBlock(blocks, screen, 'screen')?.design.root);
+  const onCanvas = parent?.address.owner === screen && parent.address.node === root?.id;
+  const outside =
+    frame && onCanvas && typeof px === 'number' && typeof width === 'number' && px + width > frame.width;
+  const warning = enabled && !desc.trim() ? '설명 없음' : gone ? '없는 화면' : outside ? '틀 밖' : '';
   return (
-    <section className="design-inspector-group">
-      <h3>{row.label}</h3>
-      <small className="muted">
-        {a.owner} / {a.node}
-      </small>
+    <section className="flow-inspector design-inspector-group">
+      <div className="flow-detail-title">
+        {enabled && number != null && number > 0 && <span className="flow-number">{number}</span>}
+        <h2>요소 속성</h2>
+        <span className="flow-kind-chip">
+          {kind ? KINDS[kind] : designKind(row, stringValue(source.component))}
+        </span>
+        {warning && (
+          <span className="flow-kind-chip flow-warn" role="status">
+            {warning}
+          </span>
+        )}
+      </div>
+      {appearance && frame && (
+        <FlowAppearanceFields
+          element={appearance}
+          onPatch={(patch) => {
+            mutate((bs) => editWireAppearance(bs, scope, a, appearance, patch, frame, randomBlockId));
+          }}
+          onChangeKind={
+            sourceScope || (!a.via?.length && a.owner === (state ?? screen))
+              ? (k) => {
+                  mutate((bs) =>
+                    editWireAppearance(bs, scope, a, appearance, { kind: k }, frame, randomBlockId),
+                  );
+                }
+              : undefined
+          }
+          onUploadImage={uploadImage ? async (file) => 'asset:' + (await uploadImage(file)) : undefined}
+        />
+      )}
+      {!appearance && (
+        <DesignProperty
+          label="요소 이름"
+          value={baseName}
+          onCommit={(v) =>
+            mutate((bs) => {
+              const next = editDesignNode(bs, scope, a, { kind: 'leaf', path: 'name', value: v });
+              return annotation && !sourceScope && v.trim()
+                ? patchAnnotation(next, scope, a, annotation.id, { name: v }, randomBlockId)
+                : next;
+            })
+          }
+        />
+      )}
       {owner?.design.kind === 'component' && (
         <label className="design-checkbox">
           <input type="checkbox" checked={original} onChange={(e) => setOriginal(e.target.checked)} />
@@ -115,6 +191,7 @@ export function DesignNodeInspector({
       )}
       <div key={scopeKey}>
         {mounted &&
+          !appearance &&
           records(sourceBlock(blocks, stringValue(source.component), 'component')?.design.props)
             .filter((p) => p.type === 'text')
             .map((p) => (
@@ -172,27 +249,53 @@ export function DesignNodeInspector({
               세로 스크롤 끝에서 열기
             </label>
           )}
-        {!!layoutValues.length && (
-          <details>
-            <summary>크기와 위치</summary>
-            {layoutValues.map((f) => (
-              <DesignProperty
-                key={f.path}
-                type="number"
-                label={f.label}
-                value={String(f.value)}
-                onCommit={(v) =>
-                  mutate((bs) => {
-                    const n = Number(v);
-                    if (!v.trim() || !Number.isFinite(n) || (f.nonnegative && n < 0))
-                      throw Error('유효한 값을 입력하세요.');
-                    return editDesignNode(bs, scope, a, { kind: 'leaf', path: f.path, value: n });
-                  })
-                }
-              />
-            ))}
-          </details>
+        {!mounted && view.kind === 'image' && (
+          <>
+            <DesignProperty
+              label="대체 텍스트"
+              value={stringValue(view.alt)}
+              onCommit={(v) => write('alt', v)}
+            />
+            {uploadImage && (
+              <label className="flow-upload-button">
+                {uploading ? '올리는 중…' : '이미지 올리기'}
+                <input
+                  hidden
+                  type="file"
+                  accept="image/*"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!file) return;
+                    const previous = view.asset;
+                    setUploading(true);
+                    setUploadError('');
+                    void uploadImage(file)
+                      .then((asset) => {
+                        const error = mutate((bs) => replaceDesignImageAsset(bs, scope, a, previous, asset));
+                        if (error) setUploadError(error);
+                      })
+                      .catch((error: unknown) =>
+                        setUploadError(
+                          error instanceof Error ? error.message : '이미지를 올리지 못했습니다.',
+                        ),
+                      )
+                      .finally(() => setUploading(false));
+                  }}
+                />
+              </label>
+            )}
+            {uploadError && <p role="alert">{uploadError}</p>}
+          </>
         )}
+        <DesignInspectorGeometry
+          geometry={geometry}
+          frame={frame}
+          write={patchFields}
+          onLayer={onLayer}
+          rectActions={!!kind && onCanvas}
+        />
         {writableOrder && (
           <div className="design-buttons">
             <button type="button" className="btn btn-small" disabled={index <= 0} onClick={() => reorder(-1)}>
@@ -226,6 +329,65 @@ export function DesignNodeInspector({
               if (child) select(child.address);
             }}
           />
+        )}
+        <label className="flow-annotate">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) =>
+              annotation ? updateAnnotation({ enabled: e.target.checked }) : onCreateAnnotation?.()
+            }
+          />
+          <span>
+            <strong>번호와 설명 붙이기</strong>
+            <small>보기 화면에서 번호와 (i) 설명을 표시합니다.</small>
+          </span>
+        </label>
+        {enabled && (
+          <div className="flow-description-editor">
+            <label>
+              설명 (보기 모드의 (i) 내용)
+              <textarea
+                rows={5}
+                value={desc}
+                placeholder="요소 동작과 조건을 적으세요."
+                onChange={(e) => updateAnnotation({ description: e.target.value })}
+              />
+            </label>
+            {desc.trim() ? (
+              <div className="flow-description-preview">
+                <strong>목록 미리보기</strong>
+                {Array.from(richPlain(desc)).slice(0, 60).join('')}
+                {Array.from(richPlain(desc)).length > 60 ? '…' : ''}
+              </div>
+            ) : (
+              <p className="flow-empty-description">설명이 비어 있습니다.</p>
+            )}
+          </div>
+        )}
+        {annotation && (
+          <DesignActions
+            blocks={blocks}
+            annotation={annotation}
+            mutate={mutate}
+            scope={scope}
+            target={a}
+            onFollow={onFollow}
+          />
+        )}
+        {(onDuplicate || onDelete) && (
+          <div className="flow-inspector-buttons flow-element-footer">
+            {onDuplicate && (
+              <button type="button" onClick={onDuplicate}>
+                복제
+              </button>
+            )}
+            {onDelete && (
+              <button type="button" className="flow-danger-outline" onClick={onDelete}>
+                요소 삭제
+              </button>
+            )}
+          </div>
         )}
       </div>
     </section>

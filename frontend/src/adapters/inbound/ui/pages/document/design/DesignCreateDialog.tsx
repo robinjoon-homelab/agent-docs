@@ -11,7 +11,7 @@ import {
 import { stringValue } from '../../../../../../domain/flow/editDesign';
 import { Dialog } from '../../../common/Dialog';
 import type { DesignLocation } from './designLocation';
-import type { DesignMutation } from './DesignNodeInspector';
+import type { DesignMutation } from './useDesignEditHistory';
 import { importDesignScreen } from './authoring/importDesignScreen';
 export type CreateKind =
   'screen' | 'state' | 'component' | 'box' | 'text' | 'instance' | 'annotation' | 'import';

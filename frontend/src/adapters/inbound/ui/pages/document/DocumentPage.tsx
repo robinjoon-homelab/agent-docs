@@ -189,7 +189,8 @@ function DocumentWorkspace({
   const [upgradeRequest, setUpgradeRequest] = useState<string | null>(null);
   const [upgrading, setUpgrading] = useState(false);
   const state = useSyncExternalStore(session.subscribe, session.getState);
-  const design = document.type === 'flow' && isDesignFlow(session.currentBlocks());
+  const visibleBlocks = useSyncExternalStore(session.subscribe, () => session.currentBlocks());
+  const design = document.type === 'flow' && isDesignFlow(visibleBlocks);
   const editorRef = useRef<DocumentEditorHandle>(null);
   const flowRef = useRef<FlowHandle>(null);
   const [flowModeTarget, setFlowModeTarget] = useState<HTMLDivElement | null>(null);
@@ -571,7 +572,7 @@ function DocumentWorkspace({
     : null;
   const rail = (flowScope?: string, onlyThreadId?: string) => (
     <CommentRail
-      flowBlocks={document.type === 'flow' ? session.currentBlocks() : undefined}
+      flowBlocks={document.type === 'flow' ? visibleBlocks : undefined}
       flowTargetVersion={state.status === 'saved' ? state.version : undefined}
       flowScope={flowScope}
       threadHeading={
@@ -586,7 +587,7 @@ function DocumentWorkspace({
                   focusFlowBlock(blockId, viewedStateId);
                 }}
                 thread={thread}
-                blocks={session.currentBlocks()}
+                blocks={visibleBlocks}
                 onSnapshot={(blocks, blockId, revision) => {
                   const parent = flowAnchorLocation(blocks, blockId);
                   if (parent) flowRef.current?.openHistorical(parent.screenBlockId);
@@ -754,7 +755,7 @@ function DocumentWorkspace({
                 <ConflictPanel
                   conflicts={state.conflicts}
                   orderConflict={state.orderConflict}
-                  mine={session.currentBlocks()}
+                  mine={visibleBlocks}
                   onResolve={resolveConflicts}
                 />
               ) : null}
@@ -815,6 +816,18 @@ function DocumentWorkspace({
                   <div hidden={flowSnapshot !== null}>
                     {design ? (
                       <DesignFlowDocument
+                        ref={flowRef}
+                        statsTarget={flowStatsTarget}
+                        threads={threads}
+                        spaceSlug={document.space.slug}
+                        onStartComment={
+                          canComment(access.permission)
+                            ? (anchor, body) => startThread(body, anchor)
+                            : undefined
+                        }
+                        mentionLogins={mentionLogins}
+                        reanchoring={reanchorThread !== null}
+                        onReanchor={(anchor) => void reanchor(anchor)}
                         session={session}
                         editable={editable}
                         modeTarget={flowModeTarget}
@@ -869,7 +882,7 @@ function DocumentWorkspace({
                           setFlowSnapshot(null);
                         }}
                         {...flowSnapshot}
-                        current={session.currentBlocks()}
+                        current={visibleBlocks}
                         onClose={() => {
                           const current = session.currentBlocks();
                           const thread = threads.find((t) => t.id === flowSnapshot.threadId);

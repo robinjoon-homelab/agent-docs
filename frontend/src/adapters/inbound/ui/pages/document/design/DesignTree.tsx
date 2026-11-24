@@ -9,7 +9,7 @@ import {
 } from '../../../../../../domain/flow/editDesign';
 import type { DesignRow } from './designLocation';
 import { lookupRow } from './designLocation';
-import type { DesignMutation } from './DesignNodeInspector';
+import type { DesignMutation } from './useDesignEditHistory';
 export function DesignTree({
   rows,
   selected,

@@ -133,7 +133,7 @@ export function newElement(
   kind: FlowKind,
   width: number,
   height: number,
-  after?: FlowElementBlock,
+  after?: Pick<FlowElementBlock, 'x' | 'y' | 'h'>,
 ): FlowElementBlock {
   const defaults: Record<FlowKind, { w: number; h: number; label: string; value: string }> = {
     title: { w: 240, h: 30, label: '제목', value: '제목' },
@@ -154,7 +154,7 @@ export function newElement(
     image: { w: 354, h: 180, label: '이미지', value: '이미지' },
   };
   const d = defaults[kind],
-    w = kind === 'bar' ? width : Math.min(d.w, width - 32);
+    w = kind === 'bar' ? width : Math.min(width, d.w, Math.max(1, width - 32));
   return {
     id,
     type: 'flowElement',
@@ -266,11 +266,11 @@ export function snapMove(
     guides,
   };
 }
-export function alignElements(
-  elements: readonly FlowElementBlock[],
+export function alignElements<T extends Rect & { id: string; pinned?: boolean }>(
+  elements: readonly T[],
   ids: readonly string[],
   operation: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' | 'horizontal' | 'vertical',
-): FlowElementBlock[] {
+): T[] {
   const selected = elements.filter((e) => ids.includes(e.id) && !e.pinned);
   if (selected.length < 2) return [...elements];
   const box = bounds(selected);
@@ -449,10 +449,10 @@ export function cloneElements(
   });
 }
 
-export function resizeElement(
-  element: FlowElementBlock,
+export function resizeElement<T extends Rect & { pinned?: boolean }>(
+  element: T,
   options: { dx: number; dy: number; handle: string; width: number; alt: boolean },
-): FlowElementBlock {
+): T {
   if (element.pinned) return element;
   const grid = (value: number) => (options.alt ? Math.round(value) : Math.round(value / 4) * 4);
   const right = options.handle.includes('e')

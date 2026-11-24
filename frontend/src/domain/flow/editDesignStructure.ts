@@ -17,6 +17,20 @@ const box = (id: string): DesignObject => ({
   layout: { mode: 'column', gap: 12 },
   children: [],
 });
+export function nextDesignNumber(blocks: readonly FlowDesignBlock[]): number {
+  const settings = blocks.find((b) => b.design.kind === 'settings');
+  const stored = settings?.design.nextScreen;
+  const number = blocks.reduce(
+    (n, b) => {
+      if (b.design.kind !== 'screen') return n;
+      const match = /-(\d+)$/.exec(stringValue(b.design.code));
+      return match ? Math.max(n, Number(match[1]) + 1) : n;
+    },
+    typeof stored === 'number' ? stored : 1,
+  );
+  if (!Number.isSafeInteger(number + 1)) throw Error('새 화면 번호가 너무 큽니다.');
+  return number;
+}
 export function createDesignBlock(
   blocks: readonly FlowDesignBlock[],
   kind: 'screen' | 'state' | 'component',
@@ -31,16 +45,25 @@ export function createDesignBlock(
     const settings = blocks.find((b) => b.design.kind === 'settings');
     if (!settings) throw Error('문서 설정을 찾을 수 없습니다.');
     const prefix = stringValue(settings.design.idPrefix) || 'S';
-    let number = typeof settings.design.nextScreen === 'number' ? settings.design.nextScreen : 1;
-    const codes = new Set(blocks.filter((b) => b.design.kind === 'screen').map((b) => b.design.code));
-    let code: string;
-    do {
-      code = prefix + '-' + String(number++).padStart(2, '0');
-    } while (codes.has(code));
-    return [
-      ...blocks.map((b) => (b === settings ? { ...b, design: { ...b.design, nextScreen: number } } : b)),
-      block(id, { id, kind, name, code, root: box('root') }),
-    ];
+    const number = nextDesignNumber(blocks);
+    const code = prefix + '-' + String(number).padStart(2, '0');
+    const source = sourceBlock(blocks, screenId, 'screen');
+    if (!source) throw Error('화면을 찾을 수 없습니다.');
+    const next = blocks.map((b) =>
+      b === settings ? { ...b, design: { ...b.design, nextScreen: number + 1 } } : b,
+    );
+    next.splice(
+      blocks.indexOf(source) + 1,
+      0,
+      block(id, {
+        id,
+        kind,
+        name,
+        code,
+        root: { kind: 'box', id: 'root', name: '화면', layout: { mode: 'free' }, children: [] },
+      }),
+    );
+    return next;
   }
   if (kind === 'state') {
     const screen = sourceBlock(blocks, screenId, 'screen');
@@ -70,7 +93,7 @@ export function addDesignChild(
   state: string | undefined,
   parent: DesignAddress,
   newNode: DesignObject,
-) {
+): FlowDesignBlock[] {
   const parentNode = findDesignNode(blocks, parent);
   if (!parentNode || !['box', 'group'].includes(stringValue(parentNode.kind)))
     throw Error('요소를 추가할 상자를 선택하세요.');

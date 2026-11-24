@@ -198,3 +198,67 @@ it('registers attachment faces before measuring, records a failed font and detac
     vi.unstubAllGlobals();
   }
 });
+
+it('lets an enclosing hotspot receive clicks when a state disables its annotated child', () => {
+  const nested = [
+    ...blocks,
+    block({
+      id: 'inner',
+      kind: 'annotation',
+      screen: 'screen',
+      name: '버튼 문구',
+      target: { owner: 'screen', node: 'caption' },
+    }),
+    block({
+      id: 'hidden',
+      kind: 'annotation',
+      screen: 'screen',
+      state: 'changed',
+      enabled: false,
+      name: '버튼 문구',
+      target: { owner: 'screen', node: 'caption' },
+    }),
+  ];
+  function Interactive({ state }: { state?: string }) {
+    const [activated, activate] = useState('');
+    return (
+      <>
+        <DesignCanvasView
+          blocks={nested}
+          screen="screen"
+          state={state}
+          assetUrl={() => ''}
+          onActivate={(address) => activate(address.node)}
+        />
+        <output>{activated}</output>
+      </>
+    );
+  }
+  const result = render(<Interactive />);
+  fireEvent.click(screen.getByText('기본 문구'));
+  expect(result.container.querySelector('output')?.textContent).toBe('caption');
+  result.rerender(<Interactive state="changed" />);
+  fireEvent.click(screen.getByText('바뀐 문구'));
+  expect(result.container.querySelector('output')?.textContent).toBe('button');
+});
+
+it('retains reading position for selection links but starts a different state at the top', () => {
+  const show = (state?: string, selection?: DesignAddress) => (
+    <DesignCanvasView
+      blocks={blocks}
+      screen="screen"
+      state={state}
+      selection={selection}
+      assetUrl={() => ''}
+    />
+  );
+  const ui = render(show());
+  const viewer = () => ui.container.querySelector<HTMLElement>('.design-canvas');
+  const initial = viewer();
+  if (!initial) throw Error('Missing canvas');
+  initial.scrollTop = 140;
+  ui.rerender(show(undefined, { owner: 'screen', node: 'button' }));
+  expect(viewer()?.scrollTop).toBe(140);
+  ui.rerender(show('changed'));
+  expect(viewer()?.scrollTop).toBe(0);
+});

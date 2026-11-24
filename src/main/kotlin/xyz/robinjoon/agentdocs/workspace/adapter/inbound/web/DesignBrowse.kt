@@ -20,6 +20,7 @@ internal class DesignBrowse(
 ) {
     private val version = view.document.version
     private val blocks = view.document.blocks.filterIsInstance<FlowDesignBlock>()
+    private val byDesignId = blocks.associateBy { it.designId }
     private val hashes = mutableMapOf<BlockId, String>()
     private val keyword = request.optionalString("query").orEmpty().trim()
     private val kind = request.optionalString("kind")
@@ -103,7 +104,10 @@ internal class DesignBrowse(
     }
 
     private fun blockRow(block: FlowDesignBlock): Map<String, Any?> {
-        val parent = if (block.kind == "screen") block else blocks.find { it.kind == "screen" && it.designId == block.string("screen") }
+        val parent = if (block.kind == "screen") block else byDesignId[block.string("screen")]?.takeIf { it.kind == "screen" }
+        val state = if (block.kind == "state") block else byDesignId[block.string("state")]?.takeIf { it.kind == "state" }
+        val target = (block.fields["target"] as? Map<*, *>)?.let(DesignAddress::from)
+        val canLink = block.string("state") == null || (state != null && state.string("screen") == parent?.designId)
         return mapOf(
             "block" to block.id.value,
             "kind" to block.kind,
@@ -113,8 +117,8 @@ internal class DesignBrowse(
             "code" to block.string("code"),
             "description" to block.string("description")?.take(180),
             "screen" to parent?.id?.value,
-            "state" to block.id.value.takeIf { block.kind == "state" },
-            "url" to parent?.let { link(it.id, block.id.takeIf { _ -> block.kind == "state" }) },
+            "state" to state?.id?.value,
+            "url" to if (parent != null && canLink) link(parent.id, state?.id, target) else null,
         )
     }
 

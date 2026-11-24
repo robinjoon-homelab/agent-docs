@@ -18,15 +18,31 @@ export type DesignClipboard = {
   readonly nodes: readonly DesignObject[];
   readonly annotations: readonly DesignObject[];
 };
+export type DesignLayerContainer = DesignAddress & { slot?: string };
+export function containerChildren(node: DesignObject, container: DesignLayerContainer) {
+  return records(container.slot ? object(node.slots)?.[container.slot] : node.children);
+}
+export function replaceContainerChildren(
+  node: DesignObject,
+  container: DesignLayerContainer,
+  children: readonly DesignObject[],
+): DesignObject {
+  if (container.slot) {
+    if (node.kind !== 'instance') throw Error('선택한 슬롯의 인스턴스가 변경되었습니다.');
+    return { ...node, slots: { ...object(node.slots), [container.slot]: children } };
+  }
+  if (node.kind !== 'box' && node.kind !== 'group') throw Error('요소를 놓을 상자를 선택하세요.');
+  return { ...node, children };
+}
 export function copyDesignSiblings(
   bs: readonly FlowDesignBlock[],
-  parent: DesignAddress,
+  parent: DesignLayerContainer,
   ids: readonly string[],
 ): DesignClipboard {
   const n = findDesignNode(bs, parent),
     owner = sourceBlock(bs, parent.owner, 'screen');
   if (!n || !owner || parent.via?.length) throw Error('기본 화면의 상자를 선택하세요.');
-  const selected = records(n.children).filter((c) => ids.includes(stringValue(c.id)));
+  const selected = containerChildren(n, parent).filter((c) => ids.includes(stringValue(c.id)));
   if (!selected.length || selected.length !== new Set(ids).size)
     throw Error('같은 상자에 속한 요소를 선택하세요.');
   const all = new Set<string>();
@@ -51,12 +67,28 @@ export function copyDesignSiblings(
 }
 export function pasteDesignSiblings(
   bs: readonly FlowDesignBlock[],
-  parent: DesignAddress,
+  parent: DesignLayerContainer,
   clip: DesignClipboard,
   allocate: () => string,
 ) {
   if (parent.via?.length || !sourceBlock(bs, parent.owner, 'screen'))
     throw Error('기본 화면에서 붙여 넣을 위치를 선택하세요.');
+  const result = cloneCanvasClipboard(clip, parent.owner, parent.owner, allocate);
+  const next = editDesignCollection(bs, parent, (p) =>
+    replaceContainerChildren(p, parent, [...containerChildren(p, parent), ...result.nodes]),
+  );
+  return { blocks: [...next, ...result.annotations], ids: result.nodes.map((n) => stringValue(n.id)) };
+}
+
+export function cloneCanvasClipboard(
+  clip: DesignClipboard,
+  owner: string,
+  screen: string,
+  allocate: () => string,
+  offset = 16,
+  rename = false,
+  state?: string,
+) {
   const map = new Map<string, string>(),
     groups = new Map<string, string>();
   function assign(n: DesignObject) {
@@ -74,7 +106,7 @@ export function pasteDesignSiblings(
       for (const key of ['node', 'instance', 'repeat']) {
         const mapped = map.get(stringValue(v[key]));
         if (mapped) {
-          copy.owner = parent.owner;
+          copy.owner = owner;
           copy[key] = mapped;
         }
       }
@@ -83,7 +115,15 @@ export function pasteDesignSiblings(
     return copy;
   }
   function clone(n: DesignObject): DesignObject {
-    const embedded = new Set(['children', 'template', 'fallback', 'operands', 'source', 'slots']);
+    const embedded = new Set([
+      'children',
+      'template',
+      'fallback',
+      'operands',
+      'source',
+      'slots',
+      'overrides',
+    ]);
     const data = Object.fromEntries(
       Object.entries(n)
         .filter(([k]) => !embedded.has(k))
@@ -97,6 +137,15 @@ export function pasteDesignSiblings(
       copy.slots = Object.fromEntries(
         Object.entries(object(n.slots) ?? {}).map(([k, items]) => [k, records(items).map(clone)]),
       );
+    if (Array.isArray(n.overrides))
+      copy.overrides = records(n.overrides).map((op) => {
+        const change = object(remapReferences(op)) ?? {};
+        const assignment = object(op.assignment);
+        if (op.op === 'slot' && Array.isArray(assignment?.children)) {
+          return { ...change, assignment: { children: records(assignment.children).map(clone) } };
+        }
+        return change;
+      });
     if (typeof n.group === 'string') {
       const g = groups.get(n.group) ?? allocate();
       groups.set(n.group, g);
@@ -106,34 +155,50 @@ export function pasteDesignSiblings(
   }
   const nodes = clip.nodes.map((n) => {
     let copy = clone(n);
+    if (rename)
+      copy = {
+        ...copy,
+        name:
+          (stringValue(n.name) ||
+            stringValue(n.alias) ||
+            stringValue(n.text) ||
+            stringValue(n.component) ||
+            '요소') + ' 사본',
+      };
     const position = object(n.position);
     if (position?.mode === 'absolute')
       for (const axis of ['x', 'y'])
         for (const [edge, v] of Object.entries(object(position[axis]) ?? {})) {
-          if ((edge === 'start' || edge === 'end') && typeof v === 'number')
-            copy = editDesignValue(copy, ['position', axis, edge], () => v + (edge === 'start' ? 16 : -16));
+          if ((edge === 'start' || edge === 'center' || edge === 'end') && typeof v === 'number')
+            copy = editDesignValue(
+              copy,
+              ['position', axis, edge],
+              () => v + (edge === 'end' ? -offset : offset),
+            );
         }
     return copy;
-  });
-  const next = editDesignCollection(bs, parent, (p) => {
-    if (p.kind !== 'box' && p.kind !== 'group') throw Error('붙여 넣을 상자를 선택하세요.');
-    return { ...p, children: [...records(p.children), ...nodes] };
   });
   const annotations = clip.annotations.map((a) => {
     const id = allocate();
     return {
       id,
       type: 'flowDesign' as const,
-      design: { ...a, id, screen: parent.owner, target: remapReferences(a.target ?? {}) },
+      design: {
+        ...Object.fromEntries(Object.entries(a).filter(([key]) => key !== 'state')),
+        id,
+        screen,
+        ...(state ? { state } : {}),
+        target: remapReferences(a.target ?? {}),
+      },
     };
   });
-  return { blocks: [...next, ...annotations], ids: nodes.map((n) => stringValue(n.id)) };
+  return { nodes, annotations };
 }
 
 export type Arrange = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' | 'horizontal' | 'vertical';
 export function arrangeDesignSiblings(
   bs: readonly FlowDesignBlock[],
-  parent: DesignAddress,
+  parent: DesignLayerContainer,
   ids: readonly string[],
   operation: Arrange,
   frames: ReadonlyMap<string, Rect>,
@@ -178,18 +243,21 @@ export function arrangeDesignSiblings(
 }
 export function markDesignSiblings(
   bs: readonly FlowDesignBlock[],
-  parent: DesignAddress,
+  parent: DesignLayerContainer,
   ids: readonly string[],
   field: 'group' | 'locked',
   value: string | boolean | null,
 ) {
   copyDesignSiblings(bs, parent, ids);
-  return editDesignCollection(bs, parent, (p) => ({
-    ...p,
-    children: records(p.children).map((n) =>
-      ids.includes(stringValue(n.id))
-        ? editDesignValue(n, [field], () => (value === null ? undefined : value))
-        : n,
+  return editDesignCollection(bs, parent, (p) =>
+    replaceContainerChildren(
+      p,
+      parent,
+      containerChildren(p, parent).map((n) =>
+        ids.includes(stringValue(n.id))
+          ? editDesignValue(n, [field], () => (value === null ? undefined : value))
+          : n,
+      ),
     ),
-  }));
+  );
 }

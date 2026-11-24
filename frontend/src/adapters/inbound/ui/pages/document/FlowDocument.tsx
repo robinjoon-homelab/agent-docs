@@ -7,6 +7,7 @@ import { FlowSelectionLink } from './FlowSelectionLink';
 import { createPortal } from 'react-dom';
 import { FlowIcon, FlowCommentBadge, FlowToolIcon } from './FlowIcon';
 import { FlowOverview } from './FlowOverview';
+import { FlowScreenStrip } from './FlowScreenStrip';
 import { useFlowCommentTargets } from './useFlowCommentTargets';
 import { FlowElementVisual } from './FlowElementVisual';
 import { CommentEditor } from './CommentEditor';
@@ -27,7 +28,7 @@ import {
 import { useStageArea } from './useStageArea';
 import { FlowRichText } from './FlowRichText';
 import { useServices } from '../../../../../config/ServicesContext';
-import { UPLOAD_ERROR_TEXT } from '../../../../../application/asset/assetUseCases';
+import { uploadFlowImage } from './uploadFlowImage';
 import { canComment } from '../../../../../domain/space/permission';
 import { useDocumentPermission } from './DocumentPermissionContext';
 import { useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore } from 'react';
@@ -292,17 +293,8 @@ export function FlowDocument({
       true,
       screen.id + Object.keys(patch).join(','),
     );
-  const uploadImage = async (file: File) => {
-    if (!file.type.startsWith('image/')) throw new Error('이미지 파일을 골라 주세요.');
-    const uploaded = await services.assets.upload(spaceSlug, {
-      name: file.name,
-      type: file.type,
-      size: file.size,
-      data: file,
-    });
-    if (!uploaded.ok) throw new Error(UPLOAD_ERROR_TEXT[uploaded.error]);
-    return `asset:${uploaded.value.id}`;
-  };
+  const uploadImage = async (file: File) =>
+    'asset:' + (await uploadFlowImage(services.assets, spaceSlug, file));
 
   const numbers = numbered(active.elements);
   const onCommit = (next: Flow, record = true, key?: string) => {
@@ -434,61 +426,25 @@ export function FlowDocument({
           </>,
           statsTarget,
         )}
-      <nav className="flow-strip">
-        <button
-          className="flow-strip-arrow"
-          aria-label="이전 화면"
-          disabled={flow.screens.indexOf(active) === 0}
-          onClick={() => {
-            const prev = flow.screens[flow.screens.indexOf(active) - 1];
-            if (prev) navigate(prev.screen.screenId);
-          }}
-        >
-          <FlowIcon name="left" />
-        </button>
-        <div className="flow-screen-buttons">
-          {flow.screens.map((s) => (
-            <button
-              key={s.screen.id}
-              aria-pressed={s === active && !link?.error}
-              onClick={() => navigate(s.screen.screenId)}
-            >
-              <span>{s.screen.screenId}</span>
-              {s.screen.name}
-              <FlowCommentBadge
-                count={
-                  threads.filter(
-                    (t) =>
-                      t.status !== 'resolved' &&
-                      anchoredScreenId(
-                        t.anchor.kind === 'document' ? null : t.anchor.blockId,
-                        flow.screens,
-                        targets.parents.get(t.id),
-                      ) === s.screen.id,
-                  ).length
-                }
-              />
-            </button>
-          ))}
-          {edit && !link?.error && (
-            <button className="flow-add-screen" onClick={() => addScreen()}>
-              <FlowIcon name="plus" size={14} />
-              화면 추가
-            </button>
-          )}
-        </div>
-        <button
-          className="flow-strip-arrow"
-          aria-label="다음 화면"
-          disabled={flow.screens.indexOf(active) === flow.screens.length - 1}
-          onClick={() => {
-            const next = flow.screens[flow.screens.indexOf(active) + 1];
-            if (next) navigate(next.screen.screenId);
-          }}
-        >
-          <FlowIcon name="right" />
-        </button>
-      </nav>
+      <FlowScreenStrip
+        screens={flow.screens.map((s) => ({
+          id: s.screen.screenId,
+          code: s.screen.screenId,
+          name: s.screen.name,
+          comments: threads.filter(
+            (t) =>
+              t.status !== 'resolved' &&
+              anchoredScreenId(
+                t.anchor.kind === 'document' ? null : t.anchor.blockId,
+                flow.screens,
+                targets.parents.get(t.id),
+              ) === s.screen.id,
+          ).length,
+        }))}
+        selected={link?.error ? undefined : active.screen.screenId}
+        onSelect={navigate}
+        onAdd={edit && !link?.error ? () => addScreen() : undefined}
+      />
       {link?.error && (
         <div role="status" className="flow-delete-confirm">
           <span>{link.error}</span>

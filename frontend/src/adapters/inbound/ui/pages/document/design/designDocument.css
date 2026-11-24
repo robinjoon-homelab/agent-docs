@@ -3,25 +3,11 @@
   background: var(--bg);
   min-width: 0;
 }
-.design-toolbar,
-.design-buttons,
-.design-stage-tools,
-.design-toolbar nav {
+.design-buttons {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-}
-.design-toolbar {
-  padding: 10px 0;
-  border-block-end: 1px solid var(--border);
-}
-.design-toolbar label,
-.design-stage-tools label {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  font-size: 13px;
 }
 .design-document select,
 .design-document input:not([type='checkbox']),
@@ -38,39 +24,12 @@
   padding: 5px 8px;
   font: inherit;
 }
-.design-layout {
-  display: grid;
-  grid-template-columns: minmax(145px, 210px) minmax(0, 1fr) minmax(210px, 300px);
-  min-height: 450px;
-}
-.design-tree,
-.design-properties {
-  padding: 12px 10px;
-  min-width: 0;
-  background: var(--bg);
-}
-.design-tree {
-  border-inline-end: 1px solid var(--border);
-}
-.design-properties {
-  border-inline-start: 1px solid var(--border);
-  overflow-wrap: anywhere;
-}
-.design-tree h3,
-.design-properties h3 {
-  font-size: 15px;
-  margin: 0.6em 0;
-}
-.design-tree > input {
-  width: 100%;
-}
 .design-tree-scroll {
   overflow: auto;
   max-height: min(65vh, 720px);
   margin-block: 8px;
 }
-.design-tree-scroll button,
-.design-text-link {
+.design-tree-scroll button {
   display: block;
   text-align: start;
   border: 0;
@@ -93,18 +52,6 @@
 .design-tree-scroll button:hover,
 .design-tree-scroll button[aria-pressed='true'] {
   background: var(--bg-active);
-}
-.design-stage {
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  max-height: 80vh;
-  background: var(--bg-sunken);
-  padding: 12px;
-}
-.design-stage-tools {
-  margin-block-end: 10px;
-  font-size: 13px;
 }
 .design-property,
 .design-field {
@@ -135,15 +82,6 @@
   margin-block-start: 12px;
   padding-block-start: 10px;
 }
-.design-text-link {
-  color: var(--link);
-  padding: 2px;
-}
-.design-warning {
-  padding: 8px;
-  color: var(--flow-warning-text);
-  background: var(--flow-warning-bg, var(--bg-sunken));
-}
 .design-full {
   position: fixed;
   inset: 0;
@@ -153,43 +91,6 @@
   min-height: 100vh;
   overflow: auto;
 }
-.design-note {
-  max-width: 800px;
-  padding: 24px 32px;
-  background: var(--bg);
-  color: var(--text);
-}
-@media (max-width: 960px) {
-  .design-layout {
-    grid-template-columns: minmax(145px, 190px) minmax(0, 1fr);
-  }
-  .design-properties {
-    grid-column: 1/-1;
-    border-inline-start: 0;
-    border-block-start: 1px solid var(--border);
-  }
-}
-@media (max-width: 600px) {
-  .design-layout {
-    display: flex;
-    flex-direction: column;
-  }
-  .design-tree-scroll {
-    max-height: 150px;
-  }
-  .design-stage {
-    max-height: 65vh;
-  }
-  .design-tree {
-    border: 0;
-  }
-}
-
-.design-multi-list {
-  max-height: 180px;
-  overflow: auto;
-  padding: 4px;
-}
 .design-action-row {
   display: flex;
   gap: 6px;
@@ -198,4 +99,47 @@
 }
 .design-inspector-group > .design-buttons {
   margin-block: 6px;
+}
+
+.design-state-picker {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.design-state-picker select {
+  max-width: clamp(80px, 14vw, 192px);
+}
+.design-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-block-start: 16px;
+}
+.design-preview .flow-palette .design-tree-scroll {
+  max-height: 240px;
+}
+.design-preview .flow-palette details {
+  min-width: 0;
+  margin-top: 8px;
+}
+.design-preview .flow-palette details > summary {
+  cursor: pointer;
+}
+.design-history .design-canvas-layer.is-selected {
+  outline-color: var(--flow-history-solid);
+}
+.design-history .design-canvas-layer.is-selected::after {
+  content: '댓글 위치';
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  background: var(--flow-history-solid);
+  color: var(--flow-on-solid);
+  border-radius: 3px;
+  padding: 0 4px;
+  font: 600 11px/16px var(--font-body);
 }

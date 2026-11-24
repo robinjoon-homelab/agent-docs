@@ -45,7 +45,12 @@ function clip(rect: Rect, box: Rect, x: boolean, y: boolean): Rect | null {
 }
 const clips = (overflow: string) => ['auto', 'scroll', 'clip', 'hidden'].includes(overflow);
 type Geometry = { rect: Rect; x: boolean; y: boolean };
-function visible(el: HTMLElement, rect: Rect, until: HTMLElement, ancestors: Map<HTMLElement, Geometry>) {
+export function visibleDesignBounds(
+  el: HTMLElement,
+  rect: Rect,
+  until: HTMLElement,
+  ancestors: Map<HTMLElement, Geometry>,
+) {
   let remaining: Rect | null = rect;
   for (let p = el.parentElement; p && remaining; p = p.parentElement) {
     let g = ancestors.get(p);
@@ -83,7 +88,7 @@ function measureLayer(
 ): MeasuredDesignLayer {
   const css = getComputedStyle(el),
     actual = bounds(el),
-    view = visible(el, actual, canvas, ancestors),
+    view = visibleDesignBounds(el, actual, canvas, ancestors),
     rect = normalized(actual),
     visibleRect = view ? normalized(view) : null;
   const issues: string[] = [];
@@ -211,7 +216,7 @@ export async function inspectDesignCanvas(
       // Only report intersecting visible bounding boxes of distinct direct siblings.
       const raw = clip(visibleRect, rectOf(other), true, true);
       if (!raw || raw.width <= 0.01 || raw.height <= 0.01) return false;
-      const visibleOther = visible(other, bounds(other), canvas, ancestry);
+      const visibleOther = visibleDesignBounds(other, bounds(other), canvas, ancestry);
       return visibleOther !== null && clip(visibleRect, normalize(visibleOther), true, true) !== null;
     });
     if (overlap) {

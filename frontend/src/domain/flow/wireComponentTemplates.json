@@ -1,0 +1,2325 @@
+{
+  "title": {
+    "id": "wire:title",
+    "kind": "component",
+    "name": "기본 · 제목",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      },
+      {
+        "id": "look",
+        "name": "모양",
+        "type": "choice",
+        "choices": [
+          {
+            "id": "large",
+            "name": "large"
+          },
+          {
+            "id": "small",
+            "name": "small"
+          }
+        ],
+        "initial": "large"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column",
+        "padding": {
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0
+        }
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "caption",
+          "text": {
+            "prop": "value"
+          },
+          "style": {
+            "text": {
+              "size": 22,
+              "weight": 700,
+              "color": "#1f1f1d",
+              "lineHeight": {
+                "multiple": 1.3
+              }
+            }
+          }
+        }
+      ],
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    },
+    "variants": [
+      {
+        "when": {
+          "prop": "look",
+          "choice": "small"
+        },
+        "target": {
+          "owner": "wire:title",
+          "node": "caption"
+        },
+        "set": {
+          "style": {
+            "text": {
+              "size": 15
+            }
+          }
+        }
+      }
+    ]
+  },
+  "text": {
+    "id": "wire:text",
+    "kind": "component",
+    "name": "기본 · 텍스트",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column",
+        "padding": {
+          "left": 0,
+          "right": 0,
+          "top": 2,
+          "bottom": 2
+        }
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "caption",
+          "text": {
+            "prop": "value"
+          },
+          "style": {
+            "text": {
+              "size": 12,
+              "weight": 400,
+              "color": "#5f5e5a",
+              "lineHeight": {
+                "multiple": 1.55
+              }
+            }
+          }
+        }
+      ],
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    }
+  },
+  "field": {
+    "id": "wire:field",
+    "kind": "component",
+    "name": "기본 · 입력칸",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      },
+      {
+        "id": "look",
+        "name": "모양",
+        "type": "choice",
+        "choices": [
+          {
+            "id": "normal",
+            "name": "normal"
+          },
+          {
+            "id": "inactive",
+            "name": "inactive"
+          }
+        ],
+        "initial": "normal"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column",
+        "gap": 4
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "label",
+          "text": {
+            "prop": "label"
+          },
+          "style": {
+            "text": {
+              "size": 12,
+              "weight": 500,
+              "color": "#1f1f1d",
+              "lineHeight": 16
+            }
+          }
+        },
+        {
+          "kind": "box",
+          "id": "input",
+          "layout": {
+            "mode": "row",
+            "align": "center",
+            "justify": "between",
+            "padding": {
+              "left": 10,
+              "right": 10,
+              "top": 0,
+              "bottom": 0
+            }
+          },
+          "children": [
+            {
+              "kind": "text",
+              "id": "caption",
+              "text": {
+                "prop": "value"
+              },
+              "style": {
+                "text": {
+                  "size": 13,
+                  "weight": 400,
+                  "color": "#1f1f1d"
+                }
+              }
+            }
+          ],
+          "style": {
+            "fill": "#ffffff",
+            "radius": {
+              "topLeft": 6,
+              "topRight": 6,
+              "bottomLeft": 6,
+              "bottomRight": 6
+            },
+            "border": {
+              "top": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "right": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "left": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              }
+            }
+          },
+          "size": {
+            "y": {
+              "mode": "fill",
+              "min": 0
+            }
+          },
+          "flexItem": {
+            "grow": 1,
+            "shrink": 1,
+            "basis": {
+              "percent": 0
+            }
+          }
+        }
+      ],
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    },
+    "variants": [
+      {
+        "when": {
+          "prop": "look",
+          "choice": "inactive"
+        },
+        "target": {
+          "owner": "wire:field",
+          "node": "input"
+        },
+        "set": {
+          "style": {
+            "fill": "#f7f7f5",
+            "radius": {
+              "topLeft": 6,
+              "topRight": 6,
+              "bottomLeft": 6,
+              "bottomRight": 6
+            },
+            "border": {
+              "top": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "right": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "left": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              }
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "inactive"
+        },
+        "target": {
+          "owner": "wire:field",
+          "node": "caption"
+        },
+        "set": {
+          "style": {
+            "text": {
+              "color": "#6b6a65"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "select": {
+    "id": "wire:select",
+    "kind": "component",
+    "name": "기본 · 선택",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      },
+      {
+        "id": "look",
+        "name": "모양",
+        "type": "choice",
+        "choices": [
+          {
+            "id": "normal",
+            "name": "normal"
+          },
+          {
+            "id": "inactive",
+            "name": "inactive"
+          }
+        ],
+        "initial": "normal"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column",
+        "gap": 4
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "label",
+          "text": {
+            "prop": "label"
+          },
+          "style": {
+            "text": {
+              "size": 12,
+              "weight": 500,
+              "color": "#1f1f1d",
+              "lineHeight": 16
+            }
+          }
+        },
+        {
+          "kind": "box",
+          "id": "input",
+          "layout": {
+            "mode": "row",
+            "align": "center",
+            "justify": "between",
+            "padding": {
+              "left": 10,
+              "right": 10,
+              "top": 0,
+              "bottom": 0
+            }
+          },
+          "children": [
+            {
+              "kind": "text",
+              "id": "caption",
+              "text": {
+                "prop": "value"
+              },
+              "style": {
+                "text": {
+                  "size": 13,
+                  "weight": 400,
+                  "color": "#1f1f1d"
+                }
+              }
+            },
+            {
+              "kind": "icon",
+              "id": "chevron-down",
+              "icon": {
+                "builtin": "chevron-down"
+              },
+              "size": {
+                "x": {
+                  "mode": "fixed",
+                  "px": 14
+                },
+                "y": {
+                  "mode": "fixed",
+                  "px": 14
+                }
+              }
+            }
+          ],
+          "style": {
+            "fill": "#ffffff",
+            "radius": {
+              "topLeft": 6,
+              "topRight": 6,
+              "bottomLeft": 6,
+              "bottomRight": 6
+            },
+            "border": {
+              "top": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "right": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "left": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              }
+            }
+          },
+          "size": {
+            "y": {
+              "mode": "fill",
+              "min": 0
+            }
+          },
+          "flexItem": {
+            "grow": 1,
+            "shrink": 1,
+            "basis": {
+              "percent": 0
+            }
+          }
+        }
+      ],
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    },
+    "variants": [
+      {
+        "when": {
+          "prop": "look",
+          "choice": "inactive"
+        },
+        "target": {
+          "owner": "wire:select",
+          "node": "input"
+        },
+        "set": {
+          "style": {
+            "fill": "#f7f7f5",
+            "radius": {
+              "topLeft": 6,
+              "topRight": 6,
+              "bottomLeft": 6,
+              "bottomRight": 6
+            },
+            "border": {
+              "top": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "right": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "left": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              }
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "inactive"
+        },
+        "target": {
+          "owner": "wire:select",
+          "node": "caption"
+        },
+        "set": {
+          "style": {
+            "text": {
+              "color": "#6b6a65"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "area": {
+    "id": "wire:area",
+    "kind": "component",
+    "name": "기본 · 여러 줄 입력",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      },
+      {
+        "id": "look",
+        "name": "모양",
+        "type": "choice",
+        "choices": [
+          {
+            "id": "normal",
+            "name": "normal"
+          },
+          {
+            "id": "inactive",
+            "name": "inactive"
+          }
+        ],
+        "initial": "normal"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column",
+        "gap": 4
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "label",
+          "text": {
+            "prop": "label"
+          },
+          "style": {
+            "text": {
+              "size": 12,
+              "weight": 500,
+              "color": "#1f1f1d",
+              "lineHeight": 16
+            }
+          }
+        },
+        {
+          "kind": "box",
+          "id": "input",
+          "layout": {
+            "mode": "column",
+            "padding": {
+              "left": 10,
+              "right": 10,
+              "top": 8,
+              "bottom": 8
+            }
+          },
+          "children": [
+            {
+              "kind": "text",
+              "id": "caption",
+              "text": {
+                "prop": "value"
+              },
+              "style": {
+                "text": {
+                  "size": 13,
+                  "weight": 400,
+                  "color": "#1f1f1d",
+                  "lineHeight": {
+                    "multiple": 1.5
+                  }
+                }
+              }
+            }
+          ],
+          "style": {
+            "fill": "#ffffff",
+            "radius": {
+              "topLeft": 6,
+              "topRight": 6,
+              "bottomLeft": 6,
+              "bottomRight": 6
+            },
+            "border": {
+              "top": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "right": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "left": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              }
+            }
+          },
+          "size": {
+            "y": {
+              "mode": "fill",
+              "min": 0
+            }
+          },
+          "flexItem": {
+            "grow": 1,
+            "shrink": 1,
+            "basis": {
+              "percent": 0
+            }
+          }
+        }
+      ],
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    },
+    "variants": [
+      {
+        "when": {
+          "prop": "look",
+          "choice": "inactive"
+        },
+        "target": {
+          "owner": "wire:area",
+          "node": "input"
+        },
+        "set": {
+          "style": {
+            "fill": "#f7f7f5",
+            "radius": {
+              "topLeft": 6,
+              "topRight": 6,
+              "bottomLeft": 6,
+              "bottomRight": 6
+            },
+            "border": {
+              "top": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "right": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "left": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              }
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "inactive"
+        },
+        "target": {
+          "owner": "wire:area",
+          "node": "caption"
+        },
+        "set": {
+          "style": {
+            "text": {
+              "color": "#6b6a65"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "button": {
+    "id": "wire:button",
+    "kind": "component",
+    "name": "기본 · 버튼",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      },
+      {
+        "id": "look",
+        "name": "모양",
+        "type": "choice",
+        "choices": [
+          {
+            "id": "primary",
+            "name": "primary"
+          },
+          {
+            "id": "secondary",
+            "name": "secondary"
+          },
+          {
+            "id": "disabled",
+            "name": "disabled"
+          }
+        ],
+        "initial": "primary"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "row",
+        "align": "center",
+        "justify": "center",
+        "padding": {
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0
+        }
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "caption",
+          "text": {
+            "prop": "value"
+          },
+          "style": {
+            "text": {
+              "size": 14,
+              "weight": 600,
+              "color": "#ffffff"
+            }
+          }
+        }
+      ],
+      "style": {
+        "fill": "#1f1f1d",
+        "radius": {
+          "topLeft": 8,
+          "topRight": 8,
+          "bottomLeft": 8,
+          "bottomRight": 8
+        }
+      },
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    },
+    "variants": [
+      {
+        "when": {
+          "prop": "look",
+          "choice": "secondary"
+        },
+        "target": {
+          "owner": "wire:button",
+          "node": "body"
+        },
+        "set": {
+          "style": {
+            "fill": "#ffffff",
+            "radius": {
+              "topLeft": 8,
+              "topRight": 8,
+              "bottomLeft": 8,
+              "bottomRight": 8
+            },
+            "border": {
+              "top": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "right": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              },
+              "left": {
+                "width": 1,
+                "color": "#cfcdc7",
+                "line": "solid"
+              }
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "secondary"
+        },
+        "target": {
+          "owner": "wire:button",
+          "node": "caption"
+        },
+        "set": {
+          "style": {
+            "text": {
+              "color": "#1f1f1d"
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "disabled"
+        },
+        "target": {
+          "owner": "wire:button",
+          "node": "body"
+        },
+        "set": {
+          "style": {
+            "fill": "#e7e7e3",
+            "radius": {
+              "topLeft": 8,
+              "topRight": 8,
+              "bottomLeft": 8,
+              "bottomRight": 8
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "disabled"
+        },
+        "target": {
+          "owner": "wire:button",
+          "node": "caption"
+        },
+        "set": {
+          "style": {
+            "text": {
+              "color": "#6b6a65"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "link": {
+    "id": "wire:link",
+    "kind": "component",
+    "name": "기본 · 링크",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column",
+        "padding": {
+          "left": 0,
+          "right": 0,
+          "top": 2,
+          "bottom": 2
+        }
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "caption",
+          "text": {
+            "prop": "value"
+          },
+          "style": {
+            "text": {
+              "size": 14,
+              "weight": 400,
+              "color": "#2a5bd7",
+              "underline": true
+            }
+          }
+        }
+      ],
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    }
+  },
+  "list": {
+    "id": "wire:list",
+    "kind": "component",
+    "name": "기본 · 목록",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      },
+      {
+        "id": "items",
+        "name": "항목",
+        "type": "list",
+        "fields": [
+          {
+            "id": "text",
+            "name": "글자",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "free"
+      },
+      "children": [
+        {
+          "kind": "box",
+          "id": "rows",
+          "layout": {
+            "mode": "column"
+          },
+          "children": [
+            {
+              "kind": "repeat",
+              "id": "entries",
+              "items": {
+                "prop": "items"
+              },
+              "template": [
+                {
+                  "kind": "box",
+                  "id": "row",
+                  "layout": {
+                    "mode": "row",
+                    "align": "center",
+                    "justify": "start",
+                    "padding": {
+                      "left": 12,
+                      "right": 12,
+                      "top": 0,
+                      "bottom": 0
+                    }
+                  },
+                  "children": [
+                    {
+                      "kind": "text",
+                      "id": "caption",
+                      "text": {
+                        "repeat": "entries",
+                        "field": "text"
+                      },
+                      "style": {
+                        "text": {
+                          "size": 14,
+                          "weight": 400,
+                          "color": "#1f1f1d"
+                        }
+                      }
+                    }
+                  ],
+                  "size": {
+                    "y": {
+                      "mode": "fill",
+                      "min": 0
+                    }
+                  },
+                  "flexItem": {
+                    "grow": 1,
+                    "basis": {
+                      "percent": 0
+                    }
+                  },
+                  "style": {
+                    "border": {
+                      "top": {
+                        "width": 1,
+                        "color": "#efefec",
+                        "line": "solid"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "position": {
+            "mode": "absolute",
+            "x": {
+              "start": 0,
+              "end": 0
+            },
+            "y": {
+              "start": -1,
+              "end": 0
+            }
+          }
+        }
+      ],
+      "style": {
+        "fill": "#ffffff",
+        "radius": {
+          "topLeft": 8,
+          "topRight": 8,
+          "bottomLeft": 8,
+          "bottomRight": 8
+        },
+        "border": {
+          "top": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          },
+          "right": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          },
+          "bottom": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          },
+          "left": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          }
+        },
+        "overflow": "clip"
+      },
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    }
+  },
+  "option": {
+    "id": "wire:option",
+    "kind": "component",
+    "name": "기본 · 선택 항목",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "row",
+        "align": "center",
+        "justify": "start",
+        "padding": {
+          "left": 12,
+          "right": 12,
+          "top": 0,
+          "bottom": 0
+        }
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "caption",
+          "text": {
+            "prop": "value"
+          },
+          "style": {
+            "text": {
+              "size": 14,
+              "weight": 400,
+              "color": "#5f5e5a"
+            }
+          }
+        }
+      ],
+      "style": {
+        "fill": "#ffffff",
+        "radius": {
+          "topLeft": 8,
+          "topRight": 8,
+          "bottomLeft": 8,
+          "bottomRight": 8
+        },
+        "border": {
+          "top": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          },
+          "right": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          },
+          "bottom": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          },
+          "left": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          }
+        }
+      },
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    }
+  },
+  "notice": {
+    "id": "wire:notice",
+    "kind": "component",
+    "name": "기본 · 알림",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      },
+      {
+        "id": "look",
+        "name": "모양",
+        "type": "choice",
+        "choices": [
+          {
+            "id": "info",
+            "name": "info"
+          },
+          {
+            "id": "error",
+            "name": "error"
+          },
+          {
+            "id": "ok",
+            "name": "ok"
+          }
+        ],
+        "initial": "info"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column",
+        "padding": {
+          "left": 11,
+          "right": 11,
+          "top": 9,
+          "bottom": 9
+        }
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "caption",
+          "text": {
+            "prop": "value"
+          },
+          "style": {
+            "text": {
+              "size": 12,
+              "weight": 400,
+              "color": "#1f3f8f",
+              "lineHeight": {
+                "multiple": 1.55
+              }
+            }
+          }
+        }
+      ],
+      "style": {
+        "fill": "#eef3fe",
+        "radius": {
+          "topLeft": 6,
+          "topRight": 6,
+          "bottomLeft": 6,
+          "bottomRight": 6
+        },
+        "border": {
+          "top": {
+            "width": 1,
+            "color": "#cddcfb",
+            "line": "solid"
+          },
+          "right": {
+            "width": 1,
+            "color": "#cddcfb",
+            "line": "solid"
+          },
+          "bottom": {
+            "width": 1,
+            "color": "#cddcfb",
+            "line": "solid"
+          },
+          "left": {
+            "width": 1,
+            "color": "#cddcfb",
+            "line": "solid"
+          }
+        }
+      },
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    },
+    "variants": [
+      {
+        "when": {
+          "prop": "look",
+          "choice": "error"
+        },
+        "target": {
+          "owner": "wire:notice",
+          "node": "body"
+        },
+        "set": {
+          "style": {
+            "fill": "#fdece8",
+            "radius": {
+              "topLeft": 6,
+              "topRight": 6,
+              "bottomLeft": 6,
+              "bottomRight": 6
+            },
+            "border": {
+              "top": {
+                "width": 1,
+                "color": "#f5c9bf",
+                "line": "solid"
+              },
+              "right": {
+                "width": 1,
+                "color": "#f5c9bf",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 1,
+                "color": "#f5c9bf",
+                "line": "solid"
+              },
+              "left": {
+                "width": 1,
+                "color": "#f5c9bf",
+                "line": "solid"
+              }
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "error"
+        },
+        "target": {
+          "owner": "wire:notice",
+          "node": "caption"
+        },
+        "set": {
+          "style": {
+            "text": {
+              "color": "#a42d18"
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "ok"
+        },
+        "target": {
+          "owner": "wire:notice",
+          "node": "body"
+        },
+        "set": {
+          "style": {
+            "fill": "#e3f5e8",
+            "radius": {
+              "topLeft": 6,
+              "topRight": 6,
+              "bottomLeft": 6,
+              "bottomRight": 6
+            },
+            "border": {
+              "top": {
+                "width": 1,
+                "color": "#bfe5cb",
+                "line": "solid"
+              },
+              "right": {
+                "width": 1,
+                "color": "#bfe5cb",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 1,
+                "color": "#bfe5cb",
+                "line": "solid"
+              },
+              "left": {
+                "width": 1,
+                "color": "#bfe5cb",
+                "line": "solid"
+              }
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "ok"
+        },
+        "target": {
+          "owner": "wire:notice",
+          "node": "caption"
+        },
+        "set": {
+          "style": {
+            "text": {
+              "color": "#1d7a3d"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "path": {
+    "id": "wire:path",
+    "kind": "component",
+    "name": "기본 · 값 표시",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      },
+      {
+        "id": "date",
+        "name": "날짜",
+        "type": "text"
+      },
+      {
+        "id": "dateLayout",
+        "name": "날짜 표시",
+        "type": "choice",
+        "choices": [
+          {
+            "id": "undated",
+            "name": "undated"
+          },
+          {
+            "id": "dated",
+            "name": "dated"
+          }
+        ],
+        "initial": "undated"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column",
+        "padding": {
+          "left": 10,
+          "right": 10,
+          "top": 5,
+          "bottom": 5
+        }
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "date",
+          "text": {
+            "runs": [
+              {
+                "id": "prefix",
+                "text": "오늘: "
+              },
+              {
+                "id": "value",
+                "text": {
+                  "prop": "date"
+                }
+              }
+            ]
+          },
+          "style": {
+            "text": {
+              "size": 11.5,
+              "weight": 400,
+              "color": "#1f1f1d"
+            }
+          },
+          "visible": false
+        },
+        {
+          "kind": "text",
+          "id": "plainPath",
+          "text": {
+            "runs": [
+              {
+                "id": "prefix",
+                "text": {
+                  "prop": "label"
+                }
+              },
+              {
+                "id": "colon",
+                "text": ": "
+              },
+              {
+                "id": "value",
+                "text": {
+                  "prop": "value"
+                },
+                "style": {
+                  "family": "mono",
+                  "weight": 500,
+                  "wordBreak": "break-all"
+                }
+              }
+            ]
+          },
+          "style": {
+            "text": {
+              "size": 11.5,
+              "weight": 400,
+              "color": "#1f1f1d",
+              "lineHeight": {
+                "multiple": 1.6
+              }
+            }
+          }
+        },
+        {
+          "kind": "text",
+          "id": "datedPath",
+          "text": {
+            "runs": [
+              {
+                "id": "prefix",
+                "text": "저장 경로"
+              },
+              {
+                "id": "colon",
+                "text": ": "
+              },
+              {
+                "id": "value",
+                "text": {
+                  "prop": "value"
+                },
+                "style": {
+                  "family": "mono",
+                  "weight": 500,
+                  "wordBreak": "break-all"
+                }
+              }
+            ]
+          },
+          "style": {
+            "text": {
+              "size": 11.5,
+              "weight": 400,
+              "color": "#1f1f1d",
+              "lineHeight": {
+                "multiple": 1.6
+              }
+            }
+          },
+          "visible": false
+        }
+      ],
+      "style": {
+        "fill": "#f7f7f5",
+        "radius": {
+          "topLeft": 6,
+          "topRight": 6,
+          "bottomLeft": 6,
+          "bottomRight": 6
+        }
+      },
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    },
+    "variants": [
+      {
+        "when": {
+          "prop": "dateLayout",
+          "choice": "dated"
+        },
+        "target": {
+          "owner": "wire:path",
+          "node": "plainPath"
+        },
+        "set": {
+          "visible": false
+        }
+      },
+      {
+        "when": {
+          "prop": "dateLayout",
+          "choice": "dated"
+        },
+        "target": {
+          "owner": "wire:path",
+          "node": "datedPath"
+        },
+        "set": {
+          "visible": true
+        }
+      },
+      {
+        "when": {
+          "prop": "dateLayout",
+          "choice": "dated"
+        },
+        "target": {
+          "owner": "wire:path",
+          "node": "date"
+        },
+        "set": {
+          "visible": true
+        }
+      }
+    ]
+  },
+  "bar": {
+    "id": "wire:bar",
+    "kind": "component",
+    "name": "기본 · 상단 바",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "row",
+        "align": "center",
+        "justify": "start",
+        "padding": {
+          "left": 12,
+          "right": 12,
+          "top": 0,
+          "bottom": 0
+        },
+        "gap": 10
+      },
+      "children": [
+        {
+          "kind": "icon",
+          "id": "menu",
+          "icon": {
+            "builtin": "menu"
+          },
+          "size": {
+            "x": {
+              "mode": "fixed",
+              "px": 18
+            },
+            "y": {
+              "mode": "fixed",
+              "px": 18
+            }
+          }
+        },
+        {
+          "kind": "icon",
+          "id": "search",
+          "icon": {
+            "builtin": "search"
+          },
+          "size": {
+            "x": {
+              "mode": "fixed",
+              "px": 18
+            },
+            "y": {
+              "mode": "fixed",
+              "px": 18
+            }
+          }
+        }
+      ],
+      "style": {
+        "fill": "#ffffff",
+        "border": {
+          "bottom": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          }
+        }
+      },
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    }
+  },
+  "crumb": {
+    "id": "wire:crumb",
+    "kind": "component",
+    "name": "기본 · 위치 표시",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column",
+        "padding": {
+          "left": 0,
+          "right": 0,
+          "top": 1,
+          "bottom": 1
+        }
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "caption",
+          "text": {
+            "prop": "value"
+          },
+          "style": {
+            "text": {
+              "size": 12,
+              "weight": 400,
+              "color": "#5f5e5a"
+            }
+          }
+        }
+      ],
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    }
+  },
+  "block": {
+    "id": "wire:block",
+    "kind": "component",
+    "name": "기본 · 본문 블록",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column",
+        "padding": {
+          "left": 2,
+          "right": 2,
+          "top": 4,
+          "bottom": 4
+        }
+      },
+      "children": [
+        {
+          "kind": "text",
+          "id": "caption",
+          "text": {
+            "prop": "value"
+          },
+          "style": {
+            "text": {
+              "size": 14,
+              "weight": 400,
+              "color": "#1f1f1d",
+              "lineHeight": {
+                "multiple": 1.65
+              }
+            }
+          }
+        }
+      ],
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    }
+  },
+  "box": {
+    "id": "wire:box",
+    "kind": "component",
+    "name": "기본 · 사각형",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      },
+      {
+        "id": "look",
+        "name": "모양",
+        "type": "choice",
+        "choices": [
+          {
+            "id": "white",
+            "name": "white"
+          },
+          {
+            "id": "sheet",
+            "name": "sheet"
+          },
+          {
+            "id": "gray",
+            "name": "gray"
+          },
+          {
+            "id": "dim",
+            "name": "dim"
+          },
+          {
+            "id": "outline",
+            "name": "outline"
+          },
+          {
+            "id": "handle",
+            "name": "handle"
+          }
+        ],
+        "initial": "white"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "free"
+      },
+      "children": [],
+      "style": {
+        "fill": "#ffffff",
+        "radius": {
+          "topLeft": 10,
+          "topRight": 10,
+          "bottomLeft": 10,
+          "bottomRight": 10
+        },
+        "border": {
+          "top": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          },
+          "right": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          },
+          "bottom": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          },
+          "left": {
+            "width": 1,
+            "color": "#e3e2de",
+            "line": "solid"
+          }
+        }
+      },
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    },
+    "variants": [
+      {
+        "when": {
+          "prop": "look",
+          "choice": "sheet"
+        },
+        "target": {
+          "owner": "wire:box",
+          "node": "body"
+        },
+        "set": {
+          "style": {
+            "border": {
+              "top": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "right": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "left": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              }
+            },
+            "radius": {
+              "topLeft": 18,
+              "topRight": 18,
+              "bottomLeft": 0,
+              "bottomRight": 0
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "gray"
+        },
+        "target": {
+          "owner": "wire:box",
+          "node": "body"
+        },
+        "set": {
+          "style": {
+            "border": {
+              "top": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "right": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "left": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              }
+            },
+            "fill": "#efefec",
+            "radius": {
+              "topLeft": 6,
+              "topRight": 6,
+              "bottomLeft": 6,
+              "bottomRight": 6
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "dim"
+        },
+        "target": {
+          "owner": "wire:box",
+          "node": "body"
+        },
+        "set": {
+          "style": {
+            "border": {
+              "top": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "right": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "left": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              }
+            },
+            "fill": "#1414126b",
+            "radius": {
+              "topLeft": 0,
+              "topRight": 0,
+              "bottomLeft": 0,
+              "bottomRight": 0
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "outline"
+        },
+        "target": {
+          "owner": "wire:box",
+          "node": "body"
+        },
+        "set": {
+          "style": {
+            "fill": "#00000000",
+            "border": {
+              "top": {
+                "width": 1.5,
+                "color": "#9a9893",
+                "line": "dashed"
+              },
+              "right": {
+                "width": 1.5,
+                "color": "#9a9893",
+                "line": "dashed"
+              },
+              "bottom": {
+                "width": 1.5,
+                "color": "#9a9893",
+                "line": "dashed"
+              },
+              "left": {
+                "width": 1.5,
+                "color": "#9a9893",
+                "line": "dashed"
+              }
+            },
+            "radius": {
+              "topLeft": 8,
+              "topRight": 8,
+              "bottomLeft": 8,
+              "bottomRight": 8
+            }
+          }
+        }
+      },
+      {
+        "when": {
+          "prop": "look",
+          "choice": "handle"
+        },
+        "target": {
+          "owner": "wire:box",
+          "node": "body"
+        },
+        "set": {
+          "style": {
+            "border": {
+              "top": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "right": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "bottom": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              },
+              "left": {
+                "width": 0,
+                "color": "#e3e2de",
+                "line": "solid"
+              }
+            },
+            "fill": "#cfcdc7",
+            "radius": {
+              "topLeft": 2,
+              "topRight": 2,
+              "bottomLeft": 2,
+              "bottomRight": 2
+            }
+          }
+        }
+      }
+    ]
+  },
+  "image": {
+    "id": "wire:image",
+    "kind": "component",
+    "name": "기본 · 이미지 자리",
+    "props": [
+      {
+        "id": "label",
+        "name": "이름",
+        "type": "text"
+      },
+      {
+        "id": "value",
+        "name": "표시할 글자",
+        "type": "text"
+      },
+      {
+        "id": "picture",
+        "name": "이미지",
+        "type": "slot"
+      }
+    ],
+    "root": {
+      "kind": "box",
+      "id": "body",
+      "layout": {
+        "mode": "column"
+      },
+      "children": [
+        {
+          "kind": "slot",
+          "id": "pictureSlot",
+          "prop": "picture",
+          "fallback": [
+            {
+              "kind": "box",
+              "id": "placeholder",
+              "layout": {
+                "mode": "column",
+                "align": "center",
+                "justify": "center",
+                "gap": 6
+              },
+              "children": [
+                {
+                  "kind": "icon",
+                  "id": "image",
+                  "icon": {
+                    "builtin": "image"
+                  },
+                  "size": {
+                    "x": {
+                      "mode": "fixed",
+                      "px": 22
+                    },
+                    "y": {
+                      "mode": "fixed",
+                      "px": 22
+                    }
+                  }
+                },
+                {
+                  "kind": "text",
+                  "id": "caption",
+                  "text": {
+                    "prop": "value"
+                  },
+                  "style": {
+                    "text": {
+                      "size": 12,
+                      "weight": 400,
+                      "color": "#6b6a65"
+                    }
+                  }
+                }
+              ],
+              "style": {
+                "fill": "#efefec",
+                "radius": {
+                  "topLeft": 8,
+                  "topRight": 8,
+                  "bottomLeft": 8,
+                  "bottomRight": 8
+                }
+              },
+              "size": {
+                "x": {
+                  "mode": "fill"
+                },
+                "y": {
+                  "mode": "fill"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "size": {
+        "x": {
+          "mode": "fill"
+        },
+        "y": {
+          "mode": "fill"
+        }
+      }
+    }
+  }
+}

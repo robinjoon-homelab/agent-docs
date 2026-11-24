@@ -129,10 +129,10 @@ pnpm check        # lint, lint:arch, test, build 전체
 
 ## 화면 흐름 문서
 
-- 새 디자인 문서는 `DesignFlowDocument`와 `DesignCanvas`로 연다. 기존 16종 문서는 `FlowDocument`에서 계속 편집하며 전환한 뒤에도 기존 저장 블록 ID로 댓글과 당시 리비전을 조회한다.
+- 새 디자인 문서는 `DesignFlowDocument`와 `DesignCanvas`로 연다. v4 보기·편집·댓글은 [화면 흐름 문서 기능 정의](https://agent-docs.homelab.robinjoon.xyz/s/agent-docs/d/0ba51928-bcf6-4719-b9de-6742b1818047)의 화면 버튼 줄, 기기 틀, 설명·속성 패널과 캔버스 선택 조작을 따른다. 기존 16종 문서는 `FlowDocument`에서 계속 편집하며 전환한 뒤에도 기존 저장 블록 ID로 댓글과 당시 리비전을 조회한다.
 - 공유 링크에는 화면·상태의 저장 블록 ID와 선택 레이어의 소유자·노드·인스턴스 경로를 담는다. 링크를 여는 사용자의 문서 권한을 적용한다.
 
-- `type: flow` 문서는 `flowSettings` 하나, 화면별 `flowScreen`과 뒤따르는 `flowElement` 목록으로 저장한다. 요소 순서가 겹침 순서다. 화면 ID와 블록 ID를 구분하고 삭제한 화면 번호를 재사용하지 않는다.
+- 기존 16종 형식의 `type: flow` 문서는 `flowSettings` 하나, 화면별 `flowScreen`과 뒤따르는 `flowElement` 목록으로 저장한다. 요소 순서가 겹침 순서다. 화면 ID와 블록 ID를 구분하고 삭제한 화면 번호를 재사용하지 않는다.
 - `domain/flow`는 블록 변환, 틀·번호·이동, 배치·스냅·정렬, 경고와 댓글 대상 비교를 맡는다. 요소 비교에서는 위치 잠금과 묶음을 제외한다. 화면은 이름·진입 경로·설명·저장된 틀 값과 요소 ID별 추가·삭제·변경을 비교한다. 겹침 순서와 문서 기본 틀만 바꾼 경우는 변경으로 분류하지 않는다. `null` 틀은 실제 크기로 풀지 않고, `custom` 틀만 가로·세로를 함께 비교한다. 분류와 그때·지금 표시는 같은 `flowDifferences` 항목을 쓴다. 화면별 댓글 수는 당시 화면 ID를 우선하고, 이를 알 수 없을 때만 현재 블록 위치를 쓴다. 옮긴 요소의 댓글을 두 화면에 중복 집계하지 않는다.
 - `FlowDocument`는 보기 모드로 열고 새로 만든 문서만 편집 모드로 연다. 변경은 `DocumentEditorSession.markEdited`와 `saveContent`로 전달하며 기존 쓰기 게이트·충돌·SSE·편집 시간 기록을 적용한다. 화면·요소 댓글은 블록 앵커를 사용하고 과거 화면은 당시 리비전의 블록으로 읽는다.
 - 메모리 미리보기에는 모바일 빠른 메모 화면 6개와 댓글 6개를 제공한다. UI에서 외부 AI를 호출하지 않는다.

@@ -1,25 +1,10 @@
 import { useState } from 'react';
-import type { FlowElementBlock, FlowKind, FlowAction } from '../../../../../domain/document/block';
+import type { FlowElementBlock, FlowAction } from '../../../../../domain/document/block';
 import type { Flow } from '../../../../../domain/flow/flow';
 import { KINDS, newElement } from '../../../../../domain/flow/flow';
 import { richPlain } from '../../../../../domain/flow/richText';
 import { ACTION_MODES } from './FlowElementOptions';
-const LOOKS: Partial<Record<FlowKind, Record<string, string>>> = {
-  title: { large: '큰 제목', small: '작은 제목' },
-  button: { primary: '진한 버튼', secondary: '테두리 버튼', disabled: '비활성' },
-  notice: { info: '안내', error: '오류', ok: '성공' },
-  field: { normal: '기본', inactive: '비활성' },
-  select: { normal: '기본', inactive: '비활성' },
-  area: { normal: '기본', inactive: '비활성' },
-  box: {
-    white: '흰 판',
-    sheet: '아래 시트 판',
-    gray: '회색 자리',
-    dim: '어두운 덮개',
-    outline: '점선 테두리',
-    handle: '시트 손잡이',
-  },
-};
+import { FlowAppearanceFields } from './FlowAppearanceFields';
 export function FlowElementInspector({
   element: e,
   flow,
@@ -45,8 +30,6 @@ export function FlowElementInspector({
   onUploadImage?: (file: File) => Promise<string>;
 }) {
   const [stateName, setStateName] = useState('');
-  const [uploadError, setUploadError] = useState('');
-  const [uploading, setUploading] = useState(false);
   const action = (index: number, patch: Partial<FlowAction>) =>
     onPatch({ actions: e.actions.map((a, i) => (i === index ? { ...a, ...patch } : a)) });
   return (
@@ -56,122 +39,15 @@ export function FlowElementInspector({
         <h2>요소 속성</h2>
         <span className="flow-kind-chip">{KINDS[e.kind]}</span>
       </div>
-      <div className="flow-two-columns">
-        <label>
-          종류
-          <select
-            value={e.kind}
-            onChange={(event) => {
-              const kind = event.target.value as FlowKind;
-              const defaults = newElement(e.id, kind, width, height);
-              onPatch({ kind, look: defaults.look, items: defaults.items, date: null });
-            }}
-          >
-            {Object.entries(KINDS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          요소 이름
-          <input
-            value={e.label}
-            maxLength={100}
-            onChange={(event) => onPatch({ label: event.target.value })}
-          />
-        </label>
-      </div>{' '}
-      {e.kind === 'list' ? (
-        <label>
-          목록 항목 (한 줄에 하나)
-          <textarea
-            rows={4}
-            value={e.items?.join('\n') ?? ''}
-            onChange={(event) =>
-              onPatch({
-                items: event.target.value
-                  .split('\n')
-                  .slice(0, 100)
-                  .map((v) => v.slice(0, 200)),
-              })
-            }
-          />
-        </label>
-      ) : (
-        e.kind !== 'box' && (
-          <label>
-            {e.kind === 'button'
-              ? '버튼 글자'
-              : e.kind === 'link'
-                ? '링크 글자'
-                : e.kind === 'title'
-                  ? '제목 글자'
-                  : e.kind === 'field' || e.kind === 'select'
-                    ? '보이는 값'
-                    : '보이는 글자'}
-            <input
-              value={e.value}
-              maxLength={500}
-              onChange={(event) => onPatch({ value: event.target.value })}
-            />
-          </label>
-        )
-      )}
-      {e.kind === 'image' && onUploadImage && (
-        <div className="flow-image-upload">
-          <label className="flow-upload-button">
-            {uploading ? '올리는 중…' : '이미지 올리기'}
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              disabled={uploading}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = '';
-                if (!file) return;
-                setUploading(true);
-                setUploadError('');
-                onUploadImage(file)
-                  .then((value) => onPatch({ value }))
-                  .catch((error: unknown) =>
-                    setUploadError(error instanceof Error ? error.message : '이미지를 올리지 못했습니다.'),
-                  )
-                  .finally(() => setUploading(false));
-              }}
-            />
-          </label>
-          <small>
-            보이는 글자가 asset:ID이면 그 이미지를 요소 크기에 맞춰 보여 줍니다. 요소 이름이 대체
-            텍스트입니다.
-          </small>
-          {uploadError && <p role="alert">{uploadError}</p>}
-        </div>
-      )}
-      {LOOKS[e.kind] && (
-        <label>
-          모양
-          <select value={e.look ?? ''} onChange={(event) => onPatch({ look: event.target.value })}>
-            {Object.entries(LOOKS[e.kind] ?? {}).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {e.kind === 'path' && (
-        <label>
-          날짜 (선택)
-          <input
-            value={e.date ?? ''}
-            maxLength={40}
-            onChange={(event) => onPatch({ date: event.target.value || null })}
-          />
-        </label>
-      )}
+      <FlowAppearanceFields
+        element={e}
+        onPatch={onPatch}
+        onUploadImage={onUploadImage}
+        onChangeKind={(kind) => {
+          const defaults = newElement(e.id, kind, width, height);
+          onPatch({ kind, look: defaults.look, items: defaults.items, date: null });
+        }}
+      />
       <div className="flow-inspector-box">
         <h3>위치와 크기 (px)</h3>
         <div className="flow-geometry">

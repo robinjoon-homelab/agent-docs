@@ -22,14 +22,65 @@ export function FlowScreenInspector({
     index = flow.screens.indexOf(active),
     annotated = numbered(active.elements);
   return (
+    <FlowScreenFields
+      screen={screen}
+      settings={flow.settings}
+      nextCode={nextScreenId(flow.settings)}
+      previous={index > 0}
+      following={index < flow.screens.length - 1}
+      canDelete={flow.screens.length > 1}
+      canMakeNote={!active.elements.length}
+      counts={{
+        elements: active.elements.length,
+        annotations: annotated.length,
+        missing: annotated.filter((e) => !e.desc.trim()).length,
+      }}
+      onScreen={onScreen}
+      onSettings={onSettings}
+      onMove={onMove}
+      onDuplicate={onDuplicate}
+      onDelete={onDelete}
+    />
+  );
+}
+
+export function FlowScreenFields({
+  screen,
+  settings,
+  nextCode,
+  previous,
+  following,
+  canDelete,
+  canMakeNote,
+  counts,
+  onScreen,
+  onSettings,
+  onMove,
+  onDuplicate,
+  onDelete,
+}: {
+  screen: Pick<FlowScreenBlock, 'screenId' | 'name' | 'entry' | 'desc' | 'frame' | 'frameW' | 'frameH'>;
+  settings: Pick<FlowSettingsBlock, 'idPrefix' | 'frame'>;
+  nextCode: string;
+  previous: boolean;
+  following: boolean;
+  canDelete: boolean;
+  canMakeNote: boolean;
+  counts: { elements: number; annotations: number; missing: number };
+  onScreen: (p: Partial<FlowScreenBlock>) => void;
+  onSettings: (p: Partial<FlowSettingsBlock>) => void;
+  onMove: (d: number) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  return (
     <div className="flow-inspector">
       <div className="flow-section-eyebrow">
         <span className="flow-screen-id">{screen.screenId}</span>
         <h2>화면 속성</h2>
       </div>
       <p className="flow-inspector-hint">
-        화면 ID는 자동으로 붙고, 지운 화면의 번호는 다시 쓰지 않습니다. 다음 새 화면은{' '}
-        {nextScreenId(flow.settings)}입니다.
+        화면 ID는 자동으로 붙고, 지운 화면의 번호는 다시 쓰지 않습니다. 다음 새 화면은 {nextCode}입니다.
       </p>
       <label>
         화면 이름 (상단 버튼에 보이는 이름)
@@ -68,14 +119,14 @@ export function FlowScreenInspector({
               })
             }
           >
-            <option value="">문서 기본값 따름 ({FRAMES[flow.settings.frame][0]})</option>
+            <option value="">문서 기본값 따름 ({FRAMES[settings.frame][0]})</option>
             {Object.entries(FRAMES).map(([key, value]) => (
               <option key={key} value={key}>
                 {value[0]} {value[1]}×{value[2]}
               </option>
             ))}
             <option value="custom">직접 입력</option>
-            <option value="note" disabled={active.elements.length > 0}>
+            <option value="note" disabled={!canMakeNote}>
               글 페이지 (요소 없는 화면만)
             </option>
           </select>
@@ -103,10 +154,7 @@ export function FlowScreenInspector({
         )}
         <label>
           문서 기본 틀
-          <select
-            value={flow.settings.frame}
-            onChange={(e) => onSettings({ frame: e.target.value as FlowFrame })}
-          >
+          <select value={settings.frame} onChange={(e) => onSettings({ frame: e.target.value as FlowFrame })}>
             {Object.entries(FRAMES).map(([key, value]) => (
               <option key={key} value={key}>
                 {value[0]} {value[1]}×{value[2]}
@@ -119,7 +167,7 @@ export function FlowScreenInspector({
           화면 ID 접두어 (문서 전체)
           <input
             className="flow-prefix"
-            value={flow.settings.idPrefix}
+            value={settings.idPrefix}
             maxLength={4}
             placeholder="S"
             onChange={(e) => onSettings({ idPrefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
@@ -131,21 +179,19 @@ export function FlowScreenInspector({
         </label>
       </div>
       <div className="flow-stat-chips">
-        <span>요소 {active.elements.length}</span>
-        <span>설명 붙은 요소 {annotated.length}</span>
-        {annotated.some((e) => !e.desc.trim()) && (
-          <span>설명 없는 요소 {annotated.filter((e) => !e.desc.trim()).length}</span>
-        )}
+        <span>요소 {counts.elements}</span>
+        <span>설명 붙은 요소 {counts.annotations}</span>
+        {counts.missing > 0 && <span>설명 없는 요소 {counts.missing}</span>}
       </div>
       <div className="flow-inspector-buttons">
-        <button disabled={!index} onClick={() => onMove(-1)}>
+        <button disabled={!previous} onClick={() => onMove(-1)}>
           ‹ 앞으로
         </button>
-        <button disabled={index === flow.screens.length - 1} onClick={() => onMove(1)}>
+        <button disabled={!following} onClick={() => onMove(1)}>
           뒤로 ›
         </button>
         <button onClick={onDuplicate}>화면 복제</button>
-        <button className="flow-danger-outline" disabled={flow.screens.length === 1} onClick={onDelete}>
+        <button className="flow-danger-outline" disabled={!canDelete} onClick={onDelete}>
           화면 삭제
         </button>
       </div>

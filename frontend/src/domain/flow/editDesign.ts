@@ -20,7 +20,11 @@ export function ownedChildren(n: DesignObject): DesignObject[] {
   const direct = ['children', 'operands', 'fallback', 'template'].flatMap((k) => records(n[k]));
   const slots = Object.values(object(n.slots) ?? {}).flatMap(records);
   const mask = object(n.source);
-  return [...direct, ...slots, ...(mask ? [mask] : [])];
+  const assigned = records(n.overrides).flatMap(slotChildren);
+  return [...direct, ...slots, ...assigned, ...(mask ? [mask] : [])];
+}
+function slotChildren(op: DesignObject) {
+  return op.op === 'slot' ? records(object(op.assignment)?.children) : [];
 }
 function roots(b: DesignObject) {
   const root = object(b.root);
@@ -28,7 +32,7 @@ function roots(b: DesignObject) {
     ? [root]
     : records(b.changes).flatMap((c) => {
         const n = object(c.node);
-        return c.op === 'insert' && n ? [n] : [];
+        return c.op === 'insert' && n ? [n] : slotChildren(c);
       });
 }
 export function findDesignNode(blocks: readonly FlowDesignBlock[], a: DesignAddress) {
@@ -106,7 +110,9 @@ export function editDesignCollection(
   return updateBlock(blocks, a.owner, (v) => object(walk(v)) ?? v);
 }
 type NodeEdit =
-  { kind: 'leaf'; path: string; value: DesignJson } | { kind: 'input'; prop: string; value: string };
+  | { kind: 'leaf'; path: string; value: DesignJson }
+  | { kind: 'input'; prop: string; value: DesignJson }
+  | { kind: 'slot'; prop: string; children: readonly DesignObject[] | null };
 export type DesignEditScope = { screen: string; state?: string; original?: boolean };
 function fieldKey(e: DesignObject): string {
   const a = readAddress(e.target);
@@ -114,6 +120,8 @@ function fieldKey(e: DesignObject): string {
 }
 function appendChange(value: DesignJson | undefined, change: DesignObject): DesignObject[] {
   const old = records(value);
+  // A slot assignment replaces its contents as a whole. Earlier assignments in the same owner are no longer observable.
+  if (change.op === 'slot') return [...old.filter((prev) => fieldKey(prev) !== fieldKey(change)), change];
   const last = old.at(-1);
   return last &&
     ['leaf', 'detailSet', 'input'].includes(stringValue(change.op)) &&
@@ -155,6 +163,12 @@ export function editDesignNode(
   a: DesignAddress,
   e: NodeEdit,
 ) {
+  if (e.kind === 'slot') {
+    const assignment: DesignObject = e.children === null ? { fallback: true } : { children: e.children };
+    return dispatchDesignChange(blocks, scope, a, { op: 'slot', prop: e.prop, assignment }, (n) =>
+      editDesignValue(n, ['slots', e.prop], () => e.children ?? undefined),
+    );
+  }
   const payload: DesignObject =
     e.kind === 'leaf'
       ? { op: 'leaf', path: e.path, value: e.value }
@@ -163,6 +177,43 @@ export function editDesignNode(
     e.kind === 'input'
       ? { ...n, inputs: { ...object(n.inputs), [e.prop]: e.value } }
       : editDesignValue(n, e.path.split('.'), () => e.value),
+  );
+}
+/** Clearing an image slot also clears bitmap edits that would otherwise address its now-hidden picture. */
+export function clearDesignPictureSlot(
+  blocks: readonly FlowDesignBlock[],
+  scope: DesignEditScope,
+  instance: DesignAddress,
+  picture?: DesignAddress,
+) {
+  const withoutPicture = (value: DesignJson | undefined, target: DesignAddress) =>
+    records(value).filter((c) => {
+      const a = readAddress(c.target);
+      return !(a && sameAddress(a, target) && c.op === 'leaf' && (c.path === 'asset' || c.path === 'alt'));
+    });
+  let next = blocks;
+  if (picture && !scope.original) {
+    if (scope.state) {
+      next = updateBlock(next, scope.state, (b) => ({ ...b, changes: withoutPicture(b.changes, picture) }));
+    } else if (picture.via?.length) {
+      const [first, ...via] = picture.via;
+      if (first && 'instance' in first && first.owner === scope.screen) {
+        next = editDesignCollection(next, { owner: first.owner, node: first.instance }, (n) => ({
+          ...n,
+          overrides: withoutPicture(n.overrides, { ...picture, via }),
+        }));
+      }
+    }
+  }
+  return editDesignNode(next, scope, instance, { kind: 'slot', prop: 'picture', children: null });
+}
+export function clearCanvasGroup(
+  blocks: readonly FlowDesignBlock[],
+  scope: DesignEditScope,
+  address: DesignAddress,
+) {
+  return dispatchDesignChange(blocks, scope, address, { op: 'mask', path: 'group' }, (n) =>
+    editDesignValue(n, ['group'], () => undefined),
   );
 }
 export function editDesignPrecision(
@@ -233,24 +284,39 @@ export function setDesignInfo(
   return updateBlock(blocks, owner, (b) => ({ ...b, [field]: v }));
 }
 
+export type DesignActionEdit =
+  | { add: DesignObject }
+  | { remove: number; expected: DesignObject }
+  | { replace: number; expected: DesignObject; action: DesignObject };
+
 export function setDesignAction(
   blocks: readonly FlowDesignBlock[],
   annotation: string,
-  change: { add: DesignObject } | { remove: number; expected: DesignObject },
+  change: DesignActionEdit,
 ) {
   return updateBlock(blocks, annotation, (b) => {
     if (b.kind !== 'annotation') throw Error('주석을 찾을 수 없습니다.');
     const actions = records(b.actions);
-    if ('remove' in change) {
-      if (!equalDesignValues(actions[change.remove] ?? null, change.expected))
+    if (!('add' in change)) {
+      const index = 'remove' in change ? change.remove : change.replace;
+      if (!equalDesignValues(actions[index] ?? null, change.expected))
         throw Error('이동 목록이 바뀌었습니다.');
-      return { ...b, actions: actions.filter((_, i) => i !== change.remove) };
+      if ('remove' in change) return { ...b, actions: actions.filter((_, i) => i !== index) };
     }
-    const to = object(change.add.to);
-    if (!to || !sourceBlock(blocks, stringValue(to.screen), 'screen'))
-      throw Error('목적 화면을 찾을 수 없습니다.');
-    if (to.state && sourceBlock(blocks, stringValue(to.state), 'state')?.design.screen !== to.screen)
-      throw Error('목적 상태를 찾을 수 없습니다.');
-    return { ...b, actions: [...actions, change.add] };
+    const action = 'add' in change ? change.add : change.action;
+    const to = object(action.to);
+    const targetChanged =
+      'add' in change || !equalDesignValues(action.to ?? null, change.expected.to ?? null);
+    if (to && targetChanged) {
+      if (!sourceBlock(blocks, stringValue(to.screen), 'screen'))
+        throw Error('목적 화면을 찾을 수 없습니다.');
+      if (to.state && sourceBlock(blocks, stringValue(to.state), 'state')?.design.screen !== to.screen)
+        throw Error('목적 상태를 찾을 수 없습니다.');
+    }
+    return {
+      ...b,
+      actions:
+        'add' in change ? [...actions, action] : actions.map((a, i) => (i === change.replace ? action : a)),
+    };
   });
 }

@@ -93,6 +93,7 @@ const placement = [
   'style',
   'visible',
   'locked',
+  'group',
   'role',
   'accessibleName',
   'localTransform',

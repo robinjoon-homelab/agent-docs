@@ -47,6 +47,21 @@ class FlowDesignApiDocumentationTest : RestDocsWebTest() {
     private val url = "https://docs.example/s/agent-docs/d/$id"
 
     @Test
+    fun `a state annotation opens its element in the owning state`() {
+        val note =
+            block(
+                "annot001",
+                """{"kind":"annotation","id":"info","screen":"edit","state":"s56","target":{"owner":"edit","node":"device"},"name":"안내"}""",
+            )
+        every { queries.open(any(), id) } returns DocumentView(document(blocks + note), WebFixtures.space, emptyList())
+        val input = json.readTree("""{"document":"$id","kind":"annotation"}""")
+        val result = FlowDesignReadTool(actions).call(Arguments(input), WebFixtures.webContext)
+        val row = json.readTree(json.writeValueAsString(result.data)).path("items").path(0)
+        assertThat(row.path("state").asString()).isEqualTo("state001")
+        assertThat(row.path("url").asString()).isEqualTo("$url?flowScreen=screen01&flowState=state001&flowOwner=edit&flowElement=device")
+    }
+
+    @Test
     fun `read a contour vertex and patch its state coordinate with the returned IDs and hashes`() {
         val vector =
             block(

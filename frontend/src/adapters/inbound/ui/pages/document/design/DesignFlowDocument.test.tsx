@@ -100,9 +100,12 @@ describe('v4 디자인 문서 보기·편집', () => {
     try {
       const first = open('/s/test/d/doc', false);
       fireEvent.change(screen.getByLabelText('상태'), { target: { value: 'stt0000001' } });
-      const tree = screen.getByRole('heading', { name: '레이어' }).closest('aside');
-      if (!tree) throw Error('레이어 목록이 없습니다.');
-      fireEvent.click(within(tree).getByRole('button', { name: '라벨' }));
+      expect(screen.queryByRole('heading', { name: '레이어' })).toBeNull();
+      fireEvent.click(
+        within(screen.getByRole('complementary', { name: '설명과 댓글' })).getByRole('button', {
+          name: '라벨 설명',
+        }),
+      );
       fireEvent.click(screen.getByRole('button', { name: '요소 링크 복사' }));
       await waitFor(() => expect(clipboard.content).toContain('flowElement=label'));
       const url = new URL(clipboard.content);
@@ -110,7 +113,7 @@ describe('v4 디자인 문서 보기·편집', () => {
       expect(url.searchParams.get('flowState')).toBe('stt0000001');
       first.unmount();
       open(url.pathname + url.search, false);
-      expect(screen.getByRole('button', { name: '라벨', pressed: true })).toBeDefined();
+      expect(screen.getByRole('heading', { name: '라벨 설명' })).toBeDefined();
       expect(screen.getByLabelText<HTMLSelectElement>('상태').value).toBe('stt0000001');
       expect(screen.queryByRole('button', { name: '편집' })).toBeNull();
       expect(screen.queryByRole('button', { name: '마크업 가져오기' })).toBeNull();
@@ -118,6 +121,26 @@ describe('v4 디자인 문서 보기·편집', () => {
       if (existing) Object.defineProperty(navigator, 'clipboard', existing);
       else Reflect.deleteProperty(navigator, 'clipboard');
     }
+  });
+  it('화면 버튼과 요소 설명이 같은 화면·상태를 가리키며 패널을 다시 여는 동안 문서를 수정하지 않는다', () => {
+    const { server } = open('/doc', true);
+    const originalVersion = server.doc.version;
+    const strip = screen.getByRole('navigation', { name: '화면 목록' });
+    expect(within(strip).getByRole('button', { name: /A-01.*입력 폼/, pressed: true })).toBeDefined();
+    expect(screen.queryByRole('combobox', { name: '화면' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '패널 접기' }));
+    expect(screen.queryByRole('complementary', { name: '설명과 댓글' })).toBeNull();
+    expect(screen.getByRole('button', { name: '설명·댓글' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: '설명·댓글' }));
+    fireEvent.click(
+      within(screen.getByRole('complementary', { name: '설명과 댓글' })).getByRole('button', {
+        name: '라벨 설명',
+      }),
+    );
+    expect(screen.getByRole('heading', { name: '라벨 설명' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /화면 설명으로/ }));
+    expect(screen.getByRole('heading', { name: '주요 요소 1' })).toBeDefined();
+    expect(server.doc.version).toBe(originalVersion);
   });
   it('상태의 텍스트를 편집한 뒤 새 세션에서 기본값과 상태값을 각각 읽는다', async () => {
     const path = '/s/test/d/doc?flowScreen=scr0000001&flowState=stt0000001&flowElement=label';

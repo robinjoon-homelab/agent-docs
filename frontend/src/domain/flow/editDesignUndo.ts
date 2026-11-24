@@ -66,7 +66,17 @@ export function restoreDesignEdit(
   target: readonly FlowDesignBlock[],
   current: readonly FlowDesignBlock[],
 ): FlowDesignBlock[] {
-  const normalized = (bs: readonly FlowDesignBlock[]) => bs.map((b) => ({ id: b.id, design: b.design }));
+  // A screen number that was displayed is reserved even when its creation is undone.
+  const sequence = (bs: readonly FlowDesignBlock[]) => {
+    const serial = bs.find((b) => b.design.kind === 'settings')?.design.nextScreen;
+    return typeof serial === 'number' ? serial : 0;
+  };
+  const nextScreen = Math.max(sequence(base), sequence(target), sequence(current));
+  const normalized = (bs: readonly FlowDesignBlock[]) =>
+    bs.map((b) => ({
+      id: b.id,
+      design: nextScreen && b.design.kind === 'settings' ? { ...b.design, nextScreen } : b.design,
+    }));
   const result = merge(normalized(base), normalized(target), normalized(current));
   if (!Array.isArray(result)) return conflict();
   return (result as readonly DesignJson[]).map((v) => {

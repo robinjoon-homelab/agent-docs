@@ -252,7 +252,11 @@ function CommentRailContent({
         {visible.map((thread) => {
           const location =
             flowBlocks && thread.anchor.kind !== 'document'
-              ? flowAnchorLocation(flowBlocks, thread.anchor.blockId)
+              ? flowAnchorLocation(
+                  flowBlocks,
+                  thread.anchor.blockId,
+                  thread.anchor.kind === 'block' ? thread.anchor.viewedStateId : undefined,
+                )
               : undefined;
           const past = snapshots?.[`${thread.documentId}:${thread.anchoredRevision}`];
           const target = targets.get(thread.id);

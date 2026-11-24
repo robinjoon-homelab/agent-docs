@@ -1,40 +1,62 @@
-import { useState, useSyncExternalStore, useRef, useMemo, useEffect, type ReactNode } from 'react';
+import {
+  useState,
+  useSyncExternalStore,
+  useRef,
+  useMemo,
+  useEffect,
+  useImperativeHandle,
+  type Ref,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router';
 import type { DocumentEditorSession } from '../../../../../../application/document/editorSession';
 import { useServices } from '../../../../../../config/ServicesContext';
-import type { Anchor } from '../../../../../../domain/thread/thread';
+import type { Anchor, Thread } from '../../../../../../domain/thread/thread';
 import type { DesignJson, FlowDesignBlock } from '../../../../../../domain/document/designBlock';
-import { equalDesignValues } from '../../../../../../domain/document/designBlock';
+import { useDesignEditHistory } from './useDesignEditHistory';
 import { type DesignAddress, designAddressKey } from '../../../../../../domain/flow/designAddress';
-import { resolveDesignScene } from '../../../../../../domain/flow/designScene';
+import { useDesignScreenScene } from './useDesignScreenScene';
 import {
+  findDesignNode,
   object,
-  readAddress,
   records,
   sameAddress,
-  setDesignInfo,
   stringValue,
 } from '../../../../../../domain/flow/editDesign';
-import { restoreDesignEdit } from '../../../../../../domain/flow/editDesignUndo';
-import { setDesignFrame } from '../../../../../../domain/flow/editDesignStructure';
 import { CopyButton } from '../../../common/CopyButton';
 import { FlowRichText } from '../FlowRichText';
 import { DesignCanvas } from './DesignCanvas';
 import { DesignCreateDialog, type CreateKind } from './DesignCreateDialog';
-import { DesignNodeInspector, DesignTokens, type DesignMutation } from './DesignNodeInspector';
-import { useDesignDrag } from './useDesignDrag';
+import { DesignNodeInspector, DesignTokens } from './DesignNodeInspector';
 import { DesignTree } from './DesignTree';
-import { DesignArrange } from './DesignArrange';
-import { DesignActions } from './DesignActions';
-import { DesignProperty } from './DesignProperty';
+import { designQuery, lookupRow, resolveDesignLocation, type DesignLocation } from './designLocation';
+import { DesignViewStage } from './DesignViewStage';
 import {
-  designQuery,
-  designRows,
-  lookupRow,
-  resolveDesignLocation,
-  type DesignLocation,
-} from './designLocation';
+  DesignScreenProperties,
+  DesignNoteEditor,
+  DesignFramePicker,
+  addNamedDesignScreen,
+} from './DesignScreenProperties';
+import { DesignElementPalette } from './DesignElementPalette';
+import { DesignEditCanvas, useDesignCanvasSelection, type DesignCanvasCommands } from './DesignEditCanvas';
+import { DesignMultiSelection } from './DesignMultiSelection';
+import { connectedAnnotations } from '../../../../../../domain/flow/editCanvasChildren';
+import { flowAnchorLocation } from '../../../../../../domain/flow/flowAnchorLocation';
+import { uploadFlowImage } from '../uploadFlowImage';
+import {
+  DesignOverview,
+  DesignElementDetails,
+  describeDestination,
+  designKind,
+  type DesignHotspot,
+} from './DesignOverview';
+import { DesignDeleteConfirmation } from './DesignDeleteConfirmation';
+import { DesignSidePanel } from './DesignSidePanel';
+import { FlowScreenStrip } from '../FlowScreenStrip';
+import { FlowIcon, FlowCommentBadge } from '../FlowIcon';
+import { useFlowCommentTargets } from '../useFlowCommentTargets';
+import type { FlowHandle } from '../FlowDocument';
 import './designDocument.css';
 
 interface Props {
@@ -46,10 +68,15 @@ interface Props {
   commentRail?: (scope?: string) => ReactNode;
   onRequestComment?: (anchor: Anchor) => void;
   pendingComment?: Anchor | null;
+  ref?: Ref<FlowHandle>;
+  threads?: readonly Thread[];
+  statsTarget?: HTMLElement | null;
+  spaceSlug?: string;
+  onStartComment?: (anchor: Anchor, body: string) => Promise<boolean>;
+  mentionLogins?: readonly string[];
+  reanchoring?: boolean;
+  onReanchor?: (anchor: Anchor) => void;
 }
-type EditRecord = { before: readonly FlowDesignBlock[]; after: readonly FlowDesignBlock[] };
-const sameBlocks = (a: readonly FlowDesignBlock[], b: readonly FlowDesignBlock[]) =>
-  a.length === b.length && a.every((x, i) => x.id === b[i]?.id && equalDesignValues(x.design, b[i].design));
 function historyOf(value: unknown): { previous: string[]; following: string[] } {
   const blank = { previous: [], following: [] };
   if (!value || typeof value !== 'object' || !('designNav' in value)) return blank;
@@ -69,6 +96,7 @@ function historyOf(value: unknown): { previous: string[]; following: string[] } 
   };
 }
 
+const emptyThreads: readonly Thread[] = [];
 export function DesignFlowDocument({
   session,
   editable,
@@ -78,12 +106,21 @@ export function DesignFlowDocument({
   commentRail,
   onRequestComment,
   pendingComment,
+  ref,
+  threads = emptyThreads,
+  statsTarget,
+  spaceSlug,
+  onStartComment,
+  mentionLogins = [],
+  reanchoring = false,
+  onReanchor,
 }: Props) {
   const { assets } = useServices();
   const s = useSyncExternalStore(session.subscribe, session.getState),
     location = useLocation(),
     navigate = useNavigate();
-  const rawBlocks = session.currentBlocks();
+  const rawBlocks = useSyncExternalStore(session.subscribe, () => session.currentBlocks());
+  const writable = useSyncExternalStore(session.subscribe, () => session.isWritable());
   const blocks = useMemo(
     () => rawBlocks.filter((b): b is FlowDesignBlock => b.type === 'flowDesign'),
     [rawBlocks],
@@ -103,27 +140,37 @@ export function DesignFlowDocument({
   const [editing, setEditing] = useState(initialEdit && editable),
     [dialog, setDialog] = useState<CreateKind | null>(null),
     [message, setMessage] = useState('');
-  const [historySizes, setHistorySizes] = useState({ undo: 0, redo: 0 });
-  const journal = useRef<{ undo: EditRecord[]; redo: EditRecord[] }>({ undo: [], redo: [] });
   const edit = editable && editing,
-    canWrite = edit && session.isWritable() && s.status !== 'conflict';
+    canWrite = edit && writable && s.status !== 'conflict';
   const navHistory = historyOf(location.state);
   const viewport = new URLSearchParams(location.search).get('flowView') === 'full';
   const sc = stringValue(screen?.design.id),
     st = typeof state?.design.id === 'string' ? state.design.id : undefined;
-  const scene = resolveDesignScene(blocks, sc, st),
-    allRows = designRows(scene.root, blocks),
-    rows = edit ? allRows : allRows.filter((r) => r.visible),
+  const { scene, allRows, scopedAnnotations } = useDesignScreenScene(blocks, sc, st);
+  const rows = edit ? allRows : allRows.filter((r) => r.visible),
     row = lookupRow(rows, address);
-  const [requestedTab, setTab] = useState<'details' | 'comments'>('details'),
-    [allComments, setAllComments] = useState(false);
-  const tab = pendingComment ? 'comments' : requestedTab;
+  const [requestedTab, setTab] = useState<'details' | 'comments'>('details');
+  const allowComment = !!onStartComment || !!onRequestComment;
+  const uploadImage =
+    spaceSlug && canWrite ? (file: File) => uploadFlowImage(assets, spaceSlug, file) : undefined;
+  const [confirmation, setConfirmation] = useState<{
+    scope: string;
+    targets: readonly DesignAddress[];
+  } | null>(null);
   function go(focus: DesignLocation) {
     const search = designQuery(location.search, focus);
     if (search === location.search) return;
+    setConfirmation(null);
     void navigate(
       { pathname: location.pathname, search },
-      { state: { designNav: { previous: [...navHistory.previous, location.search], following: [] } } },
+      screen?.id === focus.screen && state?.id === focus.state
+        ? { replace: true, state: { designNav: navHistory }, preventScrollReset: true, flushSync: true }
+        : {
+            state: {
+              designNav: { previous: [...navHistory.previous.slice(-31), location.search], following: [] },
+            },
+            preventScrollReset: true,
+          },
     );
   }
   function travel(back: boolean) {
@@ -138,94 +185,125 @@ export function DesignFlowDocument({
       { replace: true, state: { designNav: nav } },
     );
   }
-  function write(next: readonly FlowDesignBlock[]) {
-    onInput();
-    session.markEdited(next);
-    void session.saveContent(next);
-    setHistorySizes({ undo: journal.current.undo.length, redo: journal.current.redo.length });
-    setMessage('');
+  const {
+    mutate,
+    undo: travelEdits,
+    historySizes,
+  } = useDesignEditHistory(session, canWrite, onInput, setMessage);
+  function undo(back: boolean) {
+    const next = travelEdits(back);
+    if (!next) return;
+    const active = next.find((b) => b.id === screen?.id);
+    if (!active) {
+      const fallback = next.find((b) => b.design.kind === 'screen');
+      if (fallback) go({ screen: fallback.id });
+    } else if (state && !next.some((b) => b.id === state.id)) {
+      go({ screen: active.id });
+    }
   }
-  const mutate: DesignMutation = (change) => {
-    if (!canWrite || !session.isWritable()) {
-      const reason = '현재 편집할 수 없습니다.';
-      setMessage(reason);
-      return reason;
-    }
-    try {
-      const current = session.currentBlocks();
-      const model = current.filter((b): b is FlowDesignBlock => b.type === 'flowDesign');
-      if (model.length !== current.length) throw Error('문서 형식이 바뀌었습니다. 다시 열어 주세요.');
-      const next = change(model);
-      if (sameBlocks(model, next)) return null;
-      journal.current.undo = [...journal.current.undo.slice(-59), { before: model, after: next }];
-      journal.current.redo = [];
-      write(next);
-      return null;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : '변경을 적용하지 못했습니다.';
-      setMessage(msg);
-      return msg;
-    }
-  };
-  const undo = (back: boolean) => {
-    if (!canWrite || !session.isWritable()) return;
-    const from = back ? journal.current.undo : journal.current.redo,
-      to = back ? journal.current.redo : journal.current.undo,
-      entry = from.at(-1);
-    if (!entry) return;
-    const current = session.currentBlocks().filter((b): b is FlowDesignBlock => b.type === 'flowDesign');
-    try {
-      const next = restoreDesignEdit(
-        back ? entry.after : entry.before,
-        back ? entry.before : entry.after,
-        current,
-      );
-      from.pop();
-      to.push(entry);
-      write(next);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '실행 취소를 적용하지 못했습니다.');
-    }
-  };
   const select = (a: DesignAddress) => {
     if (screen) go({ screen: screen.id, state: state?.id, address: a });
   };
-  const dragEvents = useDesignDrag(canWrite, rows, { screen: sc, state: st }, mutate, select);
-  const annotations = blocks
-    .filter(
-      (b) =>
-        b.design.kind === 'annotation' &&
-        b.design.screen === sc &&
-        (!b.design.state || b.design.state === st) &&
-        b.design.enabled !== false,
-    )
-    .filter((b) => lookupRow(rows, readAddress(b.design.target))?.visible === true);
-  const visibleAnnotations = annotations.filter(
-    (b) =>
-      b.design.state ||
-      !annotations.some(
-        (o) => o.design.state && equalDesignValues(b.design.target ?? null, o.design.target ?? null),
-      ),
-  );
-  const annotation = address
-    ? visibleAnnotations.find((b) => {
-        const t = readAddress(b.design.target);
-        return t && sameAddress(t, address);
-      })
-    : undefined;
-  const anchorBlock = annotation ?? state ?? screen;
-  function commentOnSelection() {
-    if (!onRequestComment || !anchorBlock) return;
-    setTab('comments');
-    onRequestComment({
-      kind: 'block',
-      blockId: anchorBlock.id,
-      ...(annotation && !annotation.design.state && state ? { viewedStateId: state.id } : {}),
+  const selection = useDesignCanvasSelection(sc, st, address, (next) => {
+    if (screen) go({ screen: screen.id, state: state?.id, address: next });
+  });
+  const canvasCommands = useRef<DesignCanvasCommands>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [highlighted, setHighlighted] = useState<DesignAddress | null>(null);
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [composerFocus, setComposerFocus] = useState(0);
+  const targets = useFlowCommentTargets(threads, blocks, s.status === 'saved' ? s.version : undefined);
+  const currentScope = JSON.stringify([sc, st, address && designAddressKey(address)]);
+  const multi = edit && selection.addresses.length > 1;
+  const threadCounts = new Map<string, number>(),
+    screenCounts = new Map<string, number>();
+  let openCount = 0;
+  for (const t of threads) {
+    if (t.status === 'resolved' || targets.get(t.id) === 'screenDeleted') continue;
+    openCount++;
+    if (t.anchor.kind === 'document') continue;
+    const id = t.anchor.blockId;
+    const owner = targets.parents.get(t.id) ?? flowAnchorLocation(blocks, id)?.screenBlockId;
+    if (owner) screenCounts.set(owner, (screenCounts.get(owner) ?? 0) + 1);
+    threadCounts.set(id, (threadCounts.get(id) ?? 0) + 1);
+  }
+  const hotspots: DesignHotspot[] = [];
+  for (const r of allRows) {
+    if (!r.visible) continue;
+    const b = scopedAnnotations.get(designAddressKey(r.address));
+    if (!b || b.design.enabled === false) continue;
+    const source = findDesignNode(blocks, r.address);
+    hotspots.push({
+      block: b,
+      row: r,
+      target: r.address,
+      name: stringValue(b.design.name, r.label),
+      kind: designKind(r, stringValue(source?.component)),
+      comments: threadCounts.get(b.id) ?? 0,
     });
   }
+  const markers = hotspots.map((h) => ({
+    target: h.target,
+    name: h.name,
+    comments: h.comments,
+    destination: describeDestination(blocks, records(h.block.design.actions)[0]?.to).short,
+    warning: edit
+      ? !stringValue(h.block.design.description).trim()
+        ? '설명 없음'
+        : records(h.block.design.actions).some((a) => a.to && !describeDestination(blocks, a.to).valid)
+          ? '없는 화면'
+          : undefined
+      : undefined,
+  }));
+  const annotation = address ? scopedAnnotations.get(designAddressKey(address)) : undefined;
+  const item = address && hotspots.find((h) => sameAddress(h.target, address));
+  const number = item ? hotspots.indexOf(item) + 1 : 0;
+  const anchorBlock =
+    (!multi && annotation?.design.enabled !== false ? annotation : undefined) ?? state ?? screen;
+  const scopeAnchor: Anchor = anchorBlock
+    ? {
+        kind: 'block',
+        blockId: anchorBlock.id,
+        ...(anchorBlock.design.kind === 'annotation' && !anchorBlock.design.state && state
+          ? { viewedStateId: state.id }
+          : {}),
+      }
+    : { kind: 'document' };
+  const tab = pendingComment ? 'comments' : requestedTab;
+  const contextThreads = threads.filter(
+    (t) =>
+      t.anchor.kind === 'block' &&
+      t.anchor.blockId === anchorBlock?.id &&
+      t.status !== 'resolved' &&
+      targets.get(t.id) !== 'elementDeleted' &&
+      targets.get(t.id) !== 'screenDeleted',
+  );
+  function focusInfo(a: DesignAddress) {
+    select(a);
+    setTab('details');
+    setCollapsed(false);
+  }
+  function focusComment(a: DesignAddress | null) {
+    if (!allowComment || !screen) return;
+    const b = (a ? scopedAnnotations.get(designAddressKey(a)) : undefined) ?? state ?? screen;
+    const target: Anchor = {
+      kind: 'block',
+      blockId: b.id,
+      ...(b.design.kind === 'annotation' && !b.design.state && state ? { viewedStateId: state.id } : {}),
+    };
+    go({ screen: screen.id, state: state?.id, address: a ?? undefined });
+    setTab('details');
+    setCollapsed(false);
+    if (reanchoring) {
+      onReanchor?.(target);
+      return;
+    }
+    if (!onStartComment) onRequestComment?.(target);
+    setComposerFocus((n) => n + 1);
+  }
   function follow(to: DesignJson | undefined): 'missing' | 'same' | 'moved' {
-    const target = object(to);
-    const dest = screens.find((b) => b.design.id === target?.screen);
+    const target = object(to),
+      dest = screens.find((b) => b.design.id === target?.screen);
     if (!dest) return 'missing';
     const destState =
       target?.state === undefined
@@ -237,18 +315,39 @@ export function DesignFlowDocument({
     if (target?.state !== undefined && !destState) return 'missing';
     if (dest.id === screen?.id && destState?.id === state?.id) return 'same';
     go({ screen: dest.id, state: destState?.id });
+    setTab('details');
+    setHighlighted(null);
     return 'moved';
   }
-  const activate = (a: DesignAddress) => {
-    const ann = visibleAnnotations.find((b) => {
-      const t = readAddress(b.design.target);
-      return t && sameAddress(t, a);
-    });
-    const action = records(ann?.design.actions)[0];
-    if (action && follow(action.to) === 'moved') return;
-    select(a);
-    setTab('details');
-  };
+  function activate(a: DesignAddress) {
+    const h = hotspots.find((h) => sameAddress(h.target, a));
+    if (!h) return;
+    const first = records(h.block.design.actions)[0];
+    if (first && follow(first.to) === 'moved') return;
+    focusInfo(a);
+  }
+  useImperativeHandle(ref, () => ({
+    selectBlock(id, reveal = true) {
+      const where = flowAnchorLocation(blocks, id);
+      if (!where) return;
+      go({ screen: where.screenBlockId, state: where.stateBlockId, address: where.address });
+      setTab('details');
+      if (reveal) setCollapsed(false);
+    },
+    openHistorical() {
+      setTab('details');
+      setCollapsed(false);
+    },
+    showComments() {
+      setTab('comments');
+      setCollapsed(false);
+    },
+    showInfo() {
+      setTab('details');
+      setCollapsed(false);
+    },
+    setPanelCollapsed: setCollapsed,
+  }));
   const rootAddr = scene.root?.address;
   const insertParent =
     row &&
@@ -264,8 +363,10 @@ export function DesignFlowDocument({
         onClick={() => {
           setEditing(false);
           setDialog(null);
+          setConfirmation(null);
         }}
       >
+        <FlowIcon name="eye" size={13} />
         보기
       </button>
       <button
@@ -276,6 +377,7 @@ export function DesignFlowDocument({
           onEditMode?.();
         }}
       >
+        <FlowIcon name="edit" size={13} />
         편집
       </button>
     </div>
@@ -284,420 +386,468 @@ export function DesignFlowDocument({
     new URL(location.pathname + designQuery('', focus), window.location.origin).href;
   const validScope = !!screen && !invalidState;
   const baseLink = screen ? { screen: screen.id, state: state?.id } : null;
-  const [scale, setScale] = useState(100);
-  const canvas =
+  const showNote = screen?.design.frame === 'note';
+  const nameOf = (b: FlowDesignBlock) => stringValue(b.design.name, stringValue(b.design.id));
+  const create = (kind: CreateKind) => {
+    setMessage('');
+    setDialog(kind);
+  };
+  const goScreen = (id: string) => {
+    go({ screen: id });
+    setTab('details');
+    setHighlighted(null);
+    setConfirmation(null);
+  };
+  const composerAnchor: Anchor = tab === 'comments' ? { kind: 'document' } : scopeAnchor;
+  const scopeName = state ? nameOf(state) : '기본 상태';
+  const tabs = screens.map((b) => ({
+    id: b.id,
+    code: stringValue(b.design.code),
+    name: nameOf(b),
+    comments: screenCounts.get(b.id) ?? 0,
+  }));
+  const trail = [
+    ...navHistory.previous.map((search) => {
+      const at = resolveDesignLocation(blocks, search);
+      return at.screen ? stringValue(at.screen.design.code) : '';
+    }),
+    stringValue(screen?.design.code),
+  ]
+    .filter((code, i, all) => code && (!i || all[i - 1] !== code))
+    .slice(-8)
+    .join(' › ');
+  const directCanvas =
     validScope &&
-    (screen.design.frame === 'note' ? (
-      <article className="design-note">
-        <h2>{stringValue(screen.design.name)}</h2>
-        <FlowRichText
-          assetUrl={(id) => assets.contentUrl(id)}
-          text={stringValue(screen.design.description)}
-        />
-      </article>
+    (showNote ? (
+      canWrite && !viewport ? (
+        <DesignNoteEditor screen={screen} mutate={mutate} />
+      ) : (
+        <article className="flow-note">
+          <h2>{nameOf(screen)}</h2>
+          <FlowRichText
+            assetUrl={(id) => assets.contentUrl(id)}
+            text={stringValue(screen.design.description)}
+          />
+        </article>
+      )
     ) : (
       <DesignCanvas
         blocks={blocks}
         scene={scene}
         screen={sc}
         state={st}
-        selection={row?.address}
-        scale={scale / 100}
+        selection={multi ? undefined : row?.address}
         mode={viewport ? 'full' : 'viewport'}
         showDiagnostics={!viewport}
-        onSelect={edit ? select : undefined}
         onActivate={edit ? undefined : activate}
       />
     ));
   if (viewport)
     return (
       <section className="design-full">
-        {validScope ? canvas : <p role="alert">이 화면 또는 상태를 찾을 수 없습니다.</p>}
+        {validScope ? directCanvas : <p role="alert">이 화면 또는 상태를 찾을 수 없습니다.</p>}
       </section>
     );
-  const nameOf = (b: FlowDesignBlock) => stringValue(b.design.name, stringValue(b.design.id));
-  const create = (kind: CreateKind) => {
-    setMessage('');
-    setDialog(kind);
-  };
-  const scopeName = state ? nameOf(state) : '기본 상태';
+  const scope = { screen: sc, state: st };
+  const selectedTargets = confirmation?.scope === currentScope ? confirmation.targets : undefined;
+  const doomed = selectedTargets
+    ? new Set(connectedAnnotations(blocks, scope, selectedTargets).map((a) => a.id))
+    : undefined;
+  const threadCount = doomed
+    ? threads.filter((t) => t.anchor.kind !== 'document' && doomed.has(t.anchor.blockId)).length
+    : 0;
   return (
-    <section className="design-document" aria-label="화면 디자인" data-save-state={s.status}>
+    <section className="design-document flow-document" aria-label="화면 디자인" data-save-state={s.status}>
       {editable && (modeTarget ? createPortal(controls, modeTarget) : controls)}
-      <div className="design-toolbar">
-        <nav aria-label="디자인 이동">
-          <button
-            className="btn btn-small"
-            disabled={!navHistory.previous.length}
-            onClick={() => travel(true)}
-          >
-            뒤로
-          </button>
-          <button
-            className="btn btn-small"
-            disabled={!navHistory.following.length}
-            onClick={() => travel(false)}
-          >
-            앞으로
-          </button>
-        </nav>
-        <label>
-          화면{' '}
-          <select value={screen?.id ?? ''} onChange={(e) => go({ screen: e.target.value })}>
-            {!screen && <option value="">화면 선택</option>}
-            {screens.map((b) => (
-              <option value={b.id} key={b.id}>
-                {stringValue(b.design.code)} · {nameOf(b)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {screen?.design.frame !== 'note' && screen && (
-          <label>
-            상태{' '}
-            <select
-              value={state?.id ?? ''}
-              onChange={(e) => go({ screen: screen.id, state: e.target.value || undefined })}
-            >
-              <option value="">기본 상태</option>
-              {states.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {nameOf(b)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {screen && <CopyButton text={href({ screen: screen.id })} label="화면 링크 복사" />}
-        {baseLink && state && <CopyButton text={href(baseLink)} label="상태 링크 복사" />}
-        {baseLink && row && (
-          <CopyButton text={href({ ...baseLink, address: row.address })} label="요소 링크 복사" />
-        )}
-        {canWrite && (
+      {statsTarget &&
+        createPortal(
           <>
-            <button className="btn btn-small" onClick={() => create('screen')}>
-              화면 추가
-            </button>
-            {validScope && screen.design.frame !== 'note' && (
-              <button className="btn btn-small" onClick={() => create('state')}>
-                상태 추가
-              </button>
-            )}
-            <button className="btn btn-small" onClick={() => create('import')}>
-              마크업 가져오기
-            </button>
-          </>
+            화면 {screens.length} · 설명 붙은 요소{' '}
+            {blocks.filter((b) => b.design.kind === 'annotation' && b.design.enabled !== false).length}
+          </>,
+          statsTarget,
         )}
-      </div>
+      <FlowScreenStrip
+        screens={tabs}
+        selected={validScope ? screen.id : undefined}
+        onSelect={goScreen}
+        onAdd={canWrite && screen ? () => addNamedDesignScreen(mutate, go, screen) : undefined}
+        after={
+          validScope && !showNote && states.length > 0 ? (
+            <label className="design-state-picker">
+              상태{' '}
+              <select
+                value={state?.id ?? ''}
+                onChange={(e) => {
+                  go({ screen: screen.id, state: e.target.value || undefined });
+                  setHighlighted(null);
+                  setTab('details');
+                }}
+              >
+                <option value="">기본 상태</option>
+                {states.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {nameOf(b)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : undefined
+        }
+      />
       {message && (
-        <p role="alert" className="design-warning">
+        <p className="warning-box" role="alert">
           {message}
         </p>
       )}
       {!validScope ? (
-        <p role="alert" className="design-warning">
-          링크의 화면 또는 상태를 찾을 수 없습니다.
-        </p>
+        <div className="flow-delete-confirm" role="alert">
+          이 화면 또는 상태를 찾을 수 없습니다.{' '}
+          <button
+            onClick={() => {
+              const s = screen ?? screens[0];
+              if (s) goScreen(s.id);
+            }}
+          >
+            화면 보기
+          </button>
+        </div>
       ) : (
         <>
           {(invalidNode || (address && !row)) && (
-            <p role="status" className="design-warning">
-              선택한 요소가 이 상태에 없거나 링크가 올바르지 않습니다.
+            <p className="warning-box" role="alert">
+              선택한 요소가 이 상태에 없거나 링크가 올바르지 않습니다.{' '}
+              <button onClick={() => go({ screen: screen.id, state: state?.id })}>화면 보기</button>
             </p>
           )}
-          <div className="design-layout">
-            <aside className="design-tree">
-              <DesignTree
-                rows={rows}
-                selected={row?.address}
-                editable={canWrite}
-                scope={{ screen: sc, state: st }}
-                mutate={mutate}
-                select={(a) => {
-                  select(a);
-                  setTab('details');
-                }}
-              />
-              {canWrite && (
-                <div className="design-buttons">
-                  <button className="btn btn-small" onClick={() => create('component')}>
-                    컴포넌트 만들기
-                  </button>
-                  {insertParent && (
-                    <>
-                      <button className="btn btn-small" onClick={() => create('box')}>
-                        상자 추가
-                      </button>
-                      <button className="btn btn-small" onClick={() => create('text')}>
-                        텍스트 추가
-                      </button>
-                      {blocks.some((b) => b.design.kind === 'component') && (
-                        <button className="btn btn-small" onClick={() => create('instance')}>
-                          컴포넌트 배치
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </aside>
-            <div className="design-stage" {...dragEvents}>
-              <div className="design-stage-tools">
-                <label>
-                  배율{' '}
-                  <select value={scale} onChange={(e) => setScale(Number(e.target.value))}>
-                    {[25, 50, 75, 100, 150, 200].map((v) => (
-                      <option key={v} value={v}>
-                        {v}%
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {baseLink && (
-                  <a
-                    href={href({ ...baseLink, address: row?.address }) + '&flowView=full'}
-                    target="_blank"
-                    rel="noreferrer"
+          <div className="flow-layout">
+            <DesignViewStage
+              blocks={blocks}
+              scene={scene}
+              screen={screen}
+              state={state}
+              editing={edit}
+              markers={markers}
+              highlighted={highlighted}
+              selection={multi ? undefined : row?.address}
+              onHighlight={setHighlighted}
+              onInfo={focusInfo}
+              onComment={allowComment ? focusComment : undefined}
+              back={navHistory.previous.length ? () => travel(true) : undefined}
+              forward={navHistory.following.length ? () => travel(false) : undefined}
+              trail={trail}
+              tools={
+                edit ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="실행 취소 (⌘Z)"
+                      disabled={!canWrite || !historySizes.undo}
+                      onClick={() => undo(true)}
+                    >
+                      ↶
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="다시 실행 (⇧⌘Z)"
+                      disabled={!canWrite || !historySizes.redo}
+                      onClick={() => undo(false)}
+                    >
+                      ↷
+                    </button>
+                    <DesignFramePicker blocks={blocks} screen={screen} state={state} mutate={mutate} />
+                  </>
+                ) : undefined
+              }
+              palette={
+                canWrite && !showNote ? (
+                  <DesignElementPalette
+                    screen={screen}
+                    state={state}
+                    selected={row?.address}
+                    frame={scene.frame}
+                    mutate={mutate}
+                    go={go}
                   >
-                    단독 보기
-                  </a>
-                )}
-              </div>
-              {canvas}
-            </div>
-            <aside className="design-properties">
-              <div className="design-buttons">
-                <button
-                  className="btn btn-small"
-                  aria-pressed={tab === 'details'}
-                  onClick={() => setTab('details')}
+                    <details open={layersOpen} onToggle={(e) => setLayersOpen(e.currentTarget.open)}>
+                      <summary>레이어·컴포넌트</summary>
+                      {layersOpen && (
+                        <>
+                          <DesignTree
+                            rows={allRows}
+                            selected={row?.address}
+                            editable={canWrite}
+                            scope={scope}
+                            mutate={mutate}
+                            select={focusInfo}
+                          />
+                          <div className="design-buttons">
+                            <button onClick={() => create('component')}>컴포넌트 만들기</button>
+                            {insertParent && (
+                              <>
+                                <button onClick={() => create('box')}>상자 추가</button>
+                                <button onClick={() => create('text')}>텍스트 추가</button>
+                                {blocks.some((b) => b.design.kind === 'component') && (
+                                  <button onClick={() => create('instance')}>컴포넌트 배치</button>
+                                )}
+                              </>
+                            )}
+                            <button onClick={() => create('import')}>마크업 가져오기</button>
+                          </div>
+                        </>
+                      )}
+                    </details>
+                  </DesignElementPalette>
+                ) : undefined
+              }
+            >
+              {edit && !showNote ? (
+                <DesignEditCanvas
+                  ref={canvasCommands}
+                  blocks={blocks}
+                  rows={allRows}
+                  scope={scope}
+                  selection={selection.addresses}
+                  onSelect={selection.change}
+                  mutate={mutate}
+                  editable={canWrite}
+                  onUndo={() => undo(true)}
+                  onRedo={() => undo(false)}
+                  onRequestDelete={(targets) => {
+                    setConfirmation({ scope: currentScope, targets });
+                    setCollapsed(false);
+                    setTab('details');
+                  }}
+                  onMessage={setMessage}
                 >
-                  {edit ? '속성' : '설명'}
-                </button>
-                {commentRail && (
-                  <button
-                    className="btn btn-small"
-                    aria-pressed={tab === 'comments'}
-                    onClick={() => setTab('comments')}
-                  >
-                    댓글
-                  </button>
-                )}
-              </div>
-              {tab === 'comments' && anchorBlock ? (
-                <>
-                  <label className="design-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={allComments || pendingComment?.kind === 'document'}
-                      onChange={(e) => setAllComments(e.target.checked)}
-                    />
-                    문서의 모든 댓글
-                  </label>
-                  {commentRail?.(
-                    allComments || pendingComment?.kind === 'document' ? undefined : anchorBlock.id,
-                  )}
-                  {onRequestComment && (
-                    <button className="btn btn-small" onClick={commentOnSelection}>
-                      댓글 달기
-                    </button>
-                  )}
-                </>
+                  {directCanvas}
+                </DesignEditCanvas>
               ) : (
-                <>
-                  <h3>{nameOf(screen)}</h3>
-                  <span className="muted">{scopeName}</span>
-                  {canWrite && (
-                    <>
-                      <div className="design-buttons">
-                        <button
-                          className="btn btn-small"
-                          disabled={!historySizes.undo}
-                          onClick={() => undo(true)}
-                        >
-                          실행 취소
-                        </button>
-                        <button
-                          className="btn btn-small"
-                          disabled={!historySizes.redo}
-                          onClick={() => undo(false)}
-                        >
-                          다시 실행
-                        </button>
-                      </div>
-                      <DesignProperty
-                        key={(state ?? screen).id + 'name'}
-                        label={state ? '상태 이름' : '화면 이름'}
-                        value={nameOf(state ?? screen)}
-                        onCommit={(v) => mutate((bs) => setDesignInfo(bs, st ?? sc, 'name', v))}
+                directCanvas
+              )}
+            </DesignViewStage>
+            {collapsed && !pendingComment ? (
+              <button type="button" className="flow-reopen" onClick={() => setCollapsed(false)}>
+                <FlowIcon name="panel" />
+                설명·댓글 <FlowCommentBadge count={openCount} />
+              </button>
+            ) : (
+              <DesignSidePanel
+                tab={tab}
+                edit={edit}
+                openCount={openCount}
+                allowComment={allowComment}
+                onCollapse={() => setCollapsed(true)}
+                onTab={setTab}
+                onDocumentComment={() => {
+                  setTab('comments');
+                  setComposerFocus((n) => n + 1);
+                  if (!onStartComment) onRequestComment?.({ kind: 'document' });
+                }}
+                composerAnchor={composerAnchor}
+                composerFocus={composerFocus}
+                mentionLogins={mentionLogins}
+                onStartComment={pendingComment ? undefined : onStartComment}
+                composerLabel={
+                  tab === 'comments'
+                    ? '문서에 댓글'
+                    : item && !multi
+                      ? item.name + ' 요소에 댓글'
+                      : stringValue(screen.design.code) +
+                        ' ' +
+                        nameOf(screen) +
+                        (state ? ' · ' + scopeName : '') +
+                        ' 화면에 댓글'
+                }
+              >
+                {tab === 'comments' ? (
+                  commentRail?.()
+                ) : (
+                  <>
+                    {selectedTargets && edit && (
+                      <DesignDeleteConfirmation
+                        label="요소 삭제 확인"
+                        title={`${selectedTargets.length > 1 ? '요소 ' + String(selectedTargets.length) + '개' : '“' + (row?.label ?? '선택한 요소') + '” 요소'}를 삭제할까요?`}
+                        notice={`${state ? '이 상태에서만 요소가 숨겨집니다. ' : ''}${threadCount ? '댓글 ' + String(threadCount) + '개는 댓글 탭에 남습니다.' : '이 요소에 달린 댓글이 없습니다.'}`}
+                        onCancel={() => setConfirmation(null)}
+                        onConfirm={() => {
+                          if (canvasCommands.current?.remove(selectedTargets)) setConfirmation(null);
+                        }}
                       />
-                      {screen.design.frame !== 'note' && (
-                        <div className="design-frame-props">
-                          {(['width', 'height'] as const).map((k) => (
-                            <DesignProperty
-                              key={(state ?? screen).id + k}
-                              label={k === 'width' ? '화면 너비 (px)' : '화면 높이 (px)'}
-                              value={String(scene.frame[k])}
-                              type="number"
-                              onCommit={(v) =>
-                                mutate((bs) =>
-                                  setDesignFrame(
-                                    bs,
-                                    sc,
-                                    st,
-                                    k === 'width' ? Number(v) : scene.frame.width,
-                                    k === 'height' ? Number(v) : scene.frame.height,
-                                    k,
-                                  ),
-                                )
-                              }
-                            />
-                          ))}
-                        </div>
-                      )}
-                      <DesignProperty
-                        key={(state ?? screen).id + 'desc'}
-                        label="설명"
-                        type="long"
-                        value={stringValue((state ?? screen).design.description)}
-                        onCommit={(v) => mutate((bs) => setDesignInfo(bs, st ?? sc, 'description', v))}
-                      />
-                      {row && (
-                        <DesignNodeInspector
-                          key={designAddressKey(row.address) + '/' + (st ?? '')}
-                          blocks={blocks}
-                          row={row}
-                          screen={sc}
-                          state={st}
-                          rows={rows}
-                          inputs={scene.inputs}
-                          mutate={mutate}
-                          select={select}
-                        />
-                      )}
-                      {!state && (
-                        <DesignArrange
-                          blocks={blocks}
-                          parent={
-                            insertParent?.owner === sc && !insertParent.via?.length ? insertParent : rootAddr
-                          }
-                          mutate={mutate}
-                          onSelect={select}
-                        />
-                      )}
-                      <DesignTokens blocks={blocks} mutate={mutate} />
-                    </>
-                  )}
-                  {!edit && (
-                    <FlowRichText
-                      assetUrl={(id) => assets.contentUrl(id)}
-                      text={stringValue((state ?? screen).design.description)}
-                    />
-                  )}
-                  {annotation ? (
-                    <section className="design-inspector-group">
-                      <h3>{nameOf(annotation)}</h3>
-                      {canWrite ? (
-                        <DesignProperty
-                          key={annotation.id}
-                          type="long"
-                          label="요소 설명"
-                          value={stringValue(annotation.design.description)}
-                          onCommit={(v) =>
-                            mutate((bs) =>
-                              setDesignInfo(bs, stringValue(annotation.design.id), 'description', v),
-                            )
-                          }
-                        />
-                      ) : (
-                        <FlowRichText
-                          assetUrl={(id) => assets.contentUrl(id)}
-                          text={stringValue(annotation.design.description)}
-                        />
-                      )}
-                      {canWrite && (
-                        <DesignActions
-                          key={annotation.id}
-                          blocks={blocks}
-                          annotation={annotation}
-                          mutate={mutate}
-                        />
-                      )}
-                      {records(annotation.design.actions).map((action, i) => (
-                        <button
-                          type="button"
-                          className="btn btn-small"
-                          key={i}
-                          onClick={() => {
-                            if (follow(action.to) === 'missing')
-                              setMessage('연결된 화면이나 상태를 찾을 수 없습니다.');
-                          }}
-                        >
-                          {stringValue(action.when, '이동')}
-                        </button>
-                      ))}
-                    </section>
-                  ) : (
-                    canWrite &&
-                    row && (
-                      <button className="btn btn-small" onClick={() => create('annotation')}>
-                        요소에 설명 붙이기
+                    )}
+                    {(row || multi) && (
+                      <button
+                        className="flow-back-detail"
+                        onClick={() => {
+                          go({ screen: screen.id, state: state?.id });
+                          setHighlighted(null);
+                        }}
+                      >
+                        <FlowIcon name="left" size={14} />
+                        {stringValue(screen.design.code)} {nameOf(screen)} 화면 {edit ? '속성' : '설명'}으로
                       </button>
-                    )
-                  )}
-                  {visibleAnnotations.length > 0 && (
-                    <section className="design-inspector-group">
-                      <h3>주요 요소</h3>
-                      <ol>
-                        {visibleAnnotations.map((b) => (
-                          <li key={b.id}>
-                            <button
-                              className="design-text-link"
-                              onClick={() => {
-                                const a = readAddress(b.design.target);
-                                if (a) select(a);
-                              }}
-                            >
-                              {nameOf(b)}
-                            </button>
-                          </li>
-                        ))}
-                      </ol>
-                    </section>
-                  )}
-                  {onRequestComment && anchorBlock && (
-                    <button className="btn btn-small" onClick={commentOnSelection}>
-                      {annotation ? '요소' : state ? '상태' : '화면'}에 댓글 달기
-                    </button>
-                  )}
-                </>
-              )}
-              {scene.warnings.length > 0 && (
-                <details>
-                  <summary>진단 {scene.warnings.length}건</summary>
-                  <ul>
-                    {scene.warnings.map((w, i) => (
-                      <li key={i}>{w}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </aside>
+                    )}
+                    {edit ? (
+                      <>
+                        {multi ? (
+                          <DesignMultiSelection
+                            selection={selection.addresses}
+                            rows={allRows}
+                            commands={canvasCommands}
+                          />
+                        ) : row ? (
+                          <DesignNodeInspector
+                            key={designAddressKey(row.address) + '/' + (st ?? '')}
+                            blocks={blocks}
+                            row={row}
+                            screen={sc}
+                            state={st}
+                            rows={allRows}
+                            inputs={scene.inputs}
+                            mutate={mutate}
+                            select={select}
+                            annotation={annotation}
+                            number={number}
+                            frame={scene.frame}
+                            uploadImage={uploadImage}
+                            onFollow={follow}
+                            onCreateAnnotation={() => create('annotation')}
+                            onDuplicate={() => canvasCommands.current?.execute('duplicate')}
+                            onLayer={(front) => canvasCommands.current?.execute(front ? 'front' : 'back')}
+                            onDelete={() => canvasCommands.current?.execute('delete')}
+                          />
+                        ) : (
+                          <DesignScreenProperties
+                            blocks={blocks}
+                            screen={screen}
+                            state={state}
+                            mutate={mutate}
+                            go={go}
+                            threadCount={
+                              threads.filter(
+                                (t) =>
+                                  t.anchor.kind !== 'document' &&
+                                  flowAnchorLocation(blocks, t.anchor.blockId)?.screenBlockId === screen.id,
+                              ).length
+                            }
+                            elementCount={
+                              records(object(screen.design.root)?.children).length ||
+                              (object(screen.design.root)?.kind === 'instance' ? 1 : 0)
+                            }
+                            annotationCount={hotspots.length}
+                            missingCount={
+                              hotspots.filter((h) => !stringValue(h.block.design.description).trim()).length
+                            }
+                          />
+                        )}
+                        {!row && !multi && !showNote && (
+                          <button
+                            type="button"
+                            className="btn btn-small"
+                            disabled={!canWrite}
+                            onClick={() => create('state')}
+                          >
+                            상태 추가
+                          </button>
+                        )}
+                        <DesignTokens blocks={blocks} mutate={mutate} />
+                      </>
+                    ) : item ? (
+                      <DesignElementDetails
+                        item={item}
+                        number={number}
+                        blocks={blocks}
+                        assetUrl={(id) => assets.contentUrl(id)}
+                        onFollow={follow}
+                      />
+                    ) : (
+                      <DesignOverview
+                        key={screen.id + '/' + (state?.id ?? '')}
+                        blocks={blocks}
+                        screen={screen}
+                        state={state}
+                        items={hotspots}
+                        assetUrl={(id) => assets.contentUrl(id)}
+                        highlighted={highlighted}
+                        onInfo={focusInfo}
+                        onHighlight={setHighlighted}
+                        onFollow={follow}
+                      />
+                    )}
+                    {reanchoring && (
+                      <button onClick={() => onReanchor?.(scopeAnchor)}>여기에 다시 달기</button>
+                    )}
+                    {(item || multi || contextThreads.length > 0) && (
+                      <section className="flow-context-comments">
+                        <h3>
+                          {item && !multi ? '이 요소의 댓글' : '이 화면 전체에 단 댓글'}{' '}
+                          {contextThreads.length}
+                        </h3>
+                        {contextThreads.length ? (
+                          commentRail?.(anchorBlock?.id)
+                        ) : (
+                          <p>
+                            {multi
+                              ? '여러 요소를 고른 상태라 아래에서 남기면 이 화면에 붙습니다.'
+                              : '아직 댓글이 없습니다.'}
+                          </p>
+                        )}
+                      </section>
+                    )}
+                    {!onStartComment && onRequestComment && (
+                      <button onClick={() => onRequestComment(scopeAnchor)}>
+                        {item ? '요소' : '화면'}에 댓글 달기
+                      </button>
+                    )}
+                    {baseLink && (
+                      <div className="design-share-actions">
+                        <CopyButton text={href({ screen: screen.id })} label="화면 링크 복사" />
+                        <a
+                          className="btn btn-small"
+                          href={href({ ...baseLink, address: row?.address }) + '&flowView=full'}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          단독 보기
+                        </a>
+                        {state && <CopyButton text={href(baseLink)} label="상태 링크 복사" />}
+                        {row && (
+                          <CopyButton
+                            text={href({ ...baseLink, address: row.address })}
+                            label="요소 링크 복사"
+                          />
+                        )}
+                      </div>
+                    )}
+                    {scene.warnings.length > 0 && (
+                      <details>
+                        <summary>진단 {scene.warnings.length}건</summary>
+                        <ul>
+                          {scene.warnings.map((w) => (
+                            <li key={w}>{w}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </>
+                )}
+              </DesignSidePanel>
+            )}
           </div>
         </>
       )}
-      {canWrite && dialog && screen && (
+      {dialog && screen && canWrite && (
         <DesignCreateDialog
-          key={dialog}
           kind={dialog}
-          close={() => setDialog(null)}
+          screen={screen}
+          state={state}
+          selected={row?.address}
+          parent={insertParent}
           blocks={blocks}
           mutate={mutate}
           go={go}
-          screen={screen}
-          state={state}
-          parent={insertParent}
-          selected={row?.address}
+          close={() => setDialog(null)}
+          key={dialog}
         />
       )}
     </section>

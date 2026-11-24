@@ -1,12 +1,15 @@
 import { createContext, useCallback, useContext, useSyncExternalStore, useId, useMemo, useRef } from 'react';
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { DesignStageContext } from './DesignStageContext';
 import { useServices } from '../../../../../../config/ServicesContext';
 import type {
   DesignJson,
   DesignObject,
   FlowDesignBlock,
 } from '../../../../../../domain/document/designBlock';
-import { designAddress, designAddressKey } from '../../../../../../domain/flow/designAddress';
+import { designAddressKey } from '../../../../../../domain/flow/designAddress';
+import { designAnnotationIndex } from '../../../../../../domain/flow/designAnnotations';
 import type { DesignAddress, DesignOccurrence, DesignScene } from '../../../../../../domain/flow/designScene';
 import { resolveDesignScene } from '../../../../../../domain/flow/designScene';
 import { asNumber, asObject, asText } from '../../../../../../domain/flow/designValue';
@@ -37,7 +40,7 @@ export type DesignCanvasProps = {
 type CanvasContext = {
   layoutWarnings: ScrollDiagnostics;
   selected?: string;
-  annotations: ReadonlySet<string>;
+  annotations: ReadonlyMap<string, string>;
   assetUrl: (id: string) => string;
   onSelect?: DesignCanvasProps['onSelect'];
   onActivate?: DesignCanvasProps['onActivate'];
@@ -144,14 +147,16 @@ function Layer({ layer, parentMode, annotation, decorative = false }: LayerProps
   if (!ctx || n.visible === false) return null;
   const target = layer.mounts.at(-1) ?? layer.address;
   const matches = [...layer.mounts].reverse().concat(layer.address);
-  const anchor = matches.find((a) => ctx.annotations.has(designAddressKey(a))) ?? annotation;
-  const enabled = !decorative && Boolean(ctx.onSelect || ctx.onActivate);
+  const ownAnchor = matches.find((a) => ctx.annotations.has(designAddressKey(a)));
+  const anchorKey = ownAnchor && designAddressKey(ownAnchor);
+  const anchor = ownAnchor ?? annotation;
+  const enabled = !decorative && Boolean(ctx.onSelect || (anchor && ctx.onActivate));
   const selected = matches.some((a) => designAddressKey(a) === ctx.selected);
   function choose(event: MouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>) {
     if (!ctx || !enabled) return;
     event.stopPropagation();
     ctx.onSelect?.(target);
-    ctx.onActivate?.(anchor ?? target);
+    if (anchor) ctx.onActivate?.(anchor);
   }
   const node = geometric(n.kind) ? geometryNode(layer) : n;
   const style = designNodeStyle(n, parentMode, ctx.assetUrl);
@@ -207,15 +212,16 @@ function Layer({ layer, parentMode, annotation, decorative = false }: LayerProps
         data-design-node={layer.address.node}
         data-design-owner={layer.address.owner}
         data-design-address={designAddressKey(target)}
+        data-design-annotation-key={anchorKey}
         data-design-source-address={designAddressKey(layer.address)}
         data-design-mount-keys={layer.mounts.map(designAddressKey).join('\n')}
         data-design-scroll-x={asText(asObject(n.scroll).x) ?? asNumber(asObject(n.scroll).x)}
         data-design-scroll-y={asText(asObject(n.scroll).y) ?? asNumber(asObject(n.scroll).y)}
         data-design-kind={asText(n.kind)}
         style={style}
-        role={asText(n.role)}
-        aria-label={asText(n.accessibleName)}
-        tabIndex={enabled && (selected || (anchor && matches.includes(anchor))) ? 0 : undefined}
+        role={asText(n.role) ?? (enabled && ownAnchor ? 'button' : undefined)}
+        aria-label={asText(n.accessibleName) ?? (anchorKey ? ctx.annotations.get(anchorKey) : undefined)}
+        tabIndex={enabled && (selected || ownAnchor) ? 0 : undefined}
         onClick={enabled ? choose : undefined}
         onKeyDown={
           enabled
@@ -252,6 +258,7 @@ export function DesignCanvasView({
   onActivate,
 }: DesignCanvasProps & { assetUrl: (id: string) => string }) {
   const canvas = useRef<HTMLDivElement>(null);
+  const stage = useContext(DesignStageContext);
   const scene = useMemo(
     () => providedScene ?? resolveDesignScene(blocks, screen, state),
     [providedScene, blocks, screen, state],
@@ -259,18 +266,12 @@ export function DesignCanvasView({
   const block = blocks.find((b) => b.design.kind === 'screen' && b.design.id === screen)?.design;
   const annotations = useMemo(
     () =>
-      new Set(
-        blocks.flatMap((b) => {
-          const n = b.design,
-            a = designAddress(n.target);
-          return n.kind === 'annotation' &&
-            n.screen === screen &&
-            n.enabled !== false &&
-            (!n.state || n.state === state) &&
-            a
-            ? [designAddressKey(a)]
-            : [];
-        }),
+      new Map(
+        Array.from(designAnnotationIndex(blocks, screen, state)).flatMap(([key, b]) =>
+          b.design.enabled === false
+            ? []
+            : [[key, asText(b.design.name) ?? asText(asObject(b.design.target).node) ?? '요소'] as const],
+        ),
       ),
     [blocks, screen, state],
   );
@@ -293,9 +294,29 @@ export function DesignCanvasView({
     ...(mode === 'viewport' ? { height: scene.frame.height } : { minHeight: scene.frame.height }),
     zoom: Number.isFinite(scale) && scale > 0 ? scale : 1,
   };
+  const diagnostics = (
+    <>
+      {showDiagnostics && (
+        <DesignCanvasDiagnostics
+          key={JSON.stringify([screen, state, selection])}
+          canvas={canvas}
+          selection={selection}
+        />
+      )}
+      {warnings.length > 0 && (
+        <details className="design-canvas-warnings">
+          <summary>디자인 경고 {warnings.length}건</summary>
+          {warnings.map((w) => (
+            <p key={w}>{w}</p>
+          ))}
+        </details>
+      )}
+    </>
+  );
   return (
     <Canvas.Provider value={ctx}>
       <div
+        key={JSON.stringify([screen, state])}
         ref={canvas}
         data-design-empty-slots={scene.emptySlots.join('\n')}
         data-design-warnings={scene.warnings.join('\n')}
@@ -312,22 +333,11 @@ export function DesignCanvasView({
         ) : (
           scene.root && <Layer key={JSON.stringify([screen, state])} layer={scene.root} />
         )}
+        {stage?.editing && mode === 'viewport' && (
+          <div className="design-edit-clearance" aria-hidden="true" />
+        )}
       </div>
-      {showDiagnostics && (
-        <DesignCanvasDiagnostics
-          key={JSON.stringify([screen, state, selection])}
-          canvas={canvas}
-          selection={selection}
-        />
-      )}
-      {warnings.length > 0 && (
-        <details className="design-canvas-warnings">
-          <summary>디자인 경고 {warnings.length}건</summary>
-          {warnings.map((w) => (
-            <p key={w}>{w}</p>
-          ))}
-        </details>
-      )}
+      {stage ? stage.diagnostics && createPortal(diagnostics, stage.diagnostics) : diagnostics}
     </Canvas.Provider>
   );
 }

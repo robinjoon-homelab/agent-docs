@@ -11,7 +11,7 @@ export function useStageArea(
   const [area, setArea] = useState<StageArea | null>(null);
   useLayoutEffect(() => {
     const element = ref.current;
-    if (!element) return;
+    if (!element || typeof ResizeObserver === 'undefined') return;
     const measure = () => {
       const style = getComputedStyle(element);
       const width =
@@ -21,6 +21,7 @@ export function useStageArea(
         parseFloat(style.paddingTop) -
         parseFloat(style.paddingBottom) -
         reservedHeight;
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
       setArea((previous) =>
         previous?.width === width && previous.height === height ? previous : { width, height },
       );
