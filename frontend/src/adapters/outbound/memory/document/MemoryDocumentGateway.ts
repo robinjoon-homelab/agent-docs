@@ -24,6 +24,7 @@ import type {
   TrashedDocument,
 } from '../../../../domain/document/document';
 import { isValidPath } from '../../../../domain/document/document';
+import { isWithinPath } from '../../../../domain/document/pathTree';
 import type { Actor } from '../../../../domain/shared/actor';
 import type { MemoryStore, StoredRevision } from '../shared/store';
 import { respond } from '../shared/store';
@@ -310,17 +311,38 @@ export class MemoryDocumentGateway implements DocumentGateway {
   }
 
   trash(documentId: string): Promise<void> {
-    return respond(() => this.setTrashed(documentId, this.store.now()));
+    return respond(() => {
+      const document = this.store.document(documentId);
+      this.store.requireEdit(document.space.id);
+      if (document.trashedAt !== null) return;
+      const at = this.store.now();
+      for (const candidate of this.documentsOf(document.space.id)) {
+        if (candidate.trashedAt === null && isWithinPath(candidate.path, document.path)) {
+          this.setTrashed(candidate.id, at);
+        }
+      }
+    });
   }
 
   untrash(documentId: string): Promise<void> {
-    return respond(() => this.setTrashed(documentId, null));
+    return respond(() => {
+      const document = this.store.document(documentId);
+      this.store.requireEdit(document.space.id);
+      if (document.trashedAt === null) return;
+      for (const candidate of this.documentsOf(document.space.id)) {
+        if (
+          candidate.trashedAt !== null &&
+          (isWithinPath(document.path, candidate.path) ||
+            (candidate.trashedAt === document.trashedAt && isWithinPath(candidate.path, document.path)))
+        ) {
+          this.setTrashed(candidate.id, null);
+        }
+      }
+    });
   }
 
   private setTrashed(documentId: string, trashedAt: string | null): void {
-    this.store.requireEdit(this.store.document(documentId).space.id);
     const document = this.confirm(documentId);
-    if ((document.trashedAt === null) === (trashedAt === null)) return;
     const updated = {
       ...document,
       trashedAt,

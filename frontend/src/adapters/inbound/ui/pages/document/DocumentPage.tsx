@@ -43,10 +43,11 @@ import type { Anchor, Thread, ThreadFilter } from '../../../../../domain/thread/
 import { filterThreads, isDetached } from '../../../../../domain/thread/thread';
 import { useServices } from '../../../../../config/ServicesContext';
 import { useSession } from '../../app/SessionContext';
-import { useShell } from '../../app/ShellContext';
+import { useOpenDocument, useShell } from '../../app/ShellContext';
 import { Icon } from '../../common/Icon';
 import { ErrorBox, Loading, NotFound, errorMessage } from '../../common/States';
 import { useToast } from '../../common/Toast';
+import { TrashDocumentDialog } from '../../common/TrashDocumentDialog';
 import type { DocumentEditorHandle } from '../../editor/DocumentEditor';
 import { DocumentEditor } from '../../editor/DocumentEditor';
 import { useLoad, type Load } from '../../hooks/useLoad';
@@ -157,6 +158,7 @@ function DocumentWorkspace({
   const location = useLocation();
   const { me } = useSession();
   const shell = useShell();
+  const openDocument = useOpenDocument();
   const toast = useToast();
   const [session] = useState(() => services.openEditor(document));
   useRecordDocumentView(services.navigation, document.id);
@@ -386,7 +388,7 @@ function DocumentWorkspace({
   };
 
   /** Saves pending edits first; anchors and trashing assume the server has what the user sees. */
-  const saveFirst = async (): Promise<boolean> => {
+  const saveFirst = useCallback(async (): Promise<boolean> => {
     if (!canEdit(currentAccess().permission) || !session.isWritable()) return false;
     if (!(await session.flushMeta())) {
       toast('문서 정보를 저장하지 못했습니다. 입력을 확인하세요.');
@@ -401,7 +403,30 @@ function DocumentWorkspace({
         : '본문을 저장하지 못했습니다. 다시 저장한 뒤 시도하세요.',
     );
     return false;
-  };
+  }, [currentAccess, session, toast]);
+
+  const [sidebarTrashing, setSidebarTrashing] = useState(false);
+  useLayoutEffect(() => {
+    const active = {
+      id: document.id,
+      spaceSlug: document.space.slug,
+      path: () => session.getState().meta.path,
+      withSavedEdits: async (action: () => Promise<void>) => {
+        if (editorRef.current?.hasDrawingDraft() === true) {
+          toast('손그림을 먼저 저장하거나 취소하세요.');
+          return;
+        }
+        // Keep input paused from the save through the trash request.
+        setSidebarTrashing(true);
+        try {
+          if ((await saveFirst()) && openDocument.currentDocument() === active) await action();
+        } finally {
+          setSidebarTrashing(false);
+        }
+      },
+    };
+    return openDocument.register(active);
+  }, [document.id, document.space.slug, openDocument, saveFirst, session, toast]);
 
   const prepareCommentAnchor = async (): Promise<boolean> => {
     if (!canComment(currentAccess().permission)) return false;
@@ -644,6 +669,7 @@ function DocumentWorkspace({
         <div
           className={`doc-layout${document.type === 'flow' ? ' is-flow' : ''}${docked ? '' : ' is-undocked'}`}
           ref={layoutRef}
+          inert={sidebarTrashing}
         >
           <div className="doc-main">
             <div className="doc-body">
@@ -768,40 +794,13 @@ function DocumentWorkspace({
                 />
               )}
               {trashPreview === null || !editable ? null : (
-                <Dialog
-                  open
-                  title="휴지통으로 이동"
-                  onClose={() => setTrashPreview(null)}
-                  footer={
-                    <>
-                      <button type="button" className="btn" onClick={() => setTrashPreview(null)}>
-                        취소
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={trashing}
-                        onClick={() => void trash()}
-                      >
-                        휴지통으로 이동
-                      </button>
-                    </>
-                  }
-                >
-                  <p>
-                    {trashPreview > 0
-                      ? `이 문서와 하위 문서 ${trashPreview}개를 휴지통으로 옮깁니다.`
-                      : '이 문서를 휴지통으로 옮깁니다.'}{' '}
-                    스페이스 설정에서 복원할 수 있습니다.
-                  </p>
-                  {me.owner ? (
-                    <p>
-                      <Link to="/settings/data" target="_blank" rel="noreferrer">
-                        이동 전에 스페이스 내보내기
-                      </Link>
-                    </p>
-                  ) : null}
-                </Dialog>
+                <TrashDocumentDialog
+                  descendants={trashPreview}
+                  owner={me.owner}
+                  busy={trashing}
+                  onCancel={() => setTrashPreview(null)}
+                  onConfirm={() => void trash()}
+                />
               )}
               {transferSpaces === null || !editable ? null : (
                 <TransferDialog

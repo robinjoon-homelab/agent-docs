@@ -17,7 +17,9 @@ export function TrashSection({ spaceSlug }: { spaceSlug: string }) {
   const services = useServices();
   const shell = useShell();
   const toast = useToast();
-  const trash = useLoad(`space:trash:${spaceSlug}`, () => services.documents.listTrash(spaceSlug));
+  const trash = useLoad(`space:trash:${spaceSlug}:${shell.treeVersion}`, () =>
+    services.documents.listTrash(spaceSlug),
+  );
   const [pendingDelete, setPendingDelete] = useState<TrashedDocument | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
   const canConfirmDelete = me.owner && trash.state === 'ready' && pendingDelete !== null;
@@ -28,7 +30,6 @@ export function TrashSection({ spaceSlug }: { spaceSlug: string }) {
     try {
       await services.documents.untrash(document.id);
       // Documents trashed together with it come back too, so the list is read again.
-      trash.reload();
       shell.refreshTree();
       toast(`'${document.title}' 문서를 복원했습니다`);
     } catch (error) {

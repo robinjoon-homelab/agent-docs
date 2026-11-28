@@ -166,7 +166,7 @@ function SpaceHome({ space }: { space: Space }) {
   const editable = canEdit(effectivePermission(space.permission, me.owner));
   const services = useServices();
   const shell = useShell();
-  const documents = useLoad(`space-home:docs:${space.slug}`, () =>
+  const documents = useLoad(`space-home:docs:${space.slug}:${shell.treeVersion}`, () =>
     services.documents.listInSpace(space.slug),
   );
   usePageTitle(space.name);
