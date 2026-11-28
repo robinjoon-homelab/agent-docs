@@ -92,51 +92,6 @@
   text-align: right;
 }
 
-.space-tree,
-.space-tree .space-tree {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.space-tree .space-tree {
-  padding-left: 18px;
-}
-
-.space-tree-folder,
-.space-tree-doc {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 30px;
-  padding: 2px 6px;
-  border-radius: var(--radius-small);
-}
-
-.space-tree-folder {
-  color: var(--text-faint);
-  font-size: 13px;
-}
-
-.space-tree-doc {
-  color: var(--text);
-}
-
-.space-tree-doc:hover {
-  background: var(--bg-hover);
-  text-decoration: none;
-}
-
-.space-tree-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.space-tree-path {
-  margin-left: auto;
-}
-
 .space-thread-group {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
