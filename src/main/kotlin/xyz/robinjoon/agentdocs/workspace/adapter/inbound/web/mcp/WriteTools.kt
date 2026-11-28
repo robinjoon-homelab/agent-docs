@@ -225,6 +225,32 @@ class DocsMoveTool(
     }
 }
 
+class DocsTrashTool(
+    private val documents: DocumentUseCase,
+) : McpTool {
+    override val definition =
+        ToolDefinition(
+            name = "docs_trash",
+            title = "Move a document to the trash",
+            description =
+                "Moves a document and its live descendants to the trash. Requires edit permission in the document's space. " +
+                    "The result lists descendants moved to the trash in alsoChanged. Trashed documents can be restored from the space's " +
+                    "trash until they are permanently removed, automatically after 30 days unless the owner removes them sooner.",
+            properties =
+                mapOf(
+                    "document" to Schemas.string("Document UUID"),
+                    "opId" to Schemas.operationId,
+                ),
+            required = listOf("document"),
+            readOnly = false,
+        )
+
+    override fun call(
+        arguments: Arguments,
+        context: WriteContext,
+    ): McpToolResult = WriteResults.of(documents.trash(context, DocumentId(arguments.uuid("document"))), all = false)
+}
+
 internal const val READ_FIRST = "read the document with docs_read and pass the version it shows"
 
 internal fun statusOf(value: String?): DocumentStatus? =

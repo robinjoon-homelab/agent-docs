@@ -383,6 +383,12 @@ export function Sidebar({
           <Icon name="doc" />
           빠른 메모
         </NavLink>
+        {currentSlug !== null && editable ? (
+          <NavLink className={navClass} to={`/s/${currentSlug}/trash`}>
+            <Icon name="trash" />
+            휴지통
+          </NavLink>
+        ) : null}
         {currentSlug === null ? null : (
           <>
             <div className="nav-section" style={{ display: 'flex', alignItems: 'center' }}>

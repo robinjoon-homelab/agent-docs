@@ -12,6 +12,7 @@ import { AgentConnectionsPage } from '../pages/settings/AgentConnectionsPage';
 import { WebhooksPage } from '../pages/settings/WebhooksPage';
 import { SpaceHomePage } from '../pages/space/SpaceHomePage';
 import { SpaceSettingsPage } from '../pages/space/SpaceSettingsPage';
+import { SpaceTrashPage } from '../pages/space/SpaceTrashPage';
 import { AppShell } from './AppShell';
 import { RequireSession } from './RequireSession';
 import { DataRoute, HomeRoute, MobileMemoRoute, RequireOwner } from './ServiceRoutes';
@@ -72,6 +73,7 @@ export function App() {
                   />
                   <Route path="/d/:docId" element={<DocumentRedirect />} />
                   <Route path="/s/:space" element={<SpaceHomePage />} />
+                  <Route path="/s/:space/trash" element={<SpaceTrashPage />} />
                   <Route
                     path="/s/:space/settings"
                     element={

@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation, useMatch } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 import { fakeServicesOf } from '../../../../../config/fakeServices';
 import { ServicesProvider } from '../../../../../config/ServicesContext';
+import type { Permission } from '../../../../../domain/space/permission';
 import { SpacePermissionsProvider } from '../../app/SpacePermissionsContext';
 import { SessionProvider } from '../../app/SessionContext';
 import { ShellProvider } from '../../app/ShellContext';
+import { Sidebar } from '../../app/Sidebar';
 import { ToastProvider } from '../../common/Toast';
 import { MemoryStore } from '../../../../outbound/memory/shared/store';
 import { SpaceHomePage } from './SpaceHomePage';
 import { SpaceSettingsPage } from './SpaceSettingsPage';
+import { SpaceTrashPage } from './SpaceTrashPage';
 
 afterEach(cleanup);
 
@@ -25,7 +28,12 @@ function LocationEcho({ label }: { label: string }) {
   );
 }
 
-function setup(initialUrl: string, owner: boolean) {
+function SpaceSidebar() {
+  const slug = useMatch('/s/:space/*')?.params.space ?? null;
+  return <Sidebar currentSlug={slug} treeVersion={0} onCollapse={() => {}} onNavigate={() => {}} />;
+}
+
+function setup(initialUrl: string, owner: boolean, permission: Permission = owner ? 'owner' : 'read') {
   const me = { userId: 'u1', login: owner ? 'owner' : 'member', name: 'User', avatarUrl: '', owner };
   const store = new MemoryStore(me);
   store.spaces = [
@@ -39,7 +47,7 @@ function setup(initialUrl: string, owner: boolean) {
       archivedAt: null,
       lastActivityAt: null,
       documentCount: 0,
-      permission: owner ? 'owner' : 'read',
+      permission,
     },
   ];
   store.slugAliases.set('old-space', 'canonical-space');
@@ -64,9 +72,11 @@ function setup(initialUrl: string, owner: boolean) {
               }}
             >
               <MemoryRouter initialEntries={[initialUrl]}>
+                <SpaceSidebar />
                 <Routes>
                   <Route path="/s/:space" element={<SpaceHomePage />} />
                   <Route path="/s/:space/settings" element={<SpaceSettingsPage />} />
+                  <Route path="/s/:space/trash" element={<SpaceTrashPage />} />
                 </Routes>
                 <LocationEcho label="current-location" />
               </MemoryRouter>
@@ -101,6 +111,14 @@ describe('old space slug alias navigation', () => {
     expect(await screen.findByRole('heading', { name: '스페이스 설정' })).toBeDefined();
   });
 
+  it('opens a space trash bookmark with an old slug and shows the active sidebar link', async () => {
+    setup('/s/old-space/trash', true);
+
+    expect(await screen.findByText('휴지통이 비어 있습니다.')).toBeDefined();
+    expect(screen.getByTestId('current-location').textContent).toBe('/s/canonical-space/trash');
+    expect(screen.getByRole('link', { name: '휴지통' }).getAttribute('aria-current')).toBe('page');
+  });
+
   it('keeps settings hidden and does not redirect for non-owners or unknown spaces', async () => {
     setup('/s/old-space/settings?tab=links#settings-guide', false);
 
@@ -113,5 +131,23 @@ describe('old space slug alias navigation', () => {
     setup('/s/missing-space?x=1#top', true);
     expect(await screen.findByRole('heading', { name: '찾을 수 없습니다' })).toBeDefined();
     expect(screen.getByTestId('current-location').textContent).toBe('/s/missing-space?x=1#top');
+  });
+});
+
+describe('space trash navigation', () => {
+  it('opens the current space trash from the sidebar for editors', async () => {
+    setup('/s/canonical-space', false, 'edit');
+
+    fireEvent.click(screen.getByRole('link', { name: '휴지통' }));
+
+    expect(await screen.findByRole('heading', { name: '휴지통' })).toBeDefined();
+    expect(screen.getByTestId('current-location').textContent).toBe('/s/canonical-space/trash');
+  });
+
+  it('hides the sidebar link and rejects a direct visit for commenters', async () => {
+    setup('/s/canonical-space/trash', false, 'comment');
+
+    expect(await screen.findByRole('heading', { name: '찾을 수 없습니다' })).toBeDefined();
+    expect(screen.queryByRole('link', { name: '휴지통' })).toBeNull();
   });
 });

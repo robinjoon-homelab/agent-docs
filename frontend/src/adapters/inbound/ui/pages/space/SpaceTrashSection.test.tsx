@@ -9,7 +9,7 @@ import { MemoryStore } from '../../../../outbound/memory/shared/store';
 import { SessionProvider } from '../../app/SessionContext';
 import { ShellProvider } from '../../app/ShellContext';
 import { ToastProvider } from '../../common/Toast';
-import { TrashSection } from './SpaceSettingsPage';
+import { TrashSection } from './TrashSection';
 
 afterEach(cleanup);
 
@@ -74,7 +74,7 @@ function setupTrash({ owner }: { owner: boolean }) {
   return { store, services, me };
 }
 
-describe('SpaceSettings TrashSection', () => {
+describe('TrashSection', () => {
   it('warns about all trashed descendants including separately trashed and shows owner export link', async () => {
     const { store, services, me } = setupTrash({ owner: true });
 

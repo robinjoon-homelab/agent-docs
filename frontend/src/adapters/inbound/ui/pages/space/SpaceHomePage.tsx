@@ -1,4 +1,4 @@
-import { TrashSection } from './SpaceSettingsPage';
+import { TrashSection } from './TrashSection';
 import { useSession } from '../../app/SessionContext';
 import { canEdit, effectivePermission } from '../../../../../domain/space/permission';
 import { Link, Navigate, useLocation, useParams } from 'react-router';
