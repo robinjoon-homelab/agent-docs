@@ -7,6 +7,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import xyz.robinjoon.agentdocs.application.model.ActivityActor
 import xyz.robinjoon.agentdocs.application.model.ActivityEntry
+import xyz.robinjoon.agentdocs.application.model.ActivityFilter
 import xyz.robinjoon.agentdocs.application.model.ActivityQuery
 import xyz.robinjoon.agentdocs.application.model.ActivityRecord
 import xyz.robinjoon.agentdocs.application.model.ActivitySubject
@@ -17,6 +18,7 @@ import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.otherSpac
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.space
 import xyz.robinjoon.agentdocs.workspace.application.WorkspaceFixtures.spaceId
 import xyz.robinjoon.agentdocs.workspace.application.port.input.PermissionDeniedException
+import xyz.robinjoon.agentdocs.workspace.application.port.input.SpaceNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.output.DocumentRepository
 import xyz.robinjoon.agentdocs.workspace.application.port.output.SpaceRepository
 import xyz.robinjoon.agentdocs.workspace.application.service.ActivityService
@@ -34,7 +36,12 @@ class ActivityServiceTest {
         val since = now.minusSeconds(600)
         val visible = entry(1, ActivitySubject(spaceId.value, null, null, null), now.minusSeconds(300))
         val outside = entry(2, ActivitySubject(null, null, null, null), now.minusSeconds(200))
-        every { catalog.find(ActivityQuery(setOf(spaceId.value), since, null, 50, oldestFirst = true)) } returns listOf(visible, outside)
+        every {
+            catalog.find(
+                ActivityQuery(setOf(spaceId.value), null, 50, oldestFirst = true, filter = ActivityFilter(since = since)),
+            )
+        } returns
+            listOf(visible, outside)
         every { spaces.findByIds(setOf(spaceId)) } returns listOf(space)
         every { documents.findByIds(emptyList()) } returns emptyList()
 
@@ -55,12 +62,33 @@ class ActivityServiceTest {
     }
 
     @Test
+    fun `a filter cannot grant access to an unlisted space`() {
+        every { spaces.findBySlug(space.slug) } returns space
+        val access = agentAccess(Permission.READ, setOf(otherSpaceId))
+        val filter = ActivityFilter(kind = "document.revised", since = now)
+
+        assertThatThrownBy { service.recent(access, space.slug, 20, filter) }
+            .isInstanceOf(SpaceNotFoundException::class.java)
+    }
+
+    @Test
     fun `101 equal timestamp changes continue through 100 and one then an empty page without skipping`() {
         val since = now.minusSeconds(1)
         val entries = (1L..101L).map { entry(it, ActivitySubject(spaceId.value, null, null, null), now) }
-        every { catalog.find(ActivityQuery(setOf(spaceId.value), since, null, 100, true)) } returns entries.take(100)
-        every { catalog.find(ActivityQuery(setOf(spaceId.value), since, null, 100, true, 100)) } returns entries.drop(100)
-        every { catalog.find(ActivityQuery(setOf(spaceId.value), since, null, 100, true, 101)) } returns emptyList()
+        every { catalog.find(ActivityQuery(setOf(spaceId.value), null, 100, true, filter = ActivityFilter(since = since))) } returns
+            entries.take(100)
+        every {
+            catalog.find(
+                ActivityQuery(setOf(spaceId.value), null, 100, true, afterId = 100, filter = ActivityFilter(since = since)),
+            )
+        } returns
+            entries.drop(100)
+        every {
+            catalog.find(
+                ActivityQuery(setOf(spaceId.value), null, 100, true, afterId = 101, filter = ActivityFilter(since = since)),
+            )
+        } returns
+            emptyList()
         every { spaces.findByIds(setOf(spaceId)) } returns listOf(space)
         every { spaces.findByIds(emptySet()) } returns emptyList()
         every { documents.findByIds(emptyList()) } returns emptyList()
@@ -87,8 +115,14 @@ class ActivityServiceTest {
         val since = now.minusSeconds(10)
         val firstEntry = entry(1, ActivitySubject(spaceId.value, null, null, null), now.minusSeconds(5))
         val secondEntry = entry(2, ActivitySubject(spaceId.value, null, null, null), now)
-        every { catalog.find(ActivityQuery(setOf(spaceId.value), since, null, 1, true)) } returns listOf(firstEntry)
-        every { catalog.find(ActivityQuery(setOf(spaceId.value), firstEntry.record.at, null, 1, true)) } returns listOf(secondEntry)
+        every { catalog.find(ActivityQuery(setOf(spaceId.value), null, 1, true, filter = ActivityFilter(since = since))) } returns
+            listOf(firstEntry)
+        every {
+            catalog.find(
+                ActivityQuery(setOf(spaceId.value), null, 1, true, filter = ActivityFilter(since = firstEntry.record.at)),
+            )
+        } returns
+            listOf(secondEntry)
         every { spaces.findByIds(setOf(spaceId)) } returns listOf(space)
         every { documents.findByIds(emptyList()) } returns emptyList()
         val access = agentAccess(Permission.READ, setOf(spaceId))

@@ -1,0 +1,13 @@
+.recent-activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.recent-activity-filters .field {
+  flex: 1 1 115px;
+  min-width: 0;
+  margin-bottom: 0;
+}

@@ -16,11 +16,11 @@ import tools.jackson.databind.json.JsonMapper
 import xyz.robinjoon.agentdocs.application.model.ActivityActor
 import xyz.robinjoon.agentdocs.application.model.ActivityActorKind
 import xyz.robinjoon.agentdocs.application.model.ActivityEntry
+import xyz.robinjoon.agentdocs.application.model.ActivityFilter
 import xyz.robinjoon.agentdocs.application.model.ActivityRecord
 import xyz.robinjoon.agentdocs.application.model.ActivitySubject
 import xyz.robinjoon.agentdocs.support.web.RestDocsWebTest
 import xyz.robinjoon.agentdocs.support.web.documented
-import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.actorFields
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.agent
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.agentAccess
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.at
@@ -81,10 +81,49 @@ class ActivityApiDocumentationTest : RestDocsWebTest() {
                     queryParameters(
                         parameterWithName("space").optional().description("스페이스 주소. 빠지면 전체 로그로, 소유자만 볼 수 있다"),
                         parameterWithName("limit").optional().description("최대 개수, 기본 50, 최대 200"),
+                        parameterWithName("kind").optional().description("저장된 활동 종류와 정확히 일치. 예: document.revised"),
+                        parameterWithName("actorKind").optional().description("활동을 남긴 주체 유형. human, agent, system 중 하나"),
+                        parameterWithName("since").optional().description("이 ISO-8601 시각보다 나중에 발생한 활동만 조회"),
                     ),
                     responseFields(*activityFields("[].")),
                 ),
             )
+    }
+
+    @Test
+    fun `activity filters can be combined`() {
+        val filter = ActivityFilter("document.purged", ActivityActorKind.SYSTEM, at.minusSeconds(60))
+        val purged = record.copy(kind = "document.purged", actor = ActivityActor.system, summary = "휴지통 보관 기간이 지나 삭제")
+        every { activity.recent(ownerAccess, SpaceSlug("agent-docs"), 20, filter) } returns
+            listOf(ActivityView(ActivityEntry(42, purged), space, null))
+
+        mockMvc
+            .perform(
+                get("/api/activity")
+                    .principal(owner)
+                    .param("space", "agent-docs")
+                    .param("limit", "20")
+                    .param("kind", "document.purged")
+                    .param("actorKind", "system")
+                    .param("since", filter.since.toString()),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].id").value(42))
+            .andExpect(jsonPath("$[0].actor.kind").value("system"))
+            .andExpect(jsonPath("$[0].actor.login").hasJsonPath())
+            .andExpect(jsonPath("$[0].actor.login").doesNotExist())
+            .andDo(documented("activity-list-filtered"))
+    }
+
+    @Test
+    fun `invalid actor kinds and timestamps produce bad requests`() {
+        mockMvc
+            .perform(get("/api/activity").principal(owner).param("actorKind", "unknown"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("invalid"))
+        mockMvc
+            .perform(get("/api/activity").principal(owner).param("since", "yesterday"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("invalid"))
     }
 
     @Test
@@ -181,7 +220,7 @@ class ActivityApiDocumentationTest : RestDocsWebTest() {
         arrayOf(
             fieldWithPath("${prefix}id").description("로그 ID. 늘어나는 순서다"),
             fieldWithPath("${prefix}kind").description("document.revised, thread.opened 같은 종류"),
-            *actorFields("${prefix}actor"),
+            *activityActorFields("${prefix}actor"),
             *spaceRefFields("${prefix}space").map { it.optional() }.toTypedArray(),
             fieldWithPath("${prefix}space").type(JsonFieldType.OBJECT).optional().description("스페이스. 스페이스 밖 활동이면 null"),
             fieldWithPath("${prefix}documentId").type(JsonFieldType.STRING).optional().description("문서 ID"),
@@ -192,5 +231,14 @@ class ActivityApiDocumentationTest : RestDocsWebTest() {
             fieldWithPath("${prefix}connectionId").type(JsonFieldType.STRING).optional().description("승인·발급·권한 변경·회수한 연결의 ID. 이전 기록은 null"),
             fieldWithPath("${prefix}summary").description("요약"),
             fieldWithPath("${prefix}at").description("시각"),
+        )
+
+    private fun activityActorFields(prefix: String): Array<FieldDescriptor> =
+        arrayOf(
+            fieldWithPath("$prefix.kind").description("human, agent, system 중 하나"),
+            fieldWithPath("$prefix.login").type(JsonFieldType.VARIES).description("사람 또는 에이전트를 위임한 사람의 GitHub 로그인. 시스템이면 null"),
+            fieldWithPath("$prefix.agent").type(JsonFieldType.OBJECT).optional().description("에이전트 연결 정보. 사람과 시스템이면 null"),
+            fieldWithPath("$prefix.agent.connectionId").type(JsonFieldType.STRING).optional().description("에이전트 연결 ID"),
+            fieldWithPath("$prefix.agent.clientName").type(JsonFieldType.STRING).optional().description("에이전트 클라이언트 이름"),
         )
 }

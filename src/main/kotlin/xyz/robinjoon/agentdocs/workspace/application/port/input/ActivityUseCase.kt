@@ -1,5 +1,6 @@
 package xyz.robinjoon.agentdocs.workspace.application.port.input
 
+import xyz.robinjoon.agentdocs.application.model.ActivityFilter
 import xyz.robinjoon.agentdocs.workspace.application.model.ActivityView
 import xyz.robinjoon.agentdocs.workspace.application.model.ChangeFeed
 import xyz.robinjoon.agentdocs.workspace.domain.Access
@@ -12,6 +13,7 @@ interface ActivityUseCase {
         access: Access,
         space: SpaceSlug?,
         limit: Int,
+        filter: ActivityFilter = ActivityFilter(),
     ): List<ActivityView>
 
     // Entries after the initial since and cursor ID in visible spaces, in insertion order. Keep since unchanged.

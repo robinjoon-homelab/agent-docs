@@ -55,7 +55,7 @@ class CommentExcerptMigrationTest {
 
         database.migrate()
 
-        val entries = database.inTransaction { log.find(ActivityQuery(null, null, null, 20, oldestFirst = true)) }.map { it.record }
+        val entries = database.inTransaction { log.find(ActivityQuery(null, null, 20, oldestFirst = true)) }.map { it.record }
         assertThat(entries.map { it.summary }).containsExactly("삭제된 댓글", "삭제된 댓글", "Live reply")
         assertThat(entries.map { it.createdComment?.id }).containsExactly(null, deletedReply.id.value, liveReply.id.value)
         assertThat(entries.map { it.subject.threadId }).containsOnly(root.id.value)
@@ -111,7 +111,7 @@ class CommentExcerptMigrationTest {
 
         database.migrate()
 
-        val entries = database.inTransaction { log.find(ActivityQuery(null, null, null, 20, oldestFirst = true)) }.map { it.record }
+        val entries = database.inTransaction { log.find(ActivityQuery(null, null, 20, oldestFirst = true)) }.map { it.record }
         assertThat(entries.map { it.summary }).containsExactly("삭제된 댓글", "Other")
         assertThat(entries.map { it.createdComment?.id }).containsExactly(deleted, other)
     }

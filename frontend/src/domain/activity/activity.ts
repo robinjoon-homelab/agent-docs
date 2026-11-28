@@ -4,7 +4,7 @@ import type { Actor } from '../shared/actor';
 export type Activity = {
   readonly id: string;
   readonly kind: string;
-  readonly actor: Actor;
+  readonly actor: Actor | { readonly kind: 'system' };
   readonly space: { readonly slug: string; readonly name: string } | null;
   readonly documentId: string | null;
   readonly documentTitle: string | null;
