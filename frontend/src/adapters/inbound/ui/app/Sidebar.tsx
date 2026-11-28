@@ -4,6 +4,7 @@ import { canEdit, permissionInSpace } from '../../../../domain/space/permission'
 import type { DragEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useMatch, useNavigate } from 'react-router';
+import type { DocumentSummary } from '../../../../domain/document/document';
 import type { PathNode } from '../../../../domain/document/pathTree';
 import {
   buildPathTree,
@@ -19,9 +20,10 @@ import { ActorChip } from '../common/ActorChip';
 import { Icon } from '../common/Icon';
 import { errorMessage } from '../common/States';
 import { useToast } from '../common/Toast';
+import { TrashDocumentDialog } from '../common/TrashDocumentDialog';
 import { useLoad } from '../hooks/useLoad';
 import { useSession } from './SessionContext';
-import { useShell } from './ShellContext';
+import { useOpenDocument, useShell } from './ShellContext';
 
 function SpaceSwitcher({ current, spaces }: { current: Space | null; spaces: readonly Space[] }) {
   const { me } = useSession();
@@ -79,20 +81,18 @@ function SpaceSwitcher({ current, spaces }: { current: Space | null; spaces: rea
 
 /** Drag payload: the id of a document being moved in the tree. */
 const DOCUMENT_DRAG_TYPE = 'application/x-agent-docs-document';
+const TRASH_TARGET = Symbol('trash');
 
 type Dragged = { readonly id: string; readonly path: string };
+type DragSource = Dragged & { readonly treeVersion: number };
+type DropTarget = string | typeof TRASH_TARGET;
 
-/**
- * `target` is the path the dragged document would go under ('' is the space root). The dragged document is kept
- * here because a drag event only reveals its data on drop, and hovering must already refuse the document itself and
- * what lies under it.
- */
 type TreeDrag = {
-  readonly target: string | null;
-  readonly setTarget: (path: string | null) => void;
-  readonly dragged: Dragged | null;
+  readonly target: DropTarget | null;
+  readonly setTarget: (target: DropTarget | null) => void;
+  readonly source: DocumentSummary | undefined;
   readonly setDragged: (dragged: Dragged | null) => void;
-  readonly drop: (documentId: string, under: string) => void;
+  readonly drop: (document: DocumentSummary, target: DropTarget) => void;
 };
 
 type TreeFolding = {
@@ -104,29 +104,36 @@ function FoldIcon({ open }: { open: boolean }) {
   return <Icon name={open ? 'chevron-down' : 'chevron-right'} size={14} />;
 }
 
-function dropProps(path: string, drag: TreeDrag) {
+function dropProps(target: DropTarget, drag: TreeDrag) {
+  const accepts = (source: DocumentSummary): boolean =>
+    target === TRASH_TARGET || !isWithinPath(target, source.path);
   return {
     onDragOver: (event: DragEvent) => {
       if (!event.dataTransfer.types.includes(DOCUMENT_DRAG_TYPE)) return;
       event.stopPropagation();
-      // Not accepting the drop shows the no-drop cursor: a document cannot go under itself or its descendants.
-      if (drag.dragged !== null && isWithinPath(path, drag.dragged.path)) {
+      // The browser only exposes the payload on drop, so use the local drag to check the source during hover.
+      if (drag.source === undefined || !accepts(drag.source)) {
         event.dataTransfer.dropEffect = 'none';
         if (drag.target !== null) drag.setTarget(null);
         return;
       }
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
-      if (drag.target !== path) drag.setTarget(path);
+      if (drag.target !== target) drag.setTarget(target);
     },
     onDrop: (event: DragEvent) => {
-      const documentId = event.dataTransfer.getData(DOCUMENT_DRAG_TYPE);
-      if (documentId === '') return;
+      if (!event.dataTransfer.types.includes(DOCUMENT_DRAG_TYPE)) return;
       event.preventDefault();
       event.stopPropagation();
       drag.setTarget(null);
       drag.setDragged(null);
-      drag.drop(documentId, path);
+      const source = drag.source;
+      if (
+        source !== undefined &&
+        event.dataTransfer.getData(DOCUMENT_DRAG_TYPE) === source.id &&
+        accepts(source)
+      )
+        drag.drop(source, target);
     },
   };
 }
@@ -151,7 +158,7 @@ function TreeNodes({
       {nodes.map((node) => {
         const isFolder = node.children.length > 0;
         const open = isFolder && folding.isOpen(node.path);
-        const targetClass = drag.target === node.path ? ' drop-target' : '';
+        const targetClass = drag.source !== undefined && drag.target === node.path ? ' drop-target' : '';
         const name = node.document === null || node.document.title === '' ? node.name : node.document.title;
         return (
           <li key={node.path} {...(editable ? dropProps(node.path, drag) : {})}>
@@ -183,12 +190,16 @@ function TreeNodes({
                 <NavLink
                   className={({ isActive }) => `nav-item${isActive ? ' active' : ''}${targetClass}`}
                   to={documentHref(spaceSlug, node.document.id)}
-                  title={`${node.path} · 다른 문서 위로 끌어 그 아래로 옮기기`}
+                  title={editable ? `${node.path} · 다른 문서나 휴지통으로 끌어 옮기기` : node.path}
                   draggable={editable}
                   onDragStart={(event) => {
-                    event.dataTransfer.setData(DOCUMENT_DRAG_TYPE, node.document?.id ?? '');
+                    if (!editable || node.document === null) {
+                      event.preventDefault();
+                      return;
+                    }
+                    event.dataTransfer.setData(DOCUMENT_DRAG_TYPE, node.document.id);
                     event.dataTransfer.effectAllowed = 'move';
-                    if (node.document !== null) drag.setDragged({ id: node.document.id, path: node.path });
+                    drag.setDragged({ id: node.document.id, path: node.path });
                   }}
                   onDragEnd={() => {
                     drag.setTarget(null);
@@ -236,11 +247,7 @@ function TreeNodes({
   );
 }
 
-/**
- * The space's document tree. Dropping a document on another one moves it under that one, with everything under it;
- * dropping it on the empty area moves it to the top.
- */
-function DocumentTree({
+function SpaceNavigation({
   spaceSlug,
   version,
   editable,
@@ -251,25 +258,66 @@ function DocumentTree({
 }) {
   const services = useServices();
   const shell = useShell();
+  const openDocument = useOpenDocument();
+  const { me } = useSession();
+  const navigate = useNavigate();
   const toast = useToast();
-  const [target, setTarget] = useState<string | null>(null);
-  const [dragged, setDragged] = useState<Dragged | null>(null);
+  const [target, setTarget] = useState<DropTarget | null>(null);
+  const [dragged, setDragged] = useState<DragSource | null>(null);
+  const [pendingTrash, setPendingTrash] = useState<Dragged | null>(null);
+  const [trashing, setTrashing] = useState(false);
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(new Map());
   const currentId = useMatch('/s/:space/d/:id')?.params.id ?? null;
   const documents = useLoad(`tree:${spaceSlug}:${version}`, () => services.documents.listInSpace(spaceSlug));
-  if (documents.state !== 'ready') return null;
-  if (documents.data.length === 0)
-    return (
-      <p className="faint small" style={{ padding: '0 8px' }}>
-        문서가 없습니다.
-      </p>
-    );
-  const drop = (documentId: string, under: string): void => {
-    if (!editable) return;
-    const document = documents.data.find((candidate) => candidate.id === documentId);
-    if (document === undefined || isWithinPath(under, document.path)) return;
-    const parent = documents.data.find((candidate) => candidate.path === under);
-    const along = descendantCount(documents.data, document.path);
+  const listed = documents.data ?? [];
+  const currentPath = listed.find((candidate) => candidate.id === currentId)?.path ?? null;
+  const findSource = (source: Dragged | null) =>
+    source === null
+      ? undefined
+      : listed.find((candidate) => candidate.id === source.id && candidate.path === source.path);
+  const source = editable && !trashing && dragged?.treeVersion === version ? findSource(dragged) : undefined;
+  const trashCandidate = editable ? findSource(pendingTrash) : undefined;
+
+  const trash = async (document: DocumentSummary): Promise<void> => {
+    if (!editable || trashing) return;
+    const active = openDocument.currentDocument();
+    const affectsOpenDocument =
+      currentId === document.id ||
+      (currentPath !== null && isWithinPath(currentPath, document.path)) ||
+      (active?.spaceSlug === spaceSlug && isWithinPath(active.path(), document.path));
+    const send = async (): Promise<void> => {
+      await services.documents.trash(document.id);
+      setPendingTrash(null);
+      shell.refreshTree();
+      toast(`‘${document.title || document.path}’ 문서를 휴지통으로 옮겼습니다`);
+      if (
+        affectsOpenDocument &&
+        active?.spaceSlug === spaceSlug &&
+        openDocument.currentDocument() === active &&
+        (active.id === document.id || isWithinPath(active.path(), document.path))
+      )
+        void navigate(`/s/${spaceSlug}`);
+    };
+    setTrashing(true);
+    try {
+      if (!affectsOpenDocument) await send();
+      else if (active?.id === currentId) await active.withSavedEdits(send);
+      else toast('열린 문서가 준비된 뒤 다시 시도하세요.');
+    } catch (error) {
+      toast(errorMessage(error));
+    } finally {
+      setTrashing(false);
+    }
+  };
+
+  const drop = (document: DocumentSummary, under: DropTarget): void => {
+    const along = descendantCount(listed, document.path);
+    if (under === TRASH_TARGET) {
+      if (along > 0) setPendingTrash({ id: document.id, path: document.path });
+      else void trash(document);
+      return;
+    }
+    const parent = listed.find((candidate) => candidate.path === under);
     services.documents.move(document, under).then(
       (result) => {
         if (!result.ok) toast(PATH_RULE_TEXT);
@@ -286,30 +334,86 @@ function DocumentTree({
       (error: unknown) => toast(errorMessage(error)),
     );
   };
-  const drag: TreeDrag = { target, setTarget, dragged, setDragged, drop };
-  const currentPath = documents.data.find((candidate) => candidate.id === currentId)?.path ?? null;
+  const drag: TreeDrag = {
+    target,
+    setTarget,
+    source,
+    setDragged: (next) => setDragged(next === null ? null : { ...next, treeVersion: version }),
+    drop,
+  };
   const isOpen = (folder: string): boolean => isFolderOpen(folder, currentPath, toggled);
   const folding: TreeFolding = {
     isOpen,
     toggle: (folder) => setToggled((previous) => new Map(previous).set(folder, !isOpen(folder))),
   };
   return (
-    <div
-      className={`tree-root${target === '' ? ' drop-target' : ''}`}
-      {...(editable ? dropProps('', drag) : {})}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTarget(null);
-      }}
-    >
-      <TreeNodes
-        editable={editable}
-        nodes={buildPathTree(documents.data)}
-        spaceSlug={spaceSlug}
-        drag={drag}
-        folding={folding}
-        onAddChild={(parent) => shell.openNewDocument(spaceSlug, `${parent}/`)}
-      />
-    </div>
+    <>
+      {editable ? (
+        <NavLink
+          className={({ isActive }) =>
+            `nav-item${isActive ? ' active' : ''}${source !== undefined && target === TRASH_TARGET ? ' drop-target' : ''}`
+          }
+          to={`/s/${spaceSlug}/trash`}
+          {...dropProps(TRASH_TARGET, drag)}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+              setTarget((previous) => (previous === TRASH_TARGET ? null : previous));
+          }}
+        >
+          <Icon name="trash" />
+          휴지통
+        </NavLink>
+      ) : null}
+      <div className="nav-section" style={{ display: 'flex', alignItems: 'center' }}>
+        <Link to={`/s/${spaceSlug}`} style={{ color: 'inherit' }}>
+          문서
+        </Link>
+        {editable ? (
+          <button
+            type="button"
+            className="icon-btn"
+            style={{ marginLeft: 'auto', width: 22, height: 22 }}
+            onClick={() => shell.openNewDocument(spaceSlug)}
+            aria-label="새 문서"
+            title="새 문서"
+          >
+            <Icon name="plus" size={14} />
+          </button>
+        ) : null}
+      </div>
+      {documents.state !== 'ready' ? null : listed.length === 0 ? (
+        <p className="faint small" style={{ padding: '0 8px' }}>
+          문서가 없습니다.
+        </p>
+      ) : (
+        <div
+          className={`tree-root${source !== undefined && target === '' ? ' drop-target' : ''}`}
+          {...(editable ? dropProps('', drag) : {})}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+              setTarget((previous) => (typeof previous === 'string' ? null : previous));
+          }}
+        >
+          <TreeNodes
+            editable={editable}
+            nodes={buildPathTree(listed)}
+            spaceSlug={spaceSlug}
+            drag={drag}
+            folding={folding}
+            onAddChild={(parent) => shell.openNewDocument(spaceSlug, `${parent}/`)}
+          />
+        </div>
+      )}
+      {trashCandidate === undefined ? null : (
+        <TrashDocumentDialog
+          descendants={descendantCount(listed, trashCandidate.path)}
+          owner={me.owner}
+          busy={trashing}
+          onCancel={() => setPendingTrash(null)}
+          onConfirm={() => void trash(trashCandidate)}
+        />
+      )}
+    </>
   );
 }
 
@@ -383,38 +487,13 @@ export function Sidebar({
           <Icon name="doc" />
           빠른 메모
         </NavLink>
-        {currentSlug !== null && editable ? (
-          <NavLink className={navClass} to={`/s/${currentSlug}/trash`}>
-            <Icon name="trash" />
-            휴지통
-          </NavLink>
-        ) : null}
         {currentSlug === null ? null : (
-          <>
-            <div className="nav-section" style={{ display: 'flex', alignItems: 'center' }}>
-              <Link to={`/s/${currentSlug}`} style={{ color: 'inherit' }}>
-                문서
-              </Link>
-              {editable ? (
-                <button
-                  type="button"
-                  className="icon-btn"
-                  style={{ marginLeft: 'auto', width: 22, height: 22 }}
-                  onClick={() => shell.openNewDocument(currentSlug)}
-                  aria-label="새 문서"
-                  title="새 문서"
-                >
-                  <Icon name="plus" size={14} />
-                </button>
-              ) : null}
-            </div>
-            <DocumentTree
-              editable={editable}
-              key={currentSlug}
-              spaceSlug={currentSlug}
-              version={treeVersion}
-            />
-          </>
+          <SpaceNavigation
+            editable={editable}
+            key={currentSlug}
+            spaceSlug={currentSlug}
+            version={treeVersion}
+          />
         )}
         <div className="nav-section">설정</div>
         {currentSlug === null || !me.owner ? null : (

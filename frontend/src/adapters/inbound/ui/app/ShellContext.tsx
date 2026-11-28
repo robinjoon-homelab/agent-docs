@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo, useRef } from 'react';
 import type { Space } from '../../../../domain/space/space';
 
 export type Shell = {
@@ -20,12 +20,47 @@ export type Shell = {
 
 const ShellContext = createContext<Shell | null>(null);
 
+export type OpenDocument = {
+  readonly id: string;
+  readonly spaceSlug: string;
+  readonly path: () => string;
+  readonly withSavedEdits: (action: () => Promise<void>) => Promise<void>;
+};
+
+const OpenDocumentContext = createContext<{
+  readonly currentDocument: () => OpenDocument | null;
+  readonly register: (document: OpenDocument) => () => void;
+} | null>(null);
+
 export function ShellProvider({ shell, children }: { shell: Shell; children: ReactNode }) {
-  return <ShellContext value={shell}>{children}</ShellContext>;
+  const openDocument = useRef<OpenDocument | null>(null);
+  const registry = useMemo(
+    () => ({
+      currentDocument: () => openDocument.current,
+      register: (document: OpenDocument) => {
+        openDocument.current = document;
+        return () => {
+          if (openDocument.current === document) openDocument.current = null;
+        };
+      },
+    }),
+    [],
+  );
+  return (
+    <ShellContext value={shell}>
+      <OpenDocumentContext value={registry}>{children}</OpenDocumentContext>
+    </ShellContext>
+  );
 }
 
 export function useShell(): Shell {
   const shell = useContext(ShellContext);
   if (shell === null) throw new Error('useShell must be used inside AppShell');
   return shell;
+}
+
+export function useOpenDocument() {
+  const openDocument = useContext(OpenDocumentContext);
+  if (openDocument === null) throw new Error('useOpenDocument must be used inside AppShell');
+  return openDocument;
 }
