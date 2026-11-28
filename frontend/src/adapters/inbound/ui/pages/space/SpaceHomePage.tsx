@@ -4,8 +4,7 @@ import { canEdit, effectivePermission } from '../../../../../domain/space/permis
 import { Link, Navigate, useLocation, useParams } from 'react-router';
 import type { DocumentSummary } from '../../../../../domain/document/document';
 import { documentHref, threadHref } from '../../../../../domain/document/document';
-import type { PathNode } from '../../../../../domain/document/pathTree';
-import { buildPathTree, sortByRecent } from '../../../../../domain/document/pathTree';
+import { sortByRecent } from '../../../../../domain/document/pathTree';
 import type { Space } from '../../../../../domain/space/space';
 import { spaceInitial } from '../../../../../domain/space/space';
 import { commentText } from '../../../../../domain/thread/thread';
@@ -25,32 +24,6 @@ import './space.css';
 
 const RECENT_LIMIT = 8;
 const THREADS_PER_DOCUMENT = 3;
-
-function DocumentTree({ nodes, spaceSlug }: { nodes: readonly PathNode[]; spaceSlug: string }) {
-  return (
-    <ul className="space-tree">
-      {nodes.map((node) => (
-        <li key={node.path}>
-          {node.document === null ? (
-            <span className="space-tree-folder">
-              <Icon name="folder" size={14} />
-              {node.name}
-            </span>
-          ) : (
-            <Link className="space-tree-doc" to={documentHref(spaceSlug, node.document.id)}>
-              <Icon name="doc" size={14} />
-              <span className="space-tree-title">
-                {node.document.title === '' ? node.name : node.document.title}
-              </span>
-              <span className="faint small mono space-tree-path">{node.name}</span>
-            </Link>
-          )}
-          {node.children.length > 0 ? <DocumentTree nodes={node.children} spaceSlug={spaceSlug} /> : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 function RecentDocuments({
   documents,
@@ -207,14 +180,6 @@ function SpaceHome({ space }: { space: Space }) {
                 documents={sortByRecent(listed).slice(0, RECENT_LIMIT)}
                 spaceSlug={space.slug}
               />
-            </section>
-            <section className="section" aria-labelledby="space-tree">
-              <h2 className="section-title" id="space-tree">
-                문서 트리
-              </h2>
-              <div className="card">
-                <DocumentTree nodes={buildPathTree(listed)} spaceSlug={space.slug} />
-              </div>
             </section>
           </div>
         )}
