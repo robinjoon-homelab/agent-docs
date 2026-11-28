@@ -28,6 +28,7 @@ import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsMoveTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsReadTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsSearchTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsTransferTool
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsTrashTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.DocsUploadTool
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.McpInstructions
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.mcp.McpSettings
@@ -157,6 +158,9 @@ class McpConfig {
         documents: DocumentUseCase,
         recorder: EditStatisticsRecorder,
     ): McpTool = DocsMoveTool(documents, recorder)
+
+    @Bean
+    fun docsTrashTool(documents: DocumentUseCase): McpTool = DocsTrashTool(documents)
 
     @Bean
     fun docsUploadTool(

@@ -24,6 +24,7 @@ import xyz.robinjoon.agentdocs.support.web.RestDocsWebTest
 import xyz.robinjoon.agentdocs.support.web.documented
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.agent
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.agentAccess
+import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.at
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.body
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.document
 import xyz.robinjoon.agentdocs.workspace.adapter.inbound.web.WebFixtures.documentId
@@ -35,6 +36,7 @@ import xyz.robinjoon.agentdocs.workspace.application.model.MarkdownRequest
 import xyz.robinjoon.agentdocs.workspace.application.model.RelatedChange
 import xyz.robinjoon.agentdocs.workspace.application.model.RelatedWrite
 import xyz.robinjoon.agentdocs.workspace.application.model.WriteContext
+import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentNotFoundException
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentQueryUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.DocumentUseCase
 import xyz.robinjoon.agentdocs.workspace.application.port.input.StaleRevisionException
@@ -48,7 +50,7 @@ import xyz.robinjoon.agentdocs.workspace.domain.document.edit.EditOperation
 import xyz.robinjoon.agentdocs.workspace.domain.document.markdown.BlockMarkdown
 import java.util.UUID
 
-// The SDK server and transport as McpConfig wires them, with two real tools against strict use case mocks; tool rules
+// The SDK server and transport as McpConfig wires them, with real tools against strict use case mocks; tool rules
 // belong to the use case tests. This test checks the JSON-RPC shapes the endpoint answers and how tool failures return.
 class McpApiDocumentationTest : RestDocsWebTest() {
     private val spaces =
@@ -77,6 +79,7 @@ class McpApiDocumentationTest : RestDocsWebTest() {
             DocsReadTool(queries, spaces),
             DocsEditTool(documents, mockk(relaxed = true), queries),
             DocsMoveTool(documents, mockk(relaxed = true)),
+            config.docsTrashTool(documents),
         )
 
     // Building the server installs it as the transport's handler.
@@ -135,6 +138,9 @@ class McpApiDocumentationTest : RestDocsWebTest() {
             .andExpect(jsonPath("$.result.tools[0].inputSchema.required[0]").value("document"))
             .andExpect(jsonPath("$.result.tools[0].annotations.readOnlyHint").value(true))
             .andExpect(jsonPath("$.result.tools[1].annotations.readOnlyHint").value(false))
+            .andExpect(jsonPath("$.result.tools[3].name").value("docs_trash"))
+            .andExpect(jsonPath("$.result.tools[3].inputSchema.required[0]").value("document"))
+            .andExpect(jsonPath("$.result.tools[3].annotations.readOnlyHint").value(false))
             .andDo(
                 documented(
                     "mcp-tools-list",
@@ -302,6 +308,76 @@ class McpApiDocumentationTest : RestDocsWebTest() {
             .andExpect(jsonPath("$.result.content[0].text", containsString("\"documentId\":\"${child.id}\"")))
             .andExpect(jsonPath("$.result.content[0].text", containsString("\"path\":\"billing/x\"")))
             .andExpect(jsonPath("$.result.content[0].text", containsString("\"change\":\"moved\"")))
+    }
+
+    @Test
+    fun `trash returns the new revision and the descendants moved along`() {
+        val trashed = requireNotNull(document().trash(at))
+        val child =
+            Document.restore(
+                DocumentId(UUID.fromString("55555555-5555-4555-8555-555555555556")),
+                trashed.header.copy(path = DocumentPath("payments/retry/backoff")),
+                trashed.blocks,
+                trashed.lifecycle,
+            )
+        val context = mcpContext.copy(operationId = "trash-retry")
+        every { documents.trash(context, documentId) } returns
+            DocumentWrite(
+                trashed,
+                trashed.revision,
+                emptyList(),
+                amended = false,
+                unchanged = false,
+                related = listOf(RelatedWrite(child, RelatedChange.TRASHED)),
+            )
+
+        call(
+            """{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"docs_trash","arguments":{"document":"$documentId",""" +
+                """"opId":"trash-retry"}}}""",
+        ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(false))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"documentId\":\"$documentId\"")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"revision\":${trashed.revision}")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"alsoChanged\":[{\"documentId\":\"${child.id}\"")))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"change\":\"trashed\"")))
+            .andDo(
+                documented(
+                    "mcp-docs-trash",
+                    requestFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
+                        fieldWithPath("method").description("tools/call"),
+                        fieldWithPath("params.name").description("docs_trash"),
+                        fieldWithPath("params.arguments.document").description("휴지통으로 옮길 문서 UUID"),
+                        fieldWithPath("params.arguments.opId").optional().description("재시도에 사용할 작업 ID"),
+                    ),
+                    responseFields(
+                        fieldWithPath("jsonrpc").description("2.0"),
+                        fieldWithPath("id").description("요청 ID"),
+                        fieldWithPath("result.content[].type").description("text"),
+                        fieldWithPath("result.content[].text").description("처리한 문서의 ID·리비전과 함께 옮긴 하위 문서(alsoChanged)의 JSON"),
+                        fieldWithPath("result.isError").description("업무 오류면 true"),
+                    ),
+                ),
+            )
+    }
+
+    @Test
+    fun `trashing a missing document returns a tool error`() {
+        every { documents.trash(mcpContext, documentId) } throws DocumentNotFoundException(documentId)
+
+        call("""{"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"docs_trash","arguments":{"document":"$documentId"}}}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(true))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"code\":\"not_found\"")))
+    }
+
+    @Test
+    fun `trashing a document requires a valid UUID`() {
+        call("""{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"docs_trash","arguments":{"document":"bad-id"}}}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.result.isError").value(true))
+            .andExpect(jsonPath("$.result.content[0].text", containsString("\"code\":\"invalid\"")))
     }
 
     @Test
