@@ -2,7 +2,6 @@ import { TrashSection } from './TrashSection';
 import { useSession } from '../../app/SessionContext';
 import { canEdit, effectivePermission } from '../../../../../domain/space/permission';
 import { Link, Navigate, useLocation, useParams } from 'react-router';
-import { activityHref } from '../../../../../domain/activity/activity';
 import type { DocumentSummary } from '../../../../../domain/document/document';
 import { documentHref, threadHref } from '../../../../../domain/document/document';
 import type { PathNode } from '../../../../../domain/document/pathTree';
@@ -20,6 +19,7 @@ import { StatusBadge } from '../../common/StatusBadge';
 import { useLoad } from '../../hooks/useLoad';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { useSpace } from '../../hooks/useSpace';
+import { RecentActivity } from './RecentActivity';
 import { SpaceLinks } from './SpaceLinks';
 import './space.css';
 
@@ -128,39 +128,6 @@ function OpenComments({
   );
 }
 
-function RecentActivity({ spaceSlug }: { spaceSlug: string }) {
-  const services = useServices();
-  const activity = useLoad(`space-home:activity:${spaceSlug}`, () => services.activity.recent(spaceSlug, 20));
-
-  if (activity.state === 'loading') return <Loading />;
-  if (activity.state === 'error') return <ErrorBox error={activity.error} onRetry={activity.reload} />;
-  if (activity.data.length === 0) return <p className="faint small">최근 활동이 없습니다.</p>;
-  return (
-    <ul className="list card space-list">
-      {activity.data.map((entry) => {
-        const href = activityHref(entry);
-        const summary = (
-          <span className="space-activity-summary">
-            {entry.documentTitle === null ? null : <strong>{entry.documentTitle} </strong>}
-            {entry.summary}
-          </span>
-        );
-        return (
-          <li key={entry.id} className="space-activity">
-            <div className="space-activity-head">
-              <ActorChip actor={entry.actor} />
-              <span className="faint small space-row-time">
-                <RelativeTime iso={entry.at} />
-              </span>
-            </div>
-            {href === null ? summary : <Link to={href}>{summary}</Link>}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 function SpaceHome({ space }: { space: Space }) {
   const { me } = useSession();
   const editable = canEdit(effectivePermission(space.permission, me.owner));
@@ -169,6 +136,7 @@ function SpaceHome({ space }: { space: Space }) {
   const documents = useLoad(`space-home:docs:${space.slug}:${shell.treeVersion}`, () =>
     services.documents.listInSpace(space.slug),
   );
+  const listed = documents.state === 'ready' && documents.data.length > 0 ? documents.data : null;
   usePageTitle(space.name);
 
   const newDocument = editable ? (
@@ -228,15 +196,15 @@ function SpaceHome({ space }: { space: Space }) {
           </p>
         </EmptyState>
       ) : null}
-      {documents.state === 'ready' && documents.data.length > 0 ? (
-        <div className="space-columns">
+      <div className={listed === null ? undefined : 'space-columns'}>
+        {listed === null ? null : (
           <div>
             <section className="section" aria-labelledby="space-recent">
               <h2 className="section-title" id="space-recent">
                 최근 문서
               </h2>
               <RecentDocuments
-                documents={sortByRecent(documents.data).slice(0, RECENT_LIMIT)}
+                documents={sortByRecent(listed).slice(0, RECENT_LIMIT)}
                 spaceSlug={space.slug}
               />
             </section>
@@ -245,29 +213,23 @@ function SpaceHome({ space }: { space: Space }) {
                 문서 트리
               </h2>
               <div className="card">
-                <DocumentTree nodes={buildPathTree(documents.data)} spaceSlug={space.slug} />
+                <DocumentTree nodes={buildPathTree(listed)} spaceSlug={space.slug} />
               </div>
             </section>
           </div>
-          <div>
+        )}
+        <div>
+          {listed === null ? null : (
             <section className="section" aria-labelledby="space-threads">
               <h2 className="section-title" id="space-threads">
                 열린 댓글
               </h2>
-              <OpenComments
-                documents={sortByRecent(documents.data).slice(0, RECENT_LIMIT)}
-                spaceSlug={space.slug}
-              />
+              <OpenComments documents={sortByRecent(listed).slice(0, RECENT_LIMIT)} spaceSlug={space.slug} />
             </section>
-            <section className="section" aria-labelledby="space-activity">
-              <h2 className="section-title" id="space-activity">
-                최근 활동
-              </h2>
-              <RecentActivity spaceSlug={space.slug} />
-            </section>
-          </div>
+          )}
+          <RecentActivity key={space.slug} spaceSlug={space.slug} />
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }

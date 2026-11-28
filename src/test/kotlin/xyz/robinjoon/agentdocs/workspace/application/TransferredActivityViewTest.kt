@@ -35,7 +35,7 @@ class TransferredActivityViewTest {
         val documents = mockk<DocumentRepository>()
         val spaces = mockk<SpaceRepository>()
         every { spaces.findBySlug(WorkspaceFixtures.space.slug) } returns WorkspaceFixtures.space
-        every { catalog.find(ActivityQuery(setOf(original.spaceId.value), null, null, 20, false)) } returns listOf(entry)
+        every { catalog.find(ActivityQuery(setOf(original.spaceId.value), null, 20, false)) } returns listOf(entry)
         every { spaces.findByIds(setOf(original.spaceId)) } returns listOf(WorkspaceFixtures.space)
         every { documents.findByIds(listOf(original.id)) } returns listOf(moved)
         val result =

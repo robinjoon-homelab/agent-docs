@@ -1,4 +1,4 @@
-import type { ActivityGateway } from '../../../../application/activity/ports/ActivityGateway';
+import type { ActivityFilter, ActivityGateway } from '../../../../application/activity/ports/ActivityGateway';
 import type { Activity } from '../../../../domain/activity/activity';
 import type { HttpClient } from '../shared/httpClient';
 import { query } from '../shared/httpClient';
@@ -7,11 +7,12 @@ import { toActor, toSpaceName } from '../shared/mappers';
 
 function toActivity(value: unknown): Activity {
   const source = obj(value, 'activity');
+  const actor = obj(source.actor, 'actor');
   return {
     // The server numbers its log entries; the screen only uses the id as a key.
     id: String(num(source, 'id')),
     kind: str(source, 'kind'),
-    actor: toActor(source.actor),
+    actor: actor.kind === 'system' ? { kind: 'system' } : toActor(actor),
     space: source.space === null || source.space === undefined ? null : toSpaceName(source.space),
     documentId: optStr(source, 'documentId'),
     documentTitle: optStr(source, 'documentTitle'),
@@ -29,7 +30,10 @@ export class HttpActivityGateway implements ActivityGateway {
     this.http = http;
   }
 
-  async list(spaceSlug: string | null, limit: number): Promise<Activity[]> {
-    return list(await this.http.get(`/api/activity${query({ space: spaceSlug, limit })}`), toActivity);
+  async list(spaceSlug: string | null, limit: number, filter?: ActivityFilter): Promise<Activity[]> {
+    return list(
+      await this.http.get(`/api/activity${query({ space: spaceSlug, limit, ...filter })}`),
+      toActivity,
+    );
   }
 }

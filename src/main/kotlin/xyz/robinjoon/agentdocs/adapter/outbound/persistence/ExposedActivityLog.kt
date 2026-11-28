@@ -76,7 +76,9 @@ class ExposedActivityLog :
         query.spaceIds?.let { spaces ->
             select.andWhere { (ActivitiesTable.spaceId inList spaces) and ActivitiesTable.membershipId.isNull() }
         }
-        query.since?.let { since -> select.andWhere { ActivitiesTable.occurredAt greater since.atOffset(ZoneOffset.UTC) } }
+        query.filter.since?.let { since -> select.andWhere { ActivitiesTable.occurredAt greater since.atOffset(ZoneOffset.UTC) } }
+        query.filter.kind?.let { kind -> select.andWhere { ActivitiesTable.kind eq kind } }
+        query.filter.actorKind?.let { actorKind -> select.andWhere { ActivitiesTable.actorKind eq actorKind } }
         query.beforeId?.let { before -> select.andWhere { ActivitiesTable.id less before } }
         query.afterId?.let { after -> select.andWhere { ActivitiesTable.id greater after } }
         val order = if (query.oldestFirst) SortOrder.ASC else SortOrder.DESC

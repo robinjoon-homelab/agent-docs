@@ -508,6 +508,11 @@ include::{snippets}/activity-list/query-parameters.adoc[]
 include::{snippets}/activity-list/http-response.adoc[]
 include::{snippets}/activity-list/response-fields.adoc[]
 
+종류, 주체, 시각 조건은 모두 충족해야 하며, 조건에 맞는 결과를 최신 로그 ID 순서로 최대 `limit`개 반환합니다.
+
+include::{snippets}/activity-list-filtered/http-request.adoc[]
+include::{snippets}/activity-list-filtered/http-response.adoc[]
+
 소유자의 전체 활동 기록에서 에이전트 연결의 승인·발급·권한 변경·회수 대상은 `connectionId`로 구분합니다. 대상 ID를 기록하기 전의 활동은 이 값이 `null`입니다.
 
 include::{snippets}/activity-connection-target/http-response.adoc[]

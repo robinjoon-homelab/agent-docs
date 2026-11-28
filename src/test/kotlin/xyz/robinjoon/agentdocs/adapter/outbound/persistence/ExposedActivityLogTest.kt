@@ -5,6 +5,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import xyz.robinjoon.agentdocs.application.model.ActivityActor
 import xyz.robinjoon.agentdocs.application.model.ActivityActorKind
+import xyz.robinjoon.agentdocs.application.model.ActivityFilter
 import xyz.robinjoon.agentdocs.application.model.ActivityQuery
 import xyz.robinjoon.agentdocs.application.model.ActivityRecord
 import xyz.robinjoon.agentdocs.application.model.ActivityScan
@@ -31,9 +32,12 @@ class ExposedActivityLogTest {
         val third = record(space, 20)
         database.inTransaction { listOf(first, second, third).forEach(log::record) }
 
-        val newest = database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = false)) }
-        val fromMoment = database.inTransaction { log.find(ActivityQuery(null, at.plusSeconds(5), null, 10, oldestFirst = true)) }
-        val inSpace = database.inTransaction { log.find(ActivityQuery(setOf(space), null, newest.first().id, 10, oldestFirst = false)) }
+        val newest = database.inTransaction { log.find(ActivityQuery(null, null, 10, oldestFirst = false)) }
+        val fromMoment =
+            database.inTransaction {
+                log.find(ActivityQuery(null, null, 10, oldestFirst = true, filter = ActivityFilter(since = at.plusSeconds(5))))
+            }
+        val inSpace = database.inTransaction { log.find(ActivityQuery(setOf(space), newest.first().id, 10, oldestFirst = false)) }
 
         assertThat(newest.map { it.record }).containsExactly(third, second, first)
         assertThat(fromMoment.map { it.record }).containsExactly(second, third)
@@ -41,11 +45,34 @@ class ExposedActivityLogTest {
     }
 
     @Test
+    fun `activity filters match older entries before limiting the result and keep the space scope`() {
+        val purged = record(space, 1).copy(kind = "document.purged", actor = ActivityActor.system)
+        val outside = purged.copy(subject = purged.subject.copy(spaceId = UUID.randomUUID()))
+        val membership = purged.copy(subject = purged.subject.copy(membershipId = UUID.randomUUID()))
+        database.inTransaction {
+            log.record(purged.copy(at = at))
+            log.record(purged)
+            log.record(purged.copy(at = at.plusSeconds(2)))
+            log.record(purged.copy(actor = agent))
+            log.record(outside)
+            log.record(membership)
+            repeat(21) { log.record(record(space, 10L + it).copy(actor = ActivityActor.system)) }
+        }
+        val query = ActivityQuery(setOf(space), null, 20, false, filter = ActivityFilter("document.purged", ActivityActorKind.SYSTEM, at))
+
+        val unfiltered = database.inTransaction { log.find(query.copy(filter = ActivityFilter())) }
+        val filtered = database.inTransaction { log.find(query) }
+
+        assertThat(unfiltered.map { it.record.kind }).containsOnly("document.revised").hasSize(20)
+        assertThat(filtered.map { it.record }).containsExactly(purged.copy(at = at.plusSeconds(2)), purged)
+    }
+
+    @Test
     fun `pruning removes only entries older than the cutoff`() {
         database.inTransaction { listOf(record(space, 0), record(space, 100)).forEach(log::record) }
 
         assertThat(database.inTransaction { log.pruneBefore(at.plusSeconds(50)) }).isEqualTo(1)
-        assertThat(database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = true)) }).hasSize(1)
+        assertThat(database.inTransaction { log.find(ActivityQuery(null, null, 10, oldestFirst = true)) }).hasSize(1)
     }
 
     @Test
@@ -55,8 +82,8 @@ class ExposedActivityLogTest {
         val change = record(space, 0)
         database.inTransaction { listOf(change, member).forEach(log::record) }
 
-        val instance = database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = false)) }
-        val scoped = database.inTransaction { log.find(ActivityQuery(setOf(space), null, null, 10, oldestFirst = false)) }
+        val instance = database.inTransaction { log.find(ActivityQuery(null, null, 10, oldestFirst = false)) }
+        val scoped = database.inTransaction { log.find(ActivityQuery(setOf(space), null, 10, oldestFirst = false)) }
         assertThat(instance.map { it.record }).containsExactly(member, change)
         assertThat(scoped.map { it.record }).containsExactly(change)
     }
@@ -70,8 +97,8 @@ class ExposedActivityLogTest {
         val second = legacy.copy(subject = subject.copy(connectionId = UUID.randomUUID()))
         database.inTransaction { listOf(legacy, first, second).forEach(log::record) }
 
-        val instance = database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = true)) }
-        val scoped = database.inTransaction { log.find(ActivityQuery(setOf(space), null, null, 10, oldestFirst = true)) }
+        val instance = database.inTransaction { log.find(ActivityQuery(null, null, 10, oldestFirst = true)) }
+        val scoped = database.inTransaction { log.find(ActivityQuery(setOf(space), null, 10, oldestFirst = true)) }
 
         assertThat(instance.map { it.record }).containsExactly(legacy, first, second)
         assertThat(scoped).isEmpty()
@@ -85,9 +112,20 @@ class ExposedActivityLogTest {
             repeat(101) { log.record(record(space, 0)) }
         }
         val since = at.minusSeconds(1)
-        val first = database.inTransaction { log.find(ActivityQuery(setOf(space), since, null, 100, true)) }
-        val second = database.inTransaction { log.find(ActivityQuery(setOf(space), since, null, 100, true, first.last().id)) }
-        val end = database.inTransaction { log.find(ActivityQuery(setOf(space), since, null, 100, true, second.last().id)) }
+        val first =
+            database.inTransaction {
+                log.find(
+                    ActivityQuery(setOf(space), null, 100, true, filter = ActivityFilter(since = since)),
+                )
+            }
+        val second =
+            database.inTransaction {
+                log.find(ActivityQuery(setOf(space), null, 100, true, afterId = first.last().id, filter = ActivityFilter(since = since)))
+            }
+        val end =
+            database.inTransaction {
+                log.find(ActivityQuery(setOf(space), null, 100, true, afterId = second.last().id, filter = ActivityFilter(since = since)))
+            }
 
         assertThat(first).hasSize(100)
         assertThat(second).hasSize(1)
@@ -104,7 +142,7 @@ class ExposedActivityLogTest {
         val plain = record(space, 2)
         database.inTransaction { listOf(commented, quiet, plain).forEach(log::record) }
 
-        val read = database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = true)) }
+        val read = database.inTransaction { log.find(ActivityQuery(null, null, 10, oldestFirst = true)) }
 
         assertThat(read.map { it.record }).containsExactly(commented, quiet, plain)
         assertThat(read[0].record.createdComment?.mentions).containsExactlyInAnyOrder("alice", "bob")
@@ -122,7 +160,7 @@ class ExposedActivityLogTest {
             log.redactCommentExcerpt(id)
         }
 
-        val read = database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = true)) }
+        val read = database.inTransaction { log.find(ActivityQuery(null, null, 10, oldestFirst = true)) }
 
         assertThat(read.map { it.record }).containsExactly(deleted.copy(summary = "삭제된 댓글"), live)
     }
@@ -149,7 +187,7 @@ class ExposedActivityLogTest {
         database.inTransaction { log.record(comment(0, setOf("alice"))) }
 
         assertThat(database.inTransaction { log.pruneBefore(at.plusSeconds(1)) }).isEqualTo(1)
-        assertThat(database.inTransaction { log.find(ActivityQuery(null, null, null, 10, oldestFirst = true)) }).isEmpty()
+        assertThat(database.inTransaction { log.find(ActivityQuery(null, null, 10, oldestFirst = true)) }).isEmpty()
     }
 
     private fun comment(
